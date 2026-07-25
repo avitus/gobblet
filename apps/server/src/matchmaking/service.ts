@@ -22,6 +22,8 @@ export type QueueCandidate = Readonly<{
 /** A pairing that has become a match, with the event each player must receive. */
 export type SeatedMatch = Readonly<{
   snapshot: MatchSnapshot;
+  /** How long the longer-waiting player waited, which is the metric worth logging. */
+  waitedMs: number;
   events: readonly Readonly<{ actorId: string; event: MatchFoundEvent }>[];
 }>;
 
@@ -48,7 +50,8 @@ export interface MatchmakingQueue {
   statusOf(actorId: string): QueueStatus | null;
   tick(): Promise<TickResult>;
   depths(): readonly QueueDepth[];
-  stopAcceptingEntries(): void;
+  /** Closes the queue and returns the players it released, so each can be told. */
+  stopAcceptingEntries(): readonly string[];
 }
 
 export type MatchmakingOptions = Readonly<{
@@ -192,10 +195,12 @@ export class MatchmakingService implements MatchmakingQueue {
   }
 
   /** Draining stops new entries and releases everyone waiting (spec section 7.6). */
-  stopAcceptingEntries(): void {
+  stopAcceptingEntries(): readonly string[] {
     this.accepting = false;
+    const released = [...this.byActor.keys()];
     this.queues.clear();
     this.byActor.clear();
+    return released;
   }
 
   /**
@@ -315,6 +320,7 @@ export class MatchmakingService implements MatchmakingQueue {
 export function seatedMatchOf(snapshot: MatchSnapshot, waitedMs: number): SeatedMatch {
   return {
     snapshot,
+    waitedMs,
     events: [
       {
         actorId: snapshot.players.light.actorId,

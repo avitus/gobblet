@@ -178,6 +178,13 @@ client loses no match progress. See
 [ADR-0009](adr/0009-server-authoritative-clocks.md) and
 [ADR-0010](adr/0010-match-event-persistence.md).
 
+Matchmaking is the exception, because it is the one thing a process holds that is not written
+down ([ADR-0018](adr/0018-in-process-matchmaking-and-rematch-offers.md)). Draining stops the
+queue first: every waiting player receives a recoverable `queue_closed` error and every open
+rematch offer is cancelled, so nobody is paired into a match this process is about to stop
+serving. Nothing requeues a player automatically; the client must send `queue:join` again, which
+is what section 7.5 of the specification requires. Matches in progress are untouched.
+
 ## 9. Rollback procedure
 
 Status: planned (Phase 7).

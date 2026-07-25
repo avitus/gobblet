@@ -86,8 +86,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     close: async (): Promise<void> => {
       // Draining stops accepting queue entries before anything else, so nobody is
       // paired into a match this process is about to stop serving (spec section 7.6).
-      matchmaking.stopAcceptingEntries();
-      rematch.forgetAll();
+      gateway.drain();
       await gateway.close();
       await app.close();
       await database.close();

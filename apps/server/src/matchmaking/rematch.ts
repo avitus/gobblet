@@ -161,9 +161,13 @@ export class RematchService {
   }
 
   /** A restart, or a drain, leaves no offer behind (ADR-0018). */
-  forgetAll(): void {
+  forgetAll(): readonly RematchBroadcast[] {
+    const cancelled = [...this.offersByMatch.values()].map((offer) =>
+      this.broadcast(offer, "cancelled"),
+    );
     this.offersByMatch.clear();
     this.matchIdsByActor.clear();
+    return cancelled;
   }
 
   private async finishedMatch(

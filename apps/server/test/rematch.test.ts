@@ -439,12 +439,18 @@ describe("offers that end without an answer", () => {
     expect(rematch.cancelFor(stranger.actorId)).toEqual([]);
   });
 
-  it("keeps nothing across a restart", async () => {
+  it("keeps nothing across a restart, and names the offers it ended", async () => {
     const table = await finishedMatch();
     await rematch.request(table.light, table.snapshot.matchId);
 
-    rematch.forgetAll();
+    const cancelled = rematch.forgetAll();
 
+    expect(cancelled).toHaveLength(1);
+    expect(cancelled[0]?.status).toMatchObject({
+      matchId: table.snapshot.matchId,
+      state: "cancelled",
+    });
+    expect(rematch.forgetAll()).toEqual([]);
     expect(rematch.sweep()).toEqual([]);
     expect(
       expectAccepted(await rematch.request(table.light, table.snapshot.matchId)).status.state,

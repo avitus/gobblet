@@ -21,6 +21,7 @@ import type {
   MatchSyncAck,
   QueueJoinAck,
   QueueLeaveAck,
+  RecoverableError,
   RematchAck,
   SessionAuthenticateAck,
   SessionReady,
@@ -36,6 +37,7 @@ import type { Actor } from "../match/snapshot";
 import { ClockBroadcaster, TICK_INTERVAL_MS } from "./clock-broadcaster";
 
 export type GatewayLogger = Readonly<{
+  info: (context: Readonly<Record<string, unknown>>, message: string) => void;
   error: (context: Readonly<Record<string, unknown>>, message: string) => void;
 }>;
 
@@ -56,6 +58,16 @@ type SocketSession = Readonly<{
   actor: Actor;
   displayName: string;
 }>;
+
+/**
+ * A drained queue is told to the client rather than silently forgotten: section 7.5
+ * forbids requeueing a stale session, so the client must ask again itself.
+ */
+const QUEUE_CLOSED_ERROR: RecoverableError = Object.freeze({
+  code: "queue_closed",
+  message: "The server stopped accepting queue entries",
+  retryable: true,
+});
 
 const SUSPENDED_ERROR: FatalError = Object.freeze({
   code: "account_suspended",
@@ -218,7 +230,7 @@ export class MatchGateway {
     try {
       const { seated, statuses } = await this.matchmaking.tick();
       for (const match of seated) {
-        this.publishSeatedMatch(match);
+        this.publishPairing(match);
       }
       for (const { actorId, status } of statuses) {
         this.emitToActor(actorId, OUT.queueStatus, status);
@@ -367,7 +379,7 @@ export class MatchGateway {
     }
 
     if (result.outcome === "seated") {
-      this.publishSeatedMatch(result.seated);
+      this.publishPairing(result.seated);
       ack?.({ state: "matched", matchId: result.seated.snapshot.matchId });
       return;
     }
@@ -639,6 +651,37 @@ export class MatchGateway {
    * Both players join the room and are told their own colour before any clock
    * broadcast, so neither can receive a tick for a match it has not been told about.
    */
+  /**
+   * Draining releases everyone waiting and ends every open offer, and tells them so
+   * (spec sections 7.5 and 7.6). Active matches are untouched: they are persisted.
+   */
+  drain(): void {
+    for (const actorId of this.matchmaking.stopAcceptingEntries()) {
+      this.emitToActor(actorId, OUT.errorRecoverable, QUEUE_CLOSED_ERROR);
+    }
+    for (const broadcast of this.rematch.forgetAll()) {
+      this.publishRematch(broadcast);
+    }
+  }
+
+  /**
+   * A pairing is the one matchmaking fact worth keeping: how long the players
+   * waited, and how deep the queues still are (spec section 17.1, appendix P4.9).
+   */
+  private publishPairing(match: SeatedMatch): void {
+    this.log.info(
+      {
+        matchId: match.snapshot.matchId,
+        mode: match.snapshot.mode,
+        timeControlSeconds: match.snapshot.timeControlSeconds,
+        waitedMs: match.waitedMs,
+        depths: this.matchmaking.depths(),
+      },
+      "paired two waiting players",
+    );
+    this.publishSeatedMatch(match);
+  }
+
   private publishSeatedMatch(match: SeatedMatch): void {
     for (const { actorId, event } of match.events) {
       for (const socket of this.socketsByActor.get(actorId) ?? []) {

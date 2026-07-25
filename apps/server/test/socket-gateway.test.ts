@@ -59,6 +59,7 @@ let guests: GuestService;
 let identity: IdentityService;
 let matchmaking: MatchmakingService;
 let rematch: RematchService;
+let logs: Readonly<{ context: Readonly<Record<string, unknown>>; message: string }>[];
 let app: FastifyInstance;
 let gateway: MatchGateway;
 let url: string;
@@ -76,6 +77,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await truncateAll(handle);
   clock = new TestClock();
+  logs = [];
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
   guests = new GuestService({ db: handle.db, config, now: clock.now });
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
@@ -90,7 +92,10 @@ beforeEach(async () => {
     resolvers: { identity, guests },
     matchmaking,
     rematch,
-    log: { error: () => undefined },
+    log: {
+      info: (context, message) => logs.push({ context, message }),
+      error: () => undefined,
+    },
     now: clock.now,
     startTicking: false,
   });
@@ -137,7 +142,7 @@ async function authenticated(
 /** A second server, for the cases that need a different runtime or logger. */
 async function spawnGateway(
   gatewayRuntime: MatchRuntime,
-  log: GatewayLogger = { error: () => undefined },
+  log: GatewayLogger = { info: () => undefined, error: () => undefined },
 ): Promise<{ gateway: MatchGateway; url: string }> {
   const localApp = await buildApp({
     config,
@@ -768,6 +773,7 @@ describe("clock cadence", () => {
     }
     const broken = new BrokenRuntime({ db: handle.db, now: clock.now });
     const spawned = await spawnGateway(broken, {
+      info: () => undefined,
       error: (_context, message) => {
         messages.push(message);
       },
@@ -1055,9 +1061,92 @@ describe("matchmaking over the socket", () => {
     expect(await runtime.hasUnfinishedMatch({ actorType: "user", actorId: ada.userId })).toBe(true);
   });
 
+  it("logs each pairing with the wait it ended and the queues left behind", async () => {
+    const one = await guests.createGuest("guest-one");
+    const two = await guests.createGuest("guest-two");
+    const three = await guests.createGuest("guest-three");
+    const { client: firstClient } = await authenticated(one);
+    const { client: secondClient } = await authenticated(two);
+    const { client: thirdClient } = await authenticated(three);
+    await firstClient.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+    await thirdClient.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 180 });
+    clock.advance(4_000);
+
+    await secondClient.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 300,
+    });
+
+    expect(logs).toEqual([
+      {
+        message: "paired two waiting players",
+        context: {
+          matchId: expect.any(String),
+          mode: "casual",
+          timeControlSeconds: 300,
+          waitedMs: 4_000,
+          depths: [{ mode: "casual", timeControlSeconds: 180, depth: 1 }],
+        },
+      },
+    ]);
+  });
+
+  it("does not log a rematch as a pairing", async () => {
+    const table = await seatedMatch();
+    await table.darkClient.emit<CommandAck>("match:resign", {
+      ...envelope(table.matchId, 0),
+      payload: {},
+    });
+    await table.lightClient.next("match:ended");
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+    await table.darkClient.emit<RematchAck>("match:rematch-respond", {
+      matchId: table.matchId,
+      accept: true,
+    });
+
+    expect(logs).toEqual([]);
+  });
+
+  it("releases everyone waiting when the server drains, and refuses new entries", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+    await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+
+    gateway.drain();
+
+    expect(recoverableErrorSchema.parse(await client.next("error:recoverable"))).toEqual({
+      code: "queue_closed",
+      message: "The server stopped accepting queue entries",
+      retryable: true,
+    });
+    expect(matchmaking.depths()).toEqual([]);
+    expect(
+      await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 }),
+    ).toEqual({ state: "refused", reason: "queue-closed" });
+  });
+
+  it("ends every open rematch offer when the server drains", async () => {
+    const table = await seatedMatch();
+    await table.darkClient.emit<CommandAck>("match:resign", {
+      ...envelope(table.matchId, 0),
+      payload: {},
+    });
+    await table.lightClient.next("match:ended");
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+    await table.lightClient.next("match:rematch-status");
+    await table.darkClient.next("match:rematch-status");
+
+    gateway.drain();
+
+    for (const client of [table.lightClient, table.darkClient]) {
+      expect(await client.next("match:rematch-status")).toMatchObject({ state: "cancelled" });
+    }
+  });
+
   it("reports a pairing failure through the logger instead of throwing", async () => {
     const errors: string[] = [];
     const { gateway: localGateway } = await spawnGateway(runtime, {
+      info: () => undefined,
       error: (_context, message) => errors.push(message),
     });
     const broken: MatchmakingQueue = {
@@ -1066,7 +1155,7 @@ describe("matchmaking over the socket", () => {
       statusOf: () => null,
       tick: () => Promise.reject(new Error("queue unavailable")),
       depths: () => [],
-      stopAcceptingEntries: () => undefined,
+      stopAcceptingEntries: () => [],
     };
     Object.assign(localGateway, { matchmaking: broken });
 
