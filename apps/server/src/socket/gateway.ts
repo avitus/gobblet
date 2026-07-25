@@ -49,7 +49,8 @@ export type GatewayOptions = Readonly<{
   matchmaking: MatchmakingQueue;
   rematch: RematchService;
   log: GatewayLogger;
-  now?: () => number;
+  /** Required, not defaulted: every caller of the gateway already has a clock. */
+  now: () => number;
   /** Left off in tests so the cadence can be driven by hand. */
   startTicking?: boolean;
 }>;
@@ -158,7 +159,7 @@ export class MatchGateway {
     this.matchmaking = options.matchmaking;
     this.rematch = options.rematch;
     this.log = options.log;
-    this.clock = options.now ?? ((): number => Date.now());
+    this.clock = options.now;
 
     this.io = new Server(options.httpServer, {
       cors: { origin: [...this.config.corsOrigins], credentials: true },

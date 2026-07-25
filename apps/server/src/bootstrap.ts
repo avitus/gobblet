@@ -12,6 +12,8 @@ import { MatchGateway } from "./socket/gateway";
 
 export type BootstrapOptions = Readonly<{
   config: ServerConfig;
+  /** Injected by tests so waiting, expiry and clocks can be driven without sleeping. */
+  now?: () => number;
 }>;
 
 export type BootstrappedServer = Readonly<{
@@ -44,16 +46,18 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     applicationName: "gobblet-server",
   });
 
-  const runtime = new MatchRuntime({ db: database.db });
-  const guests = new GuestService({ db: database.db, config });
-  const identity = new IdentityService({ db: database.db, config });
-  const matchmaking = new MatchmakingService({ runtime, identity });
-  const rematch = new RematchService({ runtime, identity });
+  const now = options.now ?? ((): number => Date.now());
+  const runtime = new MatchRuntime({ db: database.db, now });
+  const guests = new GuestService({ db: database.db, config, now });
+  const identity = new IdentityService({ db: database.db, config, now });
+  const matchmaking = new MatchmakingService({ runtime, identity, now });
+  const rematch = new RematchService({ runtime, identity, now });
 
   const app = await buildApp({
     config,
     services: { runtime, guests, identity },
     readiness: [{ name: "database", check: () => checkDatabaseConnection(database.db) }],
+    now,
   });
 
   const settled = await runtime.recoverUnfinishedMatches();
@@ -71,6 +75,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     matchmaking,
     rematch,
     log: app.log,
+    now,
   });
 
   return {
