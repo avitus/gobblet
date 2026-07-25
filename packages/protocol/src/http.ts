@@ -62,6 +62,11 @@ export const matchSummarySchema = z.strictObject({
   endedAt: isoTimestampSchema.nullable(),
 });
 
+/** The own-history listing (spec section 11.2), newest match first. */
+export const matchHistoryResponseSchema = z.strictObject({
+  matches: z.array(matchSummarySchema),
+});
+
 export const devMatchParticipantSchema = z.strictObject({
   actorType: z.enum(ACTOR_TYPES),
   actorId: uuidSchema,
@@ -86,6 +91,7 @@ export type HttpErrorBody = z.infer<typeof httpErrorBodySchema>;
 export type CreateGuestRequest = z.infer<typeof createGuestRequestSchema>;
 export type CreateGuestResponse = z.infer<typeof createGuestResponseSchema>;
 export type MatchSummary = z.infer<typeof matchSummarySchema>;
+export type MatchHistoryResponse = z.infer<typeof matchHistoryResponseSchema>;
 export type DevMatchParticipant = z.infer<typeof devMatchParticipantSchema>;
 export type CreateDevMatchRequest = z.infer<typeof createDevMatchRequestSchema>;
 export type CreateDevMatchResponse = z.infer<typeof createDevMatchResponseSchema>;

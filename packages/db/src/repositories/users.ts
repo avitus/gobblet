@@ -134,13 +134,17 @@ export async function findProfileByUserId(
   return row;
 }
 
+/**
+ * Only the fields present are written: an absent key is left alone, which is what
+ * lets one endpoint serve a partial update.
+ */
 export type ProfilePatch = Readonly<{
-  avatarUrl?: string | null;
-  countryCode?: string | null;
-  presetMessagesMuted?: boolean;
-  reactionsMuted?: boolean;
-  gameSoundMuted?: boolean;
-  reducedMotion?: boolean;
+  avatarUrl?: string | null | undefined;
+  countryCode?: string | null | undefined;
+  presetMessagesMuted?: boolean | undefined;
+  reactionsMuted?: boolean | undefined;
+  gameSoundMuted?: boolean | undefined;
+  reducedMotion?: boolean | undefined;
 }>;
 
 export async function updateProfile(

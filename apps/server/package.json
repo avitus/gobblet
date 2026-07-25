@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
+    "@gobblet/auth": "workspace:*",
     "@gobblet/config": "workspace:*",
     "@gobblet/db": "workspace:*",
     "@gobblet/game-core": "workspace:*",

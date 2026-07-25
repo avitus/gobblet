@@ -3,6 +3,7 @@ import { createDevMatchRequestSchema, httpErrorDetails } from "@gobblet/protocol
 import type { CreateDevMatchResponse } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
 import { sendError } from "../http/errors";
+import type { IdentityResolvers } from "../identity/resolve";
 import type { MatchRuntime } from "../match/runtime";
 
 /**
@@ -17,6 +18,7 @@ export function devMatchesEnabled(config: ServerConfig): boolean {
 export function registerDevMatchRoutes(
   app: FastifyInstance,
   runtime: MatchRuntime,
+  resolvers: IdentityResolvers,
   config: ServerConfig,
 ): void {
   if (!devMatchesEnabled(config)) {
@@ -38,6 +40,19 @@ export function registerDevMatchRoutes(
     const { mode, timeControlSeconds, light, dark, firstPlayer } = parsed.data;
     if (light.actorId === dark.actorId) {
       return sendError(request, reply, "conflict", "A match needs two distinct actors");
+    }
+
+    // Suspension is enforced wherever a match starts (spec section 19.3);
+    // matchmaking queues arrive in Phase 4 and will call the same check.
+    for (const participant of [light, dark]) {
+      if (participant.actorType !== "user") {
+        continue;
+      }
+      if ((await resolvers.identity.accountStatus(participant.actorId)) === "suspended") {
+        return sendError(request, reply, "forbidden", "A suspended account cannot join a match", [
+          { path: "account", issue: "suspended" },
+        ]);
+      }
     }
 
     const snapshot = await runtime.createMatch({

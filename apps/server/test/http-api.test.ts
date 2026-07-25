@@ -13,7 +13,8 @@ import type { CreateGuestResponse } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
-import { GUEST_SESSION_TTL_MS, GuestService } from "../src/guests/service";
+import { GuestService } from "../src/guests/service";
+import { IdentityService } from "../src/identity/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -24,10 +25,13 @@ const baseEnv = {
   LOG_LEVEL: "fatal" as const,
 };
 
+const localConfig = loadServerConfig({ ...baseEnv, APP_ENV: "local" });
+
 let handle: DatabaseHandle;
 let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
+let identity: IdentityService;
 let app: FastifyInstance | undefined;
 
 beforeAll(async () => {
@@ -42,7 +46,8 @@ beforeEach(async () => {
   await truncateAll(handle);
   clock = new TestClock();
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
-  guests = new GuestService({ db: handle.db, now: clock.now });
+  guests = new GuestService({ db: handle.db, config: localConfig, now: clock.now });
+  identity = new IdentityService({ db: handle.db, config: localConfig, now: clock.now });
 });
 
 afterEach(async () => {
@@ -50,10 +55,8 @@ afterEach(async () => {
   app = undefined;
 });
 
-async function start(
-  config: ServerConfig = loadServerConfig({ ...baseEnv, APP_ENV: "local" }),
-): Promise<FastifyInstance> {
-  app = await buildApp({ config, services: { runtime, guests }, now: clock.now });
+async function start(config: ServerConfig = localConfig): Promise<FastifyInstance> {
+  app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
   return app;
 }
 
@@ -143,13 +146,13 @@ describe("POST /v1/guests", () => {
   });
 
   it("issues sessions on the wall clock when none is injected", async () => {
-    const service = new GuestService({ db: handle.db });
+    const service = new GuestService({ db: handle.db, config: localConfig });
     const before = Date.now();
 
     const guest = await service.createGuest();
 
     expect(new Date(guest.expiresAt).getTime()).toBeGreaterThanOrEqual(
-      before + GUEST_SESSION_TTL_MS,
+      before + localConfig.guestSessionTtlDays * 24 * 60 * 60 * 1000,
     );
     expect(await service.authenticate(guest.sessionToken)).toMatchObject({
       guestId: guest.guestId,

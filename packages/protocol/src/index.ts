@@ -223,6 +223,7 @@ export {
   httpErrorBodySchema,
   httpErrorDetailSchema,
   httpErrorDetails,
+  matchHistoryResponseSchema,
   matchSummarySchema,
 } from "./http";
 
@@ -234,5 +235,6 @@ export type {
   DevMatchParticipant,
   HttpErrorBody,
   HttpErrorDetail,
+  MatchHistoryResponse,
   MatchSummary,
 } from "./http";

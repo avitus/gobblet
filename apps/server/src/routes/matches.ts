@@ -1,8 +1,8 @@
 import { uuidSchema } from "@gobblet/protocol";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { GuestService } from "../guests/service";
 import { resolveActor } from "../http/authenticate";
 import { sendError } from "../http/errors";
+import type { IdentityResolvers } from "../identity/resolve";
 import type { MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
 
@@ -11,7 +11,7 @@ type MatchParams = Readonly<{ matchId: string }>;
 export function registerMatchRoutes(
   app: FastifyInstance,
   runtime: MatchRuntime,
-  guests: GuestService,
+  resolvers: IdentityResolvers,
 ): void {
   /**
    * Both reads are restricted to participants (spec section 14.3). Everything a
@@ -54,7 +54,7 @@ export function registerMatchRoutes(
       return null;
     }
 
-    const actor = await resolveActor(guests, request);
+    const actor = await resolveActor(resolvers, request);
     if (!actor) {
       await sendError(request, reply, "unauthenticated", "A session token is required");
       return null;

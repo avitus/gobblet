@@ -20,7 +20,8 @@ import type {
 } from "@gobblet/protocol";
 import { Server } from "socket.io";
 import type { Socket } from "socket.io";
-import type { GuestService } from "../guests/service";
+import { isSuspended, resolveIdentity, toActor } from "../identity/resolve";
+import type { IdentityResolvers } from "../identity/resolve";
 import type { CommandResult, MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
 import { ClockBroadcaster, TICK_INTERVAL_MS } from "./clock-broadcaster";
@@ -33,7 +34,7 @@ export type GatewayOptions = Readonly<{
   httpServer: HttpServer;
   config: ServerConfig;
   runtime: MatchRuntime;
-  guests: GuestService;
+  resolvers: IdentityResolvers;
   log: GatewayLogger;
   now?: () => number;
   /** Left off in tests so the cadence can be driven by hand. */
@@ -44,6 +45,12 @@ type SocketSession = Readonly<{
   actor: Actor;
   displayName: string;
 }>;
+
+const SUSPENDED_ERROR: FatalError = Object.freeze({
+  code: "account_suspended",
+  message: "This account is suspended",
+  action: "contact-support",
+});
 
 type Acknowledge<T> = ((response: T) => void) | undefined;
 
@@ -102,7 +109,7 @@ export class MatchGateway {
 
   private readonly runtime: MatchRuntime;
 
-  private readonly guests: GuestService;
+  private readonly resolvers: IdentityResolvers;
 
   private readonly log: GatewayLogger;
 
@@ -117,7 +124,7 @@ export class MatchGateway {
   constructor(options: GatewayOptions) {
     this.config = options.config;
     this.runtime = options.runtime;
-    this.guests = options.guests;
+    this.resolvers = options.resolvers;
     this.log = options.log;
     this.clock = options.now ?? ((): number => Date.now());
 
@@ -237,26 +244,29 @@ export class MatchGateway {
     }
 
     const identity =
-      sessionToken === undefined ? null : await this.guests.authenticate(sessionToken);
+      sessionToken === undefined ? null : await resolveIdentity(this.resolvers, sessionToken);
     if (!identity) {
       this.rejectHandshake(socket, ack, {
         code: "unauthenticated",
-        message: "A valid guest session token is required",
+        message: "A valid session token is required",
         action: "reauthenticate",
       });
       return;
     }
 
-    this.sessions.set(socket, {
-      actor: { actorType: "guest", actorId: identity.guestId },
-      displayName: identity.displayName,
-    });
+    if (isSuspended(identity)) {
+      this.rejectHandshake(socket, ack, SUSPENDED_ERROR);
+      return;
+    }
+
+    const actor = toActor(identity);
+    this.sessions.set(socket, { actor, displayName: identity.displayName });
 
     const ready: SessionReady = {
-      actorId: identity.guestId,
-      actorType: "guest",
+      actorId: actor.actorId,
+      actorType: actor.actorType,
       displayName: identity.displayName,
-      isGuest: true,
+      isGuest: actor.actorType === "guest",
       serverTime: this.clock(),
       features: [],
     };
@@ -321,6 +331,10 @@ export class MatchGateway {
       return;
     }
 
+    if (await this.refuseSuspended(socket, session, ack)) {
+      return;
+    }
+
     this.settle(await this.runtime.applyMoveCommand(session.actor, command.data), ack);
   }
 
@@ -338,6 +352,10 @@ export class MatchGateway {
     if (!command.success) {
       this.emitRecoverable(socket, "The resign payload is not valid", command.error);
       ack?.({ ok: false, commandId: session.commandId, reason: "illegal-move" });
+      return;
+    }
+
+    if (await this.refuseSuspended(socket, session, ack)) {
       return;
     }
 
@@ -367,6 +385,29 @@ export class MatchGateway {
     }
 
     return { ...session, commandId: metadata.data.commandId };
+  }
+
+  /**
+   * Suspension is read per command, because a suspension applied mid-match must
+   * stop the next move rather than the next sign-in (spec section 19.3). It ends
+   * the socket, so a suspended player is not left believing the game continues.
+   */
+  private async refuseSuspended(
+    socket: Socket,
+    session: SocketSession & Readonly<{ commandId: string }>,
+    ack: Acknowledge<CommandAck>,
+  ): Promise<boolean> {
+    if (session.actor.actorType !== "user") {
+      return false;
+    }
+    if ((await this.resolvers.identity.accountStatus(session.actor.actorId)) !== "suspended") {
+      return false;
+    }
+
+    ack?.({ ok: false, commandId: session.commandId, reason: "not-authorized" });
+    socket.emit(OUT.errorFatal, SUSPENDED_ERROR);
+    socket.disconnect(true);
+    return true;
   }
 
   private settle(result: CommandResult, ack: Acknowledge<CommandAck>): void {

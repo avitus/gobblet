@@ -6,6 +6,7 @@ import {
   createGuestResponseSchema,
   httpErrorBodySchema,
   httpErrorDetails,
+  matchHistoryResponseSchema,
   matchSummarySchema,
   type CreateDevMatchRequest,
   type CreateGuestResponse,
@@ -175,5 +176,27 @@ describe("matchSummarySchema", () => {
         result: { outcome: "draw", reason: "agreement" },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("matchHistoryResponseSchema", () => {
+  it("accepts an empty history and a history of summaries", () => {
+    const summary = {
+      matchId: MATCH_ID,
+      mode: "casual",
+      timeControlSeconds: 300,
+      status: "completed",
+      result: { outcome: "light", reason: "line" },
+      players: buildSnapshot().players,
+      createdAt: "2026-07-25T09:59:00.000Z",
+      startedAt: "2026-07-25T10:00:00.000Z",
+      endedAt: "2026-07-25T10:07:00.000Z",
+    };
+
+    expect(matchHistoryResponseSchema.parse({ matches: [] })).toEqual({ matches: [] });
+    expect(matchHistoryResponseSchema.parse({ matches: [summary] }).matches).toHaveLength(1);
+    expect(matchHistoryResponseSchema.safeParse({ matches: [{ matchId: MATCH_ID }] }).success).toBe(
+      false,
+    );
   });
 });

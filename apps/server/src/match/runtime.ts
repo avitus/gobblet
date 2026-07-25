@@ -4,6 +4,7 @@ import {
   findMatchById,
   insertMatch,
   insertMatchEvent,
+  listMatchesForActor,
   listUnfinishedMatches,
   lockMatchForUpdate,
   updateMatchState,
@@ -155,6 +156,15 @@ export class MatchRuntime {
       return null;
     }
     return toSummary(row);
+  }
+
+  /**
+   * Own match history, newest first. Summaries never carry the move event log,
+   * which stays administrative (spec section 11.2).
+   */
+  async listSummariesForActor(actor: Actor, limit: number): Promise<MatchSummary[]> {
+    const rows = await listMatchesForActor(this.db, actor, limit);
+    return rows.map((row) => toSummary(row));
   }
 
   /** Backs the periodic `match:clock-sync` broadcast (spec section 8.3). */

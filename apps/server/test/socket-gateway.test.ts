@@ -21,6 +21,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
+import { IdentityService } from "../src/identity/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { MatchGateway, isClientVersionSupported } from "../src/socket/gateway";
 import type { GatewayLogger } from "../src/socket/gateway";
@@ -41,6 +42,7 @@ let handle: DatabaseHandle;
 let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
+let identity: IdentityService;
 let app: FastifyInstance;
 let gateway: MatchGateway;
 let url: string;
@@ -59,14 +61,15 @@ beforeEach(async () => {
   await truncateAll(handle);
   clock = new TestClock();
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
-  guests = new GuestService({ db: handle.db, now: clock.now });
-  app = await buildApp({ config, services: { runtime, guests }, now: clock.now });
+  guests = new GuestService({ db: handle.db, config, now: clock.now });
+  identity = new IdentityService({ db: handle.db, config, now: clock.now });
+  app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
   await app.listen({ host: "127.0.0.1", port: 0 });
   gateway = new MatchGateway({
     httpServer: app.server,
     config,
     runtime,
-    guests,
+    resolvers: { identity, guests },
     log: { error: () => undefined },
     now: clock.now,
     startTicking: false,
@@ -118,7 +121,7 @@ async function spawnGateway(
 ): Promise<{ gateway: MatchGateway; url: string }> {
   const localApp = await buildApp({
     config,
-    services: { runtime: gatewayRuntime, guests },
+    services: { runtime: gatewayRuntime, guests, identity },
     now: clock.now,
   });
   await localApp.listen({ host: "127.0.0.1", port: 0 });
@@ -126,7 +129,7 @@ async function spawnGateway(
     httpServer: localApp.server,
     config,
     runtime: gatewayRuntime,
-    guests,
+    resolvers: { identity, guests },
     log,
     now: clock.now,
     startTicking: false,
@@ -172,6 +175,54 @@ async function seatedMatch(timeControlSeconds: 180 | 300 = 300): Promise<Table> 
   return { matchId: snapshot.matchId, light, dark, lightClient, darkClient };
 }
 
+/** A seated match whose light seat is an account, so suspension can be applied. */
+async function seatedAccountMatch(): Promise<
+  Table & Readonly<{ userId: string; sessionToken: string }>
+> {
+  const registered = await identity.register({
+    email: "ada@example.com",
+    password: "correct-horse-7",
+    username: "ada",
+  });
+  if (!registered.ok) {
+    throw new Error("expected registration to succeed");
+  }
+  const dark = await guests.createGuest("dark-player");
+  const snapshot = await runtime.createMatch({
+    mode: "casual",
+    timeControlSeconds: 300,
+    light: { actorType: "user", actorId: registered.value.account.userId, displayName: "ada" },
+    dark: { actorType: "guest", actorId: dark.guestId, displayName: dark.displayName },
+  });
+
+  const lightClient = await connect();
+  await lightClient.emit<SessionAuthenticateAck>("session:authenticate", {
+    clientVersion: CLIENT_VERSION,
+    appEnv: "local",
+    sessionToken: registered.value.session.sessionToken,
+  });
+  const { client: darkClient } = await authenticated(dark);
+  await lightClient.emit<MatchSyncAck>("match:sync", { matchId: snapshot.matchId });
+  await darkClient.emit<MatchSyncAck>("match:sync", { matchId: snapshot.matchId });
+  lightClient.drain("match:snapshot");
+  darkClient.drain("match:snapshot");
+
+  return {
+    matchId: snapshot.matchId,
+    light: {
+      guestId: registered.value.account.userId,
+      displayName: "ada",
+      sessionToken: registered.value.session.sessionToken,
+      expiresAt: registered.value.session.expiresAt,
+    },
+    dark,
+    lightClient,
+    darkClient,
+    userId: registered.value.account.userId,
+    sessionToken: registered.value.session.sessionToken,
+  };
+}
+
 describe("isClientVersionSupported", () => {
   it.each([
     ["0.1.0", "0.1.0", true],
@@ -189,6 +240,68 @@ describe("isClientVersionSupported", () => {
 });
 
 describe("session:authenticate", () => {
+  it("accepts an account session and reports the actor as an account", async () => {
+    const registered = await identity.register({
+      email: "ada@example.com",
+      password: "correct-horse-7",
+      username: "ada",
+    });
+    if (!registered.ok) {
+      throw new Error("expected registration to succeed");
+    }
+
+    const client = await connect();
+    const ack = await client.emit<SessionAuthenticateAck>("session:authenticate", {
+      clientVersion: CLIENT_VERSION,
+      appEnv: "local",
+      sessionToken: registered.value.session.sessionToken,
+    });
+
+    if (!ack.ok) {
+      throw new Error("expected the handshake to succeed");
+    }
+    expect(sessionReadySchema.parse(ack.session)).toMatchObject({
+      actorId: registered.value.account.userId,
+      actorType: "user",
+      displayName: "ada",
+      isGuest: false,
+    });
+  });
+
+  it("refuses a suspended account at the handshake", async () => {
+    const registered = await identity.register({
+      email: "ada@example.com",
+      password: "correct-horse-7",
+      username: "ada",
+    });
+    if (!registered.ok) {
+      throw new Error("expected registration to succeed");
+    }
+    // Suspension revokes the sessions it knows about, so this account signs in
+    // again to hold a token that is live when the handshake is refused.
+    await identity.suspend(registered.value.account.userId, "abuse");
+    await handle.db.execute(
+      `update user_sessions set revoked_at = null where user_id = '${registered.value.account.userId}'`,
+    );
+
+    const client = await connect();
+    const ack = await client.emit<SessionAuthenticateAck>("session:authenticate", {
+      clientVersion: CLIENT_VERSION,
+      appEnv: "local",
+      sessionToken: registered.value.session.sessionToken,
+    });
+
+    expect(ack).toEqual({
+      ok: false,
+      error: {
+        code: "account_suspended",
+        message: "This account is suspended",
+        action: "contact-support",
+      },
+    });
+    await client.waitForDisconnect();
+  });
+
   it("returns the session identity and emits session:ready", async () => {
     const guest = await guests.createGuest("ada");
     const { client, ack } = await authenticated(guest);
@@ -223,7 +336,7 @@ describe("session:authenticate", () => {
       ok: false,
       error: {
         code: "unauthenticated",
-        message: "A valid guest session token is required",
+        message: "A valid session token is required",
         action: "reauthenticate",
       },
     });
@@ -631,5 +744,56 @@ describe("clock cadence", () => {
 
     const ended = matchEndedEventSchema.parse(await table.lightClient.next("match:ended"));
     expect(ended.reason).toBe("timeout");
+  });
+});
+
+describe("suspension during a match", () => {
+  it("refuses the next move and ends the socket", async () => {
+    const table = await seatedAccountMatch();
+    await identity.suspend(table.userId, "abuse");
+
+    const ack = await table.lightClient.emit<CommandAck>("match:move", {
+      ...envelope(table.matchId, 0),
+      payload: { move: WINNING_SCRIPT[0] },
+    });
+
+    expect(ack).toMatchObject({ ok: false, reason: "not-authorized" });
+    expect(fatalErrorSchema.parse(await table.lightClient.next("error:fatal"))).toEqual({
+      code: "account_suspended",
+      message: "This account is suspended",
+      action: "contact-support",
+    });
+    await table.lightClient.waitForDisconnect();
+    const snapshot = await runtime.getSnapshotForActor(table.matchId, {
+      actorType: "guest",
+      actorId: table.dark.guestId,
+    });
+    expect(snapshot?.version).toBe(0);
+  });
+
+  it("refuses a resignation from a suspended account", async () => {
+    const table = await seatedAccountMatch();
+    await identity.suspend(table.userId, "abuse");
+
+    const ack = await table.lightClient.emit<CommandAck>("match:resign", {
+      ...envelope(table.matchId, 0),
+      payload: {},
+    });
+
+    expect(ack).toMatchObject({ ok: false, reason: "not-authorized" });
+    await table.lightClient.waitForDisconnect();
+  });
+
+  it("lets an account act again once it has been reinstated", async () => {
+    const table = await seatedAccountMatch();
+    await identity.suspend(table.userId, "abuse");
+    await identity.reinstate(table.userId);
+
+    const ack = await table.lightClient.emit<CommandAck>("match:move", {
+      ...envelope(table.matchId, 0),
+      payload: { move: WINNING_SCRIPT[0] },
+    });
+
+    expect(ack).toMatchObject({ ok: true, newVersion: 1 });
   });
 });

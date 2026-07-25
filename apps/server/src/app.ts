@@ -4,10 +4,15 @@ import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "@gobblet/config";
 import type { GuestService } from "./guests/service";
 import { sendError } from "./http/errors";
+import { AttemptLimiter } from "./identity/rate-limit";
+import type { IdentityService } from "./identity/service";
 import type { MatchRuntime } from "./match/runtime";
+import { registerAuthRoutes } from "./routes/auth";
 import { registerDevMatchRoutes } from "./routes/dev-matches";
 import { registerGuestRoutes } from "./routes/guests";
 import { registerMatchRoutes } from "./routes/matches";
+import { registerMeRoutes } from "./routes/me";
+import { registerUsernameRoutes } from "./routes/usernames";
 import { TIME_CONTROLS_SECONDS } from "./time-controls";
 
 /**
@@ -28,6 +33,7 @@ export type ReadinessProbe = Readonly<{
 export type AppServices = Readonly<{
   runtime: MatchRuntime;
   guests: GuestService;
+  identity: IdentityService;
 }>;
 
 export type BuildAppOptions = Readonly<{
@@ -38,6 +44,14 @@ export type BuildAppOptions = Readonly<{
 }>;
 
 const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
+
+/**
+ * Credential attempts allowed per client address per window, the throttle
+ * [ADR-0017](../../../docs/adr/0017-first-party-email-password-authentication.md)
+ * accepts as the mitigation for owning password verification.
+ */
+const CREDENTIAL_ATTEMPT_LIMIT = 10;
+const CREDENTIAL_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 export async function buildApp({
   config,
@@ -97,9 +111,23 @@ export async function buildApp({
   }));
 
   if (services) {
-    registerGuestRoutes(app, services.guests);
-    registerMatchRoutes(app, services.runtime, services.guests);
-    registerDevMatchRoutes(app, services.runtime, config);
+    const resolvers = { identity: services.identity, guests: services.guests };
+    const limiter = new AttemptLimiter({
+      limit: CREDENTIAL_ATTEMPT_LIMIT,
+      windowMs: CREDENTIAL_ATTEMPT_WINDOW_MS,
+      now,
+    });
+
+    registerAuthRoutes(app, { identity: services.identity, resolvers, limiter });
+    registerGuestRoutes(app, {
+      guests: services.guests,
+      identity: services.identity,
+      resolvers,
+    });
+    registerUsernameRoutes(app, services.identity);
+    registerMeRoutes(app, services.identity, resolvers, services.runtime);
+    registerMatchRoutes(app, services.runtime, resolvers);
+    registerDevMatchRoutes(app, services.runtime, resolvers, config);
   }
 
   return app;

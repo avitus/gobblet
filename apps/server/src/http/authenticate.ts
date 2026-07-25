@@ -1,6 +1,8 @@
-import type { FastifyRequest } from "fastify";
-import type { GuestService } from "../guests/service";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { resolveIdentity, toActor } from "../identity/resolve";
+import type { IdentityResolvers, ResolvedIdentity } from "../identity/resolve";
 import type { Actor } from "../match/snapshot";
+import { sendError } from "./errors";
 
 const BEARER_PREFIX = "bearer ";
 
@@ -13,15 +15,39 @@ export function bearerToken(request: FastifyRequest): string | null {
   return token.length > 0 ? token : null;
 }
 
-/** Phase 2 has one credential type, so an authenticated actor is always a guest. */
-export async function resolveActor(
-  guests: GuestService,
+/** Resolves the bearer token of a request through the one resolution path. */
+export async function resolveRequestIdentity(
+  resolvers: IdentityResolvers,
   request: FastifyRequest,
-): Promise<Actor | null> {
+): Promise<ResolvedIdentity | null> {
   const token = bearerToken(request);
   if (token === null) {
     return null;
   }
-  const identity = await guests.authenticate(token);
-  return identity ? { actorType: "guest", actorId: identity.guestId } : null;
+  return resolveIdentity(resolvers, token);
+}
+
+export async function resolveActor(
+  resolvers: IdentityResolvers,
+  request: FastifyRequest,
+): Promise<Actor | null> {
+  const identity = await resolveRequestIdentity(resolvers, request);
+  return identity ? toActor(identity) : null;
+}
+
+/**
+ * Resolves the caller or answers `401` itself, so routes stay a single
+ * `if (!resolved) return reply;` and cannot forget the error shape.
+ */
+export async function requireIdentity(
+  resolvers: IdentityResolvers,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<ResolvedIdentity | null> {
+  const identity = await resolveRequestIdentity(resolvers, request);
+  if (!identity) {
+    await sendError(request, reply, "unauthenticated", "A session token is required");
+    return null;
+  }
+  return identity;
 }

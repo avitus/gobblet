@@ -4,6 +4,7 @@ import type { DatabaseHandle } from "@gobblet/db";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import { GuestService } from "./guests/service";
+import { IdentityService } from "./identity/service";
 import { MatchRuntime } from "./match/runtime";
 import { MatchGateway } from "./socket/gateway";
 
@@ -16,6 +17,7 @@ export type BootstrappedServer = Readonly<{
   database: DatabaseHandle;
   runtime: MatchRuntime;
   guests: GuestService;
+  identity: IdentityService;
   gateway: MatchGateway;
   /** Matches whose clock expired while this process was down (spec section 7.5). */
   settledOnBoot: number;
@@ -39,11 +41,12 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
   });
 
   const runtime = new MatchRuntime({ db: database.db });
-  const guests = new GuestService({ db: database.db });
+  const guests = new GuestService({ db: database.db, config });
+  const identity = new IdentityService({ db: database.db, config });
 
   const app = await buildApp({
     config,
-    services: { runtime, guests },
+    services: { runtime, guests, identity },
     readiness: [{ name: "database", check: () => checkDatabaseConnection(database.db) }],
   });
 
@@ -58,7 +61,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     httpServer: app.server,
     config,
     runtime,
-    guests,
+    resolvers: { identity, guests },
     log: app.log,
   });
 
@@ -67,6 +70,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     database,
     runtime,
     guests,
+    identity,
     gateway,
     settledOnBoot: settled.length,
     close: async (): Promise<void> => {
