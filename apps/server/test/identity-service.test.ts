@@ -16,9 +16,11 @@ const config: ServerConfig = loadServerConfig({
   LOG_LEVEL: "fatal",
 });
 
+const PASSWORD = "correct-horse-7";
+
 const credentials = {
   email: "ada@example.com",
-  password: "correct-horse-7",
+  password: PASSWORD,
   username: "ada",
 } as const;
 
@@ -39,6 +41,11 @@ beforeEach(async () => {
   clock = new TestClock();
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
 });
+
+/** Reads a `count(*)::int` result without asserting a shape onto the driver row. */
+function countOf(rows: readonly Record<string, unknown>[]): number {
+  return Number(rows[0]?.count ?? -1);
+}
 
 /** A database whose every transaction fails for a reason that is not a conflict. */
 function brokenDatabase(): Database {
@@ -141,6 +148,31 @@ describe("IdentityService", () => {
       expect(result.value.emailVerification).toBeUndefined();
       expect(result.value.claimedMatches).toBe(0);
     }
+  });
+
+  it("creates one account when two claims race for one guest session", async () => {
+    const guests = new GuestService({ db: handle.db, config, now: clock.now });
+    const guest = await guests.createGuest("guest-to-claim");
+
+    const [first, second] = await Promise.all([
+      identity.claimGuest(guest.guestId, credentials),
+      identity.claimGuest(guest.guestId, {
+        email: "grace@example.com",
+        password: PASSWORD,
+        username: "grace",
+      }),
+    ]);
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    const refused = first.ok ? second : first;
+    if (refused.ok) {
+      throw new Error("expected one claim to be refused");
+    }
+    expect(refused.reason).toBe("already-claimed");
+    // The losing claim is rolled back whole: it holds neither the email address
+    // it asked for nor the username.
+    const users = await handle.db.execute("select count(*)::int as count from users");
+    expect(countOf(users.rows)).toBe(1);
   });
 
   it("reports nothing for an account that does not exist", async () => {

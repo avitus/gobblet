@@ -33,8 +33,12 @@ describe("claimGuestSession", () => {
     const guest = await insertGuestSession(handle.db, guestFixture());
     const claimedAt = new Date();
 
-    expect(await claimGuestSession(handle.db, guest.id, user.id, claimedAt)).toBe(true);
-    expect(await claimGuestSession(handle.db, guest.id, user.id, new Date())).toBe(false);
+    expect(await claimGuestSession(handle.db, guest.id, user.id, claimedAt)).toMatchObject({
+      id: guest.id,
+      tokenHash: guest.tokenHash,
+      claimedByUserId: user.id,
+    });
+    expect(await claimGuestSession(handle.db, guest.id, user.id, new Date())).toBeUndefined();
 
     const reloaded = await findGuestSessionById(handle.db, guest.id);
     expect(reloaded?.claimedByUserId).toBe(user.id);
@@ -47,14 +51,14 @@ describe("claimGuestSession", () => {
     const guest = await insertGuestSession(handle.db, guestFixture());
     await claimGuestSession(handle.db, guest.id, first.id, new Date());
 
-    expect(await claimGuestSession(handle.db, guest.id, second.id, new Date())).toBe(false);
+    expect(await claimGuestSession(handle.db, guest.id, second.id, new Date())).toBeUndefined();
     expect((await findGuestSessionById(handle.db, guest.id))?.claimedByUserId).toBe(first.id);
   });
 
-  it("reports false for a guest session that does not exist", async () => {
+  it("returns nothing for a guest session that does not exist", async () => {
     const user = await insertUser(handle.db, userFixture());
 
-    expect(await claimGuestSession(handle.db, randomUUID(), user.id, new Date())).toBe(false);
+    expect(await claimGuestSession(handle.db, randomUUID(), user.id, new Date())).toBeUndefined();
   });
 
   it("keeps the account link, and survives the account being removed", async () => {

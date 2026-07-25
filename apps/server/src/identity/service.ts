@@ -95,6 +95,13 @@ export type ClaimFailure = RegisterFailure | "already-claimed";
 
 export type Result<T, F> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; reason: F }>;
 
+/**
+ * Thrown inside the claim transaction so the account it created is rolled back:
+ * a claim that loses the race must not leave an orphan account holding the email
+ * address and the username it asked for.
+ */
+class GuestAlreadyClaimedError extends Error {}
+
 function ok<T, F>(value: T): Result<T, F> {
   return { ok: true, value };
 }
@@ -301,8 +308,9 @@ export class IdentityService {
           updatedAt: new Date(now),
           lastSeenAt: new Date(now),
         });
-        if (!(await claimGuestSession(tx, guestId, user.id, new Date(now)))) {
-          return null;
+        const guest = await claimGuestSession(tx, guestId, user.id, new Date(now));
+        if (!guest) {
+          throw new GuestAlreadyClaimedError();
         }
         await insertProfile(tx, {
           userId: user.id,
@@ -314,14 +322,20 @@ export class IdentityService {
           { actorType: "guest", actorId: guestId },
           { actorType: "user", actorId: user.id },
         );
+        // The guest token becomes an account session, so a client that is holding
+        // it, mid-match included, keeps acting as the account it just created
+        // instead of losing its seat.
+        await insertUserSession(tx, {
+          userId: user.id,
+          tokenHash: guest.tokenHash,
+          createdAt: new Date(now),
+          lastSeenAt: new Date(now),
+          expiresAt: expiresAt(now, this.config.userSessionTtlDays * DAY_MS),
+        });
         const session = await this.openSession(tx, user.id, now);
         const verification = await this.issueEmailVerification(tx, user, now);
         return { user, session, verification, claimedMatches };
       });
-
-      if (!claimed) {
-        return fail("already-claimed");
-      }
 
       return ok({
         account: toAccount(claimed.user),
@@ -330,6 +344,9 @@ export class IdentityService {
         claimedMatches: claimed.claimedMatches,
       });
     } catch (error) {
+      if (error instanceof GuestAlreadyClaimedError) {
+        return fail("already-claimed");
+      }
       const conflict = uniqueUserConflict(error);
       if (conflict === "email") {
         return fail("email-taken");

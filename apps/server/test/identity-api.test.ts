@@ -701,7 +701,26 @@ describe("POST /v1/guests/claim", () => {
     expect(me.statusCode).toBe(200);
   });
 
-  it("refuses a second claim of the same guest session", async () => {
+  it("keeps the guest token working as an account session", async () => {
+    const guest = await createGuest();
+    await app.inject({
+      method: "POST",
+      url: "/v1/guests/claim",
+      headers: auth(guest.sessionToken),
+      payload: credentials,
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/me",
+      headers: auth(guest.sessionToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(meResponseSchema.parse(response.json()).account.username).toBe("ada");
+  });
+
+  it("has nothing left to claim once the token is an account session", async () => {
     const guest = await createGuest();
     await app.inject({
       method: "POST",
@@ -717,10 +736,33 @@ describe("POST /v1/guests/claim", () => {
       payload: { ...credentials, email: "grace@example.com", username: "grace" },
     });
 
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("refuses a claim whose guest session was claimed while the request was in flight", async () => {
+    const owner = await register({
+      email: "grace@example.com",
+      password: "correct-horse-7",
+      username: "grace",
+    });
+    const guest = await createGuest();
+    // The winning claim commits between resolving this token and claiming it,
+    // which is the interleaving the transactional check exists for.
+    await handle.db.execute(
+      `update guest_sessions set claimed_by_user_id = '${owner.account.userId}', claimed_at = now() where id = '${guest.guestId}'`,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/guests/claim",
+      headers: auth(guest.sessionToken),
+      payload: credentials,
+    });
+
     expect(response.statusCode).toBe(409);
-    expect(httpErrorBodySchema.parse(response.json()).error.details).toEqual([
-      { path: "guest", issue: "already_claimed" },
-    ]);
+    const body = httpErrorBodySchema.parse(response.json());
+    expect(body.error.message).toBe("This guest session has already been claimed");
+    expect(body.error.details).toEqual([{ path: "guest", issue: "already_claimed" }]);
   });
 
   it("refuses an email or a username that is already in use", async () => {
