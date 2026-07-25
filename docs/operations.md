@@ -12,17 +12,18 @@ migration procedure are executable today. Nothing is deployed, there is no stagi
 production environment and no desktop release pipeline exists. Every runbook below is labelled
 with the phase that delivers it. Do not attempt a runbook marked planned.
 
-| Runbook                        | Status                                 |
-| ------------------------------ | -------------------------------------- |
-| Local development              | Executable (Phase 0)                   |
-| CI gates                       | Executable (Phase 0)                   |
-| Database migrations            | Executable locally (Phase 2)           |
-| Staging deploy                 | Planned (Phase 2)                      |
-| Production deploy and rollback | Planned (Phase 7)                      |
-| Backup and restore             | Planned (Phase 2, drills from Phase 7) |
-| Incident response              | Planned (Phase 7)                      |
-| Desktop release                | Planned (Phase 8)                      |
-| Secret and key rotation        | Planned (Phase 3 onwards)              |
+| Runbook                        | Status                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Local development              | Executable (Phase 0)                                                                           |
+| CI gates                       | Executable (Phase 0)                                                                           |
+| Database migrations            | Executable locally (Phase 2)                                                                   |
+| Staging deploy                 | Planned (Phase 2)                                                                              |
+| Production deploy and rollback | Planned (Phase 7)                                                                              |
+| Backup and restore             | Planned (Phase 2, drills from Phase 7)                                                         |
+| Incident response              | Planned (Phase 7)                                                                              |
+| Desktop release                | Planned (Phase 8)                                                                              |
+| Secret and key rotation        | Planned (Phase 3 onwards)                                                                      |
+| Account moderation             | Executable through the database and `IdentityService` only (Phase 3); the admin API is Phase 7 |
 
 ## 2. Environments
 
@@ -318,6 +319,30 @@ Status: planned (Phase 3 onwards).
 
 Rules: rotate one secret at a time, verify the dependent flow before revoking the old value,
 and record every rotation in the operational log.
+
+## 14.1 Account moderation and email verification
+
+Status: partly executable (Phase 3). There is no administrative endpoint yet
+([`protocol.md` section 9.4](protocol.md) is Phase 7), so both procedures are run against the
+database by an operator with access, and both are covered by automated tests.
+
+Suspend an account:
+
+1. Set `users.status = 'suspended'`, `users.suspended_at = now()` and a reason.
+2. Revoke its sessions: `update user_sessions set revoked_at = now() where user_id = $1 and revoked_at is null`.
+3. The next request, socket handshake or match command from that account is refused. Step 2 is
+   what makes a token already in the player's hands stop working; step 1 alone is enough for the
+   gates, because suspension is read fresh at every gate.
+
+Lift a suspension by setting `status = 'active'`, `suspended_at = null` and `suspended_reason = null`.
+Sessions are not restored: the player signs in again.
+
+Email verification has no delivery mechanism in this phase
+([`product-spec.md` appendix P3](product-spec.md#appendix-p3--phase-3-change-of-direction-first-party-authentication)).
+Outside production the token is returned in the registration response so a developer can complete
+the flow. In production the token is stored and never returned, so no account can be verified
+until a mail sender exists. Verification tokens live for three days and are single use. The token
+value is never logged.
 
 ## 15. On-call and maintenance policy
 

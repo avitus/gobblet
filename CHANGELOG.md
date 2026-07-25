@@ -31,6 +31,14 @@ versioning for desktop releases; the web client tracks the same version number.
   sessions, the Phase 2 HTTP surface and the Socket.IO gateway that lets two
   clients play a full match through the server.
 
+- Phase 3 `@gobblet/auth`: `scrypt` password hashing with stored cost parameters and
+  constant-time verification, plus opaque session and verification tokens that are
+  stored only as SHA-256 hashes.
+- Phase 3 accounts: registration, sign-in, sign-out, email verification, immutable
+  unique usernames, guest-to-account claim that carries a guest's matches and its
+  session, profile settings, the public profile page and suspension enforcement at
+  match creation and at every match command.
+
 ### Notes
 
 - No public release yet. The first public milestone is the polished MVP described
@@ -40,3 +48,9 @@ versioning for desktop releases; the web client tracks the same version number.
 - Phase 2 decisions and deviations, including the development only match creation
   route and the native PostgreSQL used locally instead of a container, are recorded
   in appendix P2 of `docs/product-spec.md`.
+- Phase 3 replaced the hosted identity provider of the specification with first-party
+  email and password authentication (ADR-0017). Passwordless email, Google, Apple,
+  GitHub, the hosted login page, the desktop PKCE flow and password reset are not
+  delivered, and email verification links are not delivered anywhere, because all of
+  them need an external service. Appendix P3 of `docs/product-spec.md` records each
+  one and the Phase 3 decisions.

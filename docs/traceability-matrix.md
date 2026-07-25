@@ -35,7 +35,7 @@ with their owning phase:
 | -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | G        | Timeout during disconnect       | `socket-gateway.test.ts` > `ends the match on time with no command from either player` (held)                            |
 | H        | Retry after lost acknowledgment | `socket-gateway.test.ts` > `acknowledges a duplicate command without moving twice` (held)                                |
-| I        | Guest claim                     | Phase 3, integration tests (spec 20.5)                                                                                   |
+| I        | Guest claim                     | `phase3-exit-criteria.test.ts` > `moves the guest's match to the new account` (held)                                     |
 | J        | Active match deployment         | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`, hardened in Phase 7 with drain |
 
 ## 2. Equipment and setup
@@ -298,16 +298,16 @@ All clock tests inject a fake clock (`TestClock` in `apps/server/test/helpers/ma
 
 ### 20.3 Integration tests (spec 20.5)
 
-| Required test                                         | Where                                                                                    |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Guest casual match end to end                         | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once`      |
-| Planned deployment restart with active match recovery | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions` |
-| Account ranked match end to end                       | Phase 3 and Phase 4                                                                      |
-| Guest claim                                           | Phase 3                                                                                  |
-| Authentication connection mappings                    | Phase 3                                                                                  |
-| Matchmaking rating expansion                          | Phase 4                                                                                  |
-| Rematch                                               | Phase 4                                                                                  |
-| Desktop deep-link callback                            | Phase 8                                                                                  |
+| Required test                                         | Where                                                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guest casual match end to end                         | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once`                                                         |
+| Planned deployment restart with active match recovery | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`                                                    |
+| Account ranked match end to end                       | `phase3-exit-criteria.test.ts` > `carries an account from sign-up through a completed match` (casual); the ranked pairing itself is Phase 4 |
+| Guest claim                                           | `phase3-exit-criteria.test.ts` > `moves the guest's match to the new account`                                                               |
+| Authentication connection mappings                    | `identity-api.test.ts`, `identity-service.test.ts`, `socket-gateway.test.ts` handshake suite; one connection type exists (appendix P3)      |
+| Matchmaking rating expansion                          | Phase 4                                                                                                                                     |
+| Rematch                                               | Phase 4                                                                                                                                     |
+| Desktop deep-link callback                            | Phase 8                                                                                                                                     |
 
 Specification section 20.5 asks for the server and PostgreSQL in containers. CI runs the
 `postgres:16-alpine` service container; locally the suites use a native PostgreSQL because this
@@ -325,3 +325,28 @@ machine has no container runtime, recorded in
 | Server-authoritative clock with no client trust           | `match-clock.test.ts`, `clock-broadcaster.test.ts`, `match-runtime.test.ts` > `uses the server clock, not the client timestamp`                                                  |
 | Append-only event log per match                           | `packages/db/test`, `match-runtime.test.ts` sequence and state-hash assertions                                                                                                   |
 | One copy of the rule logic                                | `eslint.config.mjs` purity boundary, `apps/server/src/match/state.ts` delegates every decision to `@gobblet/game-core`                                                           |
+
+## 22. Phase 3 exit criteria (spec 24, as amended by appendix P3)
+
+Test roots: `apps/server/test`, `packages/db/test`, `packages/protocol/test`, `packages/auth/test`.
+
+| Criterion                                            | Evidence                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All auth methods work in staging                     | Reduced to the one delivered method (appendix P3) and held locally: `phase3-exit-criteria.test.ts` > `carries an account from sign-up through a completed match`. Staging remains blocked (appendix P0).                                                             |
+| Desktop PKCE deep-link flow works                    | **Void** (appendix P3): there is no PKCE flow.                                                                                                                                                                                                                       |
+| Guest can claim data                                 | `phase3-exit-criteria.test.ts` > `moves the guest's match to the new account`; `identity-api.test.ts` guest claim suite; `packages/db/test/guest-claim.test.ts`                                                                                                      |
+| Duplicate username races are handled transactionally | `phase3-exit-criteria.test.ts` > `creates exactly one account and refuses the rest`; `identity-api.test.ts` > `holds the username when two registrations race for it`; `identity-service.test.ts` > `creates one account when two claims race for one guest session` |
+| Suspended account cannot queue                       | `phase3-exit-criteria.test.ts` > `cannot be seated in a match and cannot act in one it is already in`; `socket-gateway.test.ts` suspension suite; `identity-api.test.ts` > `refuses to seat a suspended account`                                                     |
+
+The Phase 3 product surfaces, and what holds each one:
+
+| Specification requirement                                        | Where held                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section 2.3: guests play casual only, ranked needs an account    | `apps/server/src/match/eligibility.ts`; `identity-api.test.ts` > `keeps a guest and an unverified account out of a ranked match`                                                                                                |
+| Section 2.3: globally unique usernames, immutable after creation | `packages/db/src/schema.ts` unique `username_normalized`; `identity-api.test.ts` > `refuses a username that differs only by capitalisation`, `refuses an empty patch, a missing body, a plaintext avatar and a username change` |
+| Section 5.6: email verification for password accounts            | `identity-api.test.ts` verify-email suite; `identity-service.test.ts` > `treats a token consumed after it was read as already used`                                                                                             |
+| Section 5.6: verified email required before ranked play          | `apps/server/src/match/eligibility.ts`; `identity-api.test.ts` > `seats two verified accounts in a ranked match`                                                                                                                |
+| Section 11.1: public profile shows only permitted fields         | `apps/server/src/routes/profiles.ts`; `identity-api.test.ts` > `shows the public fields of a profile to anyone`                                                                                                                 |
+| Section 11.2: own match summaries without the event log          | `apps/server/src/routes/me.ts`; `identity-api.test.ts` > `lists the matches of the calling account, and none for a fresh guest`                                                                                                 |
+| Section 15.3: only credential hashes are stored                  | `packages/auth/test/password.test.ts`, `packages/auth/test/tokens.test.ts`; `packages/db/test/user-sessions.test.ts`                                                                                                            |
+| Section 19.3: suspended accounts cannot queue                    | `apps/server/src/socket/gateway.ts` per-command check; `phase3-exit-criteria.test.ts` suspension suite                                                                                                                          |

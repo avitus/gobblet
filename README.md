@@ -19,7 +19,7 @@ lifecycle.
 | 0     | Repository, decisions, delivery skeleton | Delivered\* |
 | 1     | Authoritative rules engine (`game-core`) | Delivered   |
 | 2     | Persistence and match runtime            | Delivered   |
-| 3     | Authentication, guests, profiles         | Not started |
+| 3     | Authentication, guests, profiles         | Delivered†  |
 | 4     | Matchmaking, Elo, rematches              | Not started |
 | 5     | Playable 3D client                       | Not started |
 | 6     | Social surface and progression           | Not started |
@@ -29,6 +29,15 @@ lifecycle.
 
 Phases are defined in `docs/product-spec.md` section 24. Later phases must not be
 started before the exit criteria of the current phase are met.
+
+† Phase 3 was redirected: the product must not depend on an external identity
+provider, so authentication is first-party email and password
+([ADR-0017](docs/adr/0017-first-party-email-password-authentication.md)). The
+provider-only login methods, the hosted login page and the desktop PKCE flow of
+specification sections 2.3 and 5.6 are therefore not delivered, and email delivery
+does not exist yet, so no account can be verified in production. All of it is recorded
+in
+[`docs/product-spec.md` appendix P3](docs/product-spec.md#appendix-p3--phase-3-change-of-direction-first-party-authentication).
 
 \* Two Phase 0 exit criteria are open because they need infrastructure that does not
 exist yet: the empty Tauri shells (deferred to Phase 8, no Rust toolchain or signing
@@ -74,6 +83,7 @@ packages/
   protocol/     Zod schemas for the command envelope, snapshots, events and HTTP bodies
   db/           PostgreSQL schema, migrations and repositories (Drizzle)
   config/       Typed environment configuration (zod)
+  auth/         Password hashing and opaque session token helpers
 docs/           Specification, rules, architecture, protocol, operations, ADRs
 scripts/        Local development entry point
 ```

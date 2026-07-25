@@ -11,8 +11,11 @@ Related documents: [`product-spec.md`](product-spec.md),
 ## 1. Implementation status
 
 Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/config`,
-`POST /v1/guests`, `GET /v1/matches/:matchId`, `GET /v1/matches/:matchId/snapshot` and the
-development only `POST /v1/dev/matches`.
+`POST /v1/guests`, `POST /v1/guests/claim`, `POST /v1/auth/register`, `POST /v1/auth/sign-in`,
+`POST /v1/auth/sign-out`, `POST /v1/auth/verify-email`, `GET /v1/me`, `PATCH /v1/me/profile`,
+`GET /v1/me/matches`, `POST /v1/usernames/check`, `GET /v1/profiles/:username`,
+`GET /v1/matches/:matchId`, `GET /v1/matches/:matchId/snapshot` and the development only
+`POST /v1/dev/matches`.
 
 Implemented socket surfaces: `session:authenticate`, `match:sync`, `match:move` and
 `match:resign` inbound; `session:ready`, `match:snapshot`, `match:move-committed`,
@@ -20,8 +23,8 @@ Implemented socket surfaces: `session:authenticate`, `match:sync`, `match:move` 
 rematch and communication events remain planned.
 
 The schemas of the command envelope, the acknowledgement contract, the snapshot, the Phase 2
-socket payloads and the Phase 2 HTTP bodies are implemented in `@gobblet/protocol`, which is
-the single source of truth. Where this document and the package disagree, the package wins and
+socket payloads and the Phase 2 and Phase 3 HTTP bodies are implemented in `@gobblet/protocol`,
+which is the single source of truth. Where this document and the package disagree, the package wins and
 this document is a defect.
 
 Everything marked with a later phase in the tables below is still planned. Each table carries a
@@ -77,7 +80,7 @@ Rules:
 
 ## 4. Session handshake
 
-Status: planned (Phase 3 for real identity, Phase 2 for guest-only sessions).
+Status: implemented (Phase 3).
 
 ```text
 client connects socket
@@ -92,6 +95,19 @@ client connects socket
 
 A socket without a completed `session:authenticate` may not send any other event. Commands
 received before `session:ready` are rejected with reason `not-authorized`.
+
+`sessionToken` is the opaque bearer token of either credential kind: an account session issued
+by `/v1/auth/register` and `/v1/auth/sign-in`, or a guest session issued by `/v1/guests`. The
+server resolves account sessions first and answers `actorType: "user"` with `isGuest: false`;
+a guest resolves to `actorType: "guest"`. There is one resolution path, so every surface agrees
+on who the caller is
+([ADR-0017](adr/0017-first-party-email-password-authentication.md)).
+
+A suspended account is refused at the handshake with `error:fatal`
+`{ code: "account_suspended", action: "contact-support" }`, and refused again before each
+`match:move` and `match:resign` commit, because a suspension applied mid-match must stop the
+next command rather than the next sign-in (spec section 19.3). The command is acknowledged
+`{ ok: false, reason: "not-authorized" }` and the socket is closed.
 
 ## 5. Command envelope
 
@@ -272,26 +288,47 @@ server answers right now.
 
 ### 9.1 Public
 
-| Method | Path                     | Auth | Purpose                                        | Phase | Implemented today |
-| ------ | ------------------------ | ---- | ---------------------------------------------- | ----- | ----------------- |
-| GET    | `/health/live`           | none | Process liveness                               | 0     | Yes               |
-| GET    | `/health/ready`          | none | Dependency readiness, including the database   | 0     | Yes               |
-| GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits | 0     | Yes               |
-| GET    | `/v1/leaderboards`       | none | Global rating leaderboards                     | 4     | No                |
-| GET    | `/v1/profiles/:username` | none | Public profile and match history summary       | 6     | No                |
+| Method | Path                     | Auth | Purpose                                                                | Phase | Implemented today |
+| ------ | ------------------------ | ---- | ---------------------------------------------------------------------- | ----- | ----------------- |
+| GET    | `/health/live`           | none | Process liveness                                                       | 0     | Yes               |
+| GET    | `/health/ready`          | none | Dependency readiness, including the database                           | 0     | Yes               |
+| GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits                         | 0     | Yes               |
+| GET    | `/v1/leaderboards`       | none | Global rating leaderboards                                             | 4     | No                |
+| GET    | `/v1/profiles/:username` | none | Public profile: username, avatar, country, member since, casual record | 3     | Yes               |
 
 ### 9.2 Session and user
 
-| Method | Path                  | Auth    | Purpose                                     | Phase | Implemented today |
-| ------ | --------------------- | ------- | ------------------------------------------- | ----- | ----------------- |
-| POST   | `/v1/guests`          | none    | Create a guest session                      | 2     | Yes               |
-| POST   | `/v1/guests/claim`    | session | Convert a guest session into an account     | 3     | No                |
-| GET    | `/v1/me`              | user    | Current account, verification state, rating | 3     | No                |
-| PATCH  | `/v1/me/profile`      | user    | Update profile fields                       | 3     | No                |
-| GET    | `/v1/me/matches`      | user    | Own match history                           | 6     | No                |
-| GET    | `/v1/me/achievements` | user    | Own achievement progress                    | 6     | No                |
-| POST   | `/v1/usernames/check` | session | Check username availability                 | 3     | No                |
-| POST   | `/v1/usernames/claim` | session | Claim an immutable username                 | 3     | No                |
+`Auth` value `guest` marks the one endpoint that requires a guest session specifically.
+
+| Method | Path                    | Auth    | Purpose                                             | Phase | Implemented today |
+| ------ | ----------------------- | ------- | --------------------------------------------------- | ----- | ----------------- |
+| POST   | `/v1/guests`            | none    | Create a guest session                              | 2     | Yes               |
+| POST   | `/v1/guests/claim`      | guest   | Convert a guest session into an account             | 3     | Yes               |
+| POST   | `/v1/auth/register`     | none    | Create an account with email, password and username | 3     | Yes               |
+| POST   | `/v1/auth/sign-in`      | none    | Exchange credentials for a session token            | 3     | Yes               |
+| POST   | `/v1/auth/sign-out`     | user    | Revoke the calling session                          | 3     | Yes               |
+| POST   | `/v1/auth/verify-email` | none    | Consume an email verification token                 | 3     | Yes               |
+| GET    | `/v1/me`                | user    | Current account, verification state, casual record  | 3     | Yes               |
+| PATCH  | `/v1/me/profile`        | user    | Update profile fields                               | 3     | Yes               |
+| GET    | `/v1/me/matches`        | session | Own match history, newest first                     | 3     | Yes               |
+| GET    | `/v1/me/achievements`   | user    | Own achievement progress                            | 6     | No                |
+| POST   | `/v1/usernames/check`   | none    | Check username availability                         | 3     | Yes               |
+| POST   | `/v1/usernames/claim`   | session | Claim an immutable username                         | 3     | Not delivered     |
+
+The credential endpoints replace the hosted login page of specification section 5.6; appendix P3
+of the specification records why, and why `/v1/usernames/claim` is not delivered: a username is
+chosen inside the transaction that creates the account, so there is no window in which an
+account exists without one.
+
+`POST /v1/auth/register` and `POST /v1/auth/sign-in` answer
+`{ account, session: { sessionToken, expiresAt }, emailVerification? }`. `emailVerification` is
+present only outside production, where no mail sender exists to deliver the link. Register,
+sign-in and verify-email are throttled per address and route; over the limit they answer
+`429 rate_limited` with a `retry-after` header.
+
+`POST /v1/guests/claim` answers the same body plus `claimedMatches`, the number of matches moved
+to the new account. The guest token itself becomes an account session token, so a client holding
+it, mid-match included, keeps acting as the account it just created rather than losing its seat.
 
 ### 9.3 Match recovery
 
@@ -301,8 +338,8 @@ server answers right now.
 | GET    | `/v1/matches/:matchId/snapshot` | participant | Authoritative snapshot for recovery | 2     | Yes               |
 
 Both endpoints are restricted to match participants and admins. A non-participant receives the
-same not-found shape as an unknown match id so match existence is not leaked. In Phase 2 the only
-credential is a guest session token, sent as `Authorization: Bearer <sessionToken>`.
+same not-found shape as an unknown match id so match existence is not leaked. A credential of
+either kind is sent as `Authorization: Bearer <sessionToken>`.
 
 ### 9.3.1 Development only
 
@@ -451,8 +488,8 @@ Client rules:
 
 ## 13. Authorization matrix
 
-Status: planned (Phase 3 for account roles). `Yes*` marks an action allowed only with a
-verified email address.
+Status: implemented for guests, users and participants (Phase 3); admin roles are Phase 7.
+`Yes*` marks an action allowed only with a verified email address.
 
 | Capability                                | Guest | User | Participant | Admin |
 | ----------------------------------------- | ----- | ---- | ----------- | ----- |
@@ -464,11 +501,18 @@ verified email address.
 | Rematch request and response              | No    | No   | Yes         | No    |
 | Preset messages and reactions             | No    | No   | Yes         | No    |
 | Claim a username                          | Yes   | Yes  | Yes         | Yes   |
+| Read a public profile                     | Yes   | Yes  | Yes         | Yes   |
 | Persistent profile, history, achievements | No    | Yes  | Yes         | Yes   |
 | Admin endpoints                           | No    | No   | No          | Yes   |
 
 Admin access is a server-side role check, never a client-side route guard. Guests are treated
 as rating 1200 for casual pairing purposes and never receive a persistent rating.
+
+Seating is decided by one function, `checkParticipant` in `apps/server/src/match/eligibility.ts`,
+which match creation calls today and the Phase 4 queues will call as well. It refuses a guest in
+a ranked seat, an account without a verified email in a ranked seat, a suspended account and an
+account that no longer exists, and it answers with the seat and the reason
+(`guest-ranked`, `email-unverified`, `suspended`, `unknown-account`).
 
 ## 14. Limits and payload constraints
 

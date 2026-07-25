@@ -100,21 +100,21 @@ endpoints and `GET /v1/config`. All other interactions are planned.
                           +----------------------+
 ```
 
-| Component                | Responsibility                                                            | Status                                              |
-| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------- |
-| `apps/web`               | All player-facing UI, optimistic feedback, socket client                  | Skeleton (Phase 0), gameplay planned (Phase 5)      |
-| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates    | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                              | Implemented (Phase 2), gameplay surface grows later |
-| `apps/admin`             | Administration surface, may start as protected routes inside `apps/web`   | Planned (Phase 7)                                   |
-| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions     | Implemented (Phase 1)                               |
-| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                  | Implemented (Phase 2)                               |
-| `packages/db`            | Drizzle schema, migrations, transactional repositories                    | Implemented (Phase 2)                               |
-| `packages/config`        | Typed environment parsing and validation                                  | Implemented (Phase 0)                               |
-| `packages/auth`          | Password hashing, session token helpers, email and username normalisation | Implemented (Phase 3)                               |
-| `packages/observability` | Pino logging, metrics registry, error reporting helpers                   | Planned (Phase 7)                                   |
-| `packages/design-system` | CSS custom property tokens and shared primitives                          | Planned (Phase 5)                                   |
-| `packages/game-ui`       | Shared React game UI reused by web and desktop                            | Planned (Phase 5)                                   |
-| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                  | Grows with each phase's suites                      |
+| Component                | Responsibility                                                          | Status                                              |
+| ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Skeleton (Phase 0), gameplay planned (Phase 5)      |
+| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 3), gameplay surface grows later |
+| `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
+| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions   | Implemented (Phase 1)                               |
+| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Implemented (Phase 2)                               |
+| `packages/db`            | Drizzle schema, migrations, transactional repositories                  | Implemented (Phase 2)                               |
+| `packages/config`        | Typed environment parsing and validation                                | Implemented (Phase 0)                               |
+| `packages/auth`          | Password hashing and verification, opaque session token helpers         | Implemented (Phase 3)                               |
+| `packages/observability` | Pino logging, metrics registry, error reporting helpers                 | Planned (Phase 7)                                   |
+| `packages/design-system` | CSS custom property tokens and shared primitives                        | Planned (Phase 5)                                   |
+| `packages/game-ui`       | Shared React game UI reused by web and desktop                          | Planned (Phase 5)                                   |
+| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                | Grows with each phase's suites                      |
 
 The server runs HTTP and real-time transport in one Node process (see
 [ADR-0006](adr/0006-fastify-socketio-server.md)). There is exactly one authoritative
@@ -233,6 +233,39 @@ change, achievements and match lifecycle. Clients run the same shared engine onl
 optimistic feedback and to disable obviously illegal interactions, and they interpolate the last
 clock sync for display. A client result never becomes truth, and a client never declares a
 timeout.
+
+### 7.1 Identity and eligibility
+
+Status: implemented (Phase 3). Every credential resolves through one path, so no surface can
+disagree about who is calling:
+
+```text
+Authorization: Bearer <token>
+        |
+        v
+  identity.authenticate(token)  -->  account session? --> actorType "user"
+        |  no
+        v
+  guests.authenticate(token)    -->  guest session?   --> actorType "guest"
+        |  no
+        v
+      401 unauthenticated
+```
+
+A claimed guest token resolves as the account that claimed it, because the claim inserts the
+guest token's hash as an account session. Suspension is read fresh at every gate rather than
+cached in the session, so a suspension lands on the next action:
+
+| Gate                               | Where                      |
+| ---------------------------------- | -------------------------- |
+| Sign-in                            | `src/identity/service.ts`  |
+| Socket handshake                   | `src/socket/gateway.ts`    |
+| Every `match:move`, `match:resign` | `src/socket/gateway.ts`    |
+| Match creation, later queues       | `src/match/eligibility.ts` |
+
+`src/match/eligibility.ts` is the only place that decides who may be seated: guests are casual
+only, and a ranked seat needs an account with a verified email
+([`product-spec.md` appendix P3](product-spec.md#appendix-p3--phase-3-change-of-direction-first-party-authentication)).
 
 ## 8. Data flow: an accepted move
 
@@ -388,7 +421,7 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Match runtime, command application, clocks                | Implemented | Phase 2      |
 | Guest sessions and the Phase 2 HTTP surface               | Implemented | Phase 2      |
 | Socket.IO gateway: sync, move, resign, clock cadence      | Implemented | Phase 2      |
-| First-party authentication, guests, profiles              | Planned     | Phase 3      |
+| First-party authentication, guests, profiles              | Implemented | Phase 3      |
 | Matchmaking, Elo, rematch                                 | Planned     | Phase 4      |
 | 3D client and shared game UI                              | Planned     | Phase 5      |
 | Social surface and progression                            | Planned     | Phase 6      |
