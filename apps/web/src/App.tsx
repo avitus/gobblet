@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createInitialGame, enumerateMoves } from "@gobblet/game-core";
 import styles from "./App.module.css";
 import { fetchServerConfig } from "./api/server-config";
 import type { PublicServerConfig } from "./api/server-config";
@@ -7,6 +8,8 @@ type ServerStatus =
   | { kind: "loading" }
   | { kind: "online"; config: PublicServerConfig }
   | { kind: "offline"; message: string };
+
+const OPENING_MOVE_COUNT = enumerateMoves(createInitialGame("light")).length;
 
 function formatTimeControls(seconds: readonly number[]): string {
   return seconds.map((value) => `${String(value / 60)} min`).join(", ");
@@ -49,8 +52,8 @@ export function App(): React.JSX.Element {
       <section className={styles.card}>
         <h1 className={styles.title}>Gobblet Online</h1>
         <p className={styles.subtitle}>
-          Delivery skeleton. The authoritative rules engine, the real-time runtime and the 3D board
-          are still ahead.
+          Delivery skeleton. The authoritative rules engine already runs here; the real-time runtime
+          and the 3D board are still ahead.
         </p>
 
         <p className={styles.statusRow}>
@@ -63,6 +66,8 @@ export function App(): React.JSX.Element {
         </p>
 
         <dl className={styles.details}>
+          <dt>Rules engine</dt>
+          <dd>{OPENING_MOVE_COUNT} legal opening moves</dd>
           <dt>Server build</dt>
           <dd>{status.kind === "online" ? status.config.appVersion : "unknown"}</dd>
           <dt>Time controls</dt>
