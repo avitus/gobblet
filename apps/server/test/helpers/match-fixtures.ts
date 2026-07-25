@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { MatchRow } from "@gobblet/db";
 import { createInitialGame, toSerializableGameState } from "@gobblet/game-core";
 import type { Move } from "@gobblet/game-core";
-import type { CommandEnvelopeMetadata } from "@gobblet/protocol";
+import type { CommandEnvelopeMetadata, MatchSnapshot } from "@gobblet/protocol";
+import { toSnapshot } from "../../src/match/snapshot";
 import type { Actor } from "../../src/match/snapshot";
 
 export const CLOCK_START = Date.UTC(2026, 6, 25, 12, 0, 0);
@@ -79,6 +80,15 @@ export function matchRowFixture(overrides: Partial<MatchRow> = {}): MatchRow {
     createdAt: new Date(CLOCK_START),
     startedAt: new Date(CLOCK_START),
     endedAt: null,
+    ...overrides,
+  };
+}
+
+/** A snapshot for the units that only read the projection, such as the clock cadence. */
+export function snapshotFixture(overrides: Partial<MatchSnapshot> = {}): MatchSnapshot {
+  return {
+    ...toSnapshot(matchRowFixture(), CLOCK_START, null),
+    matchId: "match-1",
     ...overrides,
   };
 }

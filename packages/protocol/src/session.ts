@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ACTOR_TYPES, APP_ENVIRONMENTS } from "./constants";
+import { fatalErrorSchema } from "./events";
 import { displayNameSchema, epochMillisSchema, uuidSchema } from "./primitives";
 
 export const sessionAuthenticateSchema = z.strictObject({
@@ -17,5 +18,16 @@ export const sessionReadySchema = z.strictObject({
   features: z.array(z.string().min(1)),
 });
 
+/**
+ * Handshake acknowledgement. It carries the same payloads the server emits as
+ * `session:ready` and `error:fatal`, so a client learns the outcome from the
+ * acknowledgement alone and never has to race two listeners.
+ */
+export const sessionAuthenticateAckSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), session: sessionReadySchema }),
+  z.strictObject({ ok: z.literal(false), error: fatalErrorSchema }),
+]);
+
 export type SessionAuthenticate = z.infer<typeof sessionAuthenticateSchema>;
 export type SessionReady = z.infer<typeof sessionReadySchema>;
+export type SessionAuthenticateAck = z.infer<typeof sessionAuthenticateAckSchema>;

@@ -105,6 +105,7 @@ export {
   commandAckRejectionSchema,
   commandAckSchema,
   commandAckSuccessSchema,
+  commandEnvelopeHeaderSchema,
   commandEnvelopeMetadataSchema,
   commandEnvelopeSchema,
   matchMoveCommandSchema,
@@ -121,9 +122,13 @@ export type {
   MatchResignCommand,
 } from "./envelope";
 
-export { sessionAuthenticateSchema, sessionReadySchema } from "./session";
+export {
+  sessionAuthenticateAckSchema,
+  sessionAuthenticateSchema,
+  sessionReadySchema,
+} from "./session";
 
-export type { SessionAuthenticate, SessionReady } from "./session";
+export type { SessionAuthenticate, SessionAuthenticateAck, SessionReady } from "./session";
 
 export {
   fatalErrorSchema,
@@ -131,6 +136,7 @@ export {
   matchEndedEventSchema,
   matchMoveCommittedEventSchema,
   matchSnapshotEventSchema,
+  matchSyncAckSchema,
   matchSyncRequestSchema,
   recoverableErrorSchema,
 } from "./events";
@@ -141,6 +147,7 @@ export type {
   MatchEndedEvent,
   MatchMoveCommittedEvent,
   MatchSnapshotEvent,
+  MatchSyncAck,
   MatchSyncRequest,
   RecoverableError,
 } from "./events";

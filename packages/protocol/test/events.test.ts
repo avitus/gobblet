@@ -5,6 +5,7 @@ import {
   matchEndedEventSchema,
   matchMoveCommittedEventSchema,
   matchSnapshotEventSchema,
+  matchSyncAckSchema,
   matchSyncRequestSchema,
   recoverableErrorSchema,
 } from "../src/index";
@@ -86,5 +87,31 @@ describe("error events", () => {
 
     expect(fatalErrorSchema.parse(error)).toEqual(error);
     expect(fatalErrorSchema.safeParse({ ...error, action: "retry" }).success).toBe(false);
+  });
+});
+
+describe("matchSyncAckSchema", () => {
+  it("accepts a snapshot", () => {
+    const ack = { ok: true, snapshot: buildSnapshot() };
+
+    expect(matchSyncAckSchema.parse(ack)).toEqual(ack);
+  });
+
+  it("accepts a refusal with a reason from the rejection set", () => {
+    expect(matchSyncAckSchema.parse({ ok: false, reason: "not-authorized" })).toEqual({
+      ok: false,
+      reason: "not-authorized",
+    });
+    expect(matchSyncAckSchema.safeParse({ ok: false, reason: "because" }).success).toBe(false);
+  });
+
+  it("rejects a refusal that carries a snapshot", () => {
+    expect(
+      matchSyncAckSchema.safeParse({
+        ok: false,
+        reason: "not-authorized",
+        snapshot: buildSnapshot(),
+      }).success,
+    ).toBe(false);
   });
 });

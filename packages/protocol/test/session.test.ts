@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { sessionAuthenticateSchema, sessionReadySchema } from "../src/index";
+import {
+  sessionAuthenticateAckSchema,
+  sessionAuthenticateSchema,
+  sessionReadySchema,
+} from "../src/index";
 import { LIGHT_ACTOR_ID } from "./helpers/fixtures";
 
 describe("sessionAuthenticateSchema", () => {
@@ -48,5 +52,37 @@ describe("sessionReadySchema", () => {
     expect(sessionReadySchema.parse({ ...ready, features: [] }).features).toEqual([]);
     expect(sessionReadySchema.safeParse({ ...ready, actorType: "bot" }).success).toBe(false);
     expect(sessionReadySchema.safeParse({ ...ready, serverTime: 0 }).success).toBe(false);
+  });
+});
+
+describe("sessionAuthenticateAckSchema", () => {
+  const session = {
+    actorId: LIGHT_ACTOR_ID,
+    actorType: "guest",
+    displayName: "guest-1234",
+    isGuest: true,
+    serverTime: 1753392003250,
+    features: [],
+  };
+
+  it("accepts an accepted handshake", () => {
+    expect(sessionAuthenticateAckSchema.parse({ ok: true, session })).toEqual({
+      ok: true,
+      session,
+    });
+  });
+
+  it("accepts a refused handshake", () => {
+    const refusal = {
+      ok: false,
+      error: { code: "unsupported_client", message: "too old", action: "update-client" },
+    };
+
+    expect(sessionAuthenticateAckSchema.parse(refusal)).toEqual(refusal);
+  });
+
+  it("rejects an acknowledgement that carries neither outcome", () => {
+    expect(sessionAuthenticateAckSchema.safeParse({ ok: true }).success).toBe(false);
+    expect(sessionAuthenticateAckSchema.safeParse({ ok: false, session }).success).toBe(false);
   });
 });

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { FATAL_ERROR_ACTIONS, MATCH_END_REASONS, MATCH_RESULTS } from "./constants";
+import {
+  COMMAND_REJECTION_REASONS,
+  FATAL_ERROR_ACTIONS,
+  MATCH_END_REASONS,
+  MATCH_RESULTS,
+} from "./constants";
 import { moveSchema, playerSchema } from "./game-state";
 import { matchClocksSchema, matchSnapshotSchema } from "./match";
 import {
@@ -10,6 +15,15 @@ import {
 } from "./primitives";
 
 export const matchSyncRequestSchema = z.strictObject({ matchId: uuidSchema });
+
+/**
+ * A sync either returns the authoritative snapshot or says why not, reusing the
+ * command rejection vocabulary so a client has one set of reasons to handle.
+ */
+export const matchSyncAckSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), snapshot: matchSnapshotSchema }),
+  z.strictObject({ ok: z.literal(false), reason: z.enum(COMMAND_REJECTION_REASONS) }),
+]);
 
 export const matchSnapshotEventSchema = matchSnapshotSchema;
 
@@ -53,6 +67,7 @@ export const fatalErrorSchema = z.strictObject({
 });
 
 export type MatchSyncRequest = z.infer<typeof matchSyncRequestSchema>;
+export type MatchSyncAck = z.infer<typeof matchSyncAckSchema>;
 export type MatchSnapshotEvent = z.infer<typeof matchSnapshotEventSchema>;
 export type MatchMoveCommittedEvent = z.infer<typeof matchMoveCommittedEventSchema>;
 export type MatchClockSyncEvent = z.infer<typeof matchClockSyncEventSchema>;

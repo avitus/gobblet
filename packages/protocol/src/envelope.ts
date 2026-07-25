@@ -13,6 +13,13 @@ const envelopeShape = {
 
 export const commandEnvelopeMetadataSchema = z.strictObject(envelopeShape);
 
+/**
+ * Metadata view that tolerates the payload alongside it. A server needs the
+ * `commandId` before it can reject a command whose payload is invalid, and the
+ * acknowledgement contract has nowhere to put a rejection without one.
+ */
+export const commandEnvelopeHeaderSchema = z.object(envelopeShape);
+
 export function commandEnvelopeSchema<TPayload extends z.ZodType>(payload: TPayload) {
   return z.strictObject({ ...envelopeShape, payload });
 }

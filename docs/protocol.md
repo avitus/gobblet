@@ -12,7 +12,12 @@ Related documents: [`product-spec.md`](product-spec.md),
 
 Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/config`,
 `POST /v1/guests`, `GET /v1/matches/:matchId`, `GET /v1/matches/:matchId/snapshot` and the
-development only `POST /v1/dev/matches`. The Socket.IO surface is not implemented yet.
+development only `POST /v1/dev/matches`.
+
+Implemented socket surfaces: `session:authenticate`, `match:sync`, `match:move` and
+`match:resign` inbound; `session:ready`, `match:snapshot`, `match:move-committed`,
+`match:clock-sync`, `match:ended`, `error:recoverable` and `error:fatal` outbound. Matchmaking,
+rematch and communication events remain planned.
 
 The schemas of the command envelope, the acknowledgement contract, the snapshot, the Phase 2
 socket payloads and the Phase 2 HTTP bodies are implemented in `@gobblet/protocol`, which is
@@ -52,7 +57,7 @@ Conventions used throughout:
 
 ## 3. Transport overview
 
-Status: planned (Phase 2).
+Status: implemented (Phase 2) for the events listed in section 1.
 
 | Channel   | Technology                                            | Used for                                                                        |
 | --------- | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -90,8 +95,8 @@ received before `session:ready` are rejected with reason `not-authorized`.
 
 ## 5. Command envelope
 
-Status: planned (Phase 2). Every client to server real-time command that mutates match state
-uses this envelope:
+Status: implemented (Phase 2). Every client to server real-time command that mutates match
+state uses this envelope:
 
 ```json
 {
@@ -146,7 +151,7 @@ version.
 
 ## 7. Idempotency and optimistic concurrency
 
-Status: planned (Phase 2). Recorded in
+Status: implemented (Phase 2). Recorded in
 [ADR-0011](adr/0011-versioned-idempotent-commands.md).
 
 - Optimistic concurrency: the server compares `expectedVersion` with the stored match
@@ -190,24 +195,25 @@ Client obligations:
 
 ## 8. Socket event catalogue
 
-Status: planned. The phase column states when each event is delivered.
+The phase column states when each event is delivered, and `Implemented today` states what the
+server answers right now.
 
 ### 8.1 Client to server
 
-| Event                   | Purpose                                      | Payload sketch                             | Ack | Phase                   |
-| ----------------------- | -------------------------------------------- | ------------------------------------------ | --- | ----------------------- |
-| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) |
-| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       |
-| `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       |
-| `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                              | Yes | 2                       |
-| `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`      | Yes | 2                       |
-| `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`            | Yes | 2                       |
-| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       |
-| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       |
-| `match:preset-message`  | Send one preset phrase                       | `{ matchId, messageKey }`                  | Yes | 6                       |
-| `match:reaction`        | Send one preset reaction                     | `{ matchId, reactionKey }`                 | Yes | 6                       |
-| `match:mute-state`      | Mute or unmute the opponent's communication  | `{ matchId, muted }`                       | Yes | 6                       |
-| `presence:heartbeat`    | Keep the session marked present              | `{}`                                       | No  | 4                       |
+| Event                   | Purpose                                      | Payload sketch                             | Ack | Phase                   | Implemented today |
+| ----------------------- | -------------------------------------------- | ------------------------------------------ | --- | ----------------------- | ----------------- |
+| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) | Yes, guests only  |
+| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       | No                |
+| `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       | No                |
+| `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                              | Yes | 2                       | Yes               |
+| `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`      | Yes | 2                       | Yes               |
+| `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`            | Yes | 2                       | Yes               |
+| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       | No                |
+| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       | No                |
+| `match:preset-message`  | Send one preset phrase                       | `{ matchId, messageKey }`                  | Yes | 6                       | No                |
+| `match:reaction`        | Send one preset reaction                     | `{ matchId, reactionKey }`                 | Yes | 6                       | No                |
+| `match:mute-state`      | Mute or unmute the opponent's communication  | `{ matchId, muted }`                       | Yes | 6                       | No                |
+| `presence:heartbeat`    | Keep the session marked present              | `{}`                                       | No  | 4                       | No                |
 
 `match:move` payload sketch, where board coordinates and reserve stacks follow
 [`rules.md`](rules.md):
@@ -222,20 +228,42 @@ Status: planned. The phase column states when each event is delivered.
 
 ### 8.2 Server to client
 
-| Event                  | Purpose                                                | Payload sketch                                                                      | Phase                  |
-| ---------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------- |
-| `session:ready`        | Session established, session identity returned         | `{ actorId, actorType, displayName, isGuest, serverTime, features }`                | 2 (guest), 3           |
-| `queue:status`         | Queue position and current search band                 | `{ mode, timeControlSeconds, waitingMs, searchBand }`                               | 4                      |
-| `match:found`          | A match was created for this actor                     | `{ matchId, opponent, colour, timeControlSeconds }`                                 | 4                      |
-| `match:snapshot`       | Full authoritative match state                         | see the snapshot contract below                                                     | 2                      |
-| `match:move-committed` | A move was durably applied                             | `{ matchId, version, move, actor, activePlayer, clocks }`                           | 2                      |
-| `match:clock-sync`     | Authoritative clock reading                            | `{ matchId, version, activePlayer, lightRemainingMs, darkRemainingMs, serverTime }` | 2                      |
-| `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratingChange? }`                               | 2 (result), 4 (rating) |
-| `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, expiresAt? }`                                                    | 4                      |
-| `match:preset-message` | Opponent preset phrase delivered                       | `{ matchId, from, messageKey }`                                                     | 6                      |
-| `match:reaction`       | Opponent reaction delivered                            | `{ matchId, from, reactionKey }`                                                    | 6                      |
-| `error:recoverable`    | The session continues, the last action did not succeed | `{ code, message, retryable: true, context? }`                                      | 2                      |
-| `error:fatal`          | The session cannot continue                            | `{ code, message, action }`                                                         | 2                      |
+| Event                  | Purpose                                                | Payload sketch                                                                      | Phase                  | Implemented today |
+| ---------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------- | ----------------- |
+| `session:ready`        | Session established, session identity returned         | `{ actorId, actorType, displayName, isGuest, serverTime, features }`                | 2 (guest), 3           | Yes, guests only  |
+| `queue:status`         | Queue position and current search band                 | `{ mode, timeControlSeconds, waitingMs, searchBand }`                               | 4                      | No                |
+| `match:found`          | A match was created for this actor                     | `{ matchId, opponent, colour, timeControlSeconds }`                                 | 4                      | No                |
+| `match:snapshot`       | Full authoritative match state                         | see the snapshot contract below                                                     | 2                      | Yes               |
+| `match:move-committed` | A move was durably applied                             | `{ matchId, version, move, actor, activePlayer, clocks }`                           | 2                      | Yes               |
+| `match:clock-sync`     | Authoritative clock reading                            | `{ matchId, version, activePlayer, lightRemainingMs, darkRemainingMs, serverTime }` | 2                      | Yes               |
+| `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratingChange? }`                               | 2 (result), 4 (rating) | Yes, no rating    |
+| `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, expiresAt? }`                                                    | 4                      | No                |
+| `match:preset-message` | Opponent preset phrase delivered                       | `{ matchId, from, messageKey }`                                                     | 6                      | No                |
+| `match:reaction`       | Opponent reaction delivered                            | `{ matchId, from, reactionKey }`                                                    | 6                      | No                |
+| `error:recoverable`    | The session continues, the last action did not succeed | `{ code, message, retryable: true, context? }`                                      | 2                      | Yes               |
+| `error:fatal`          | The session cannot continue                            | `{ code, message, action }`                                                         | 2                      | Yes               |
+
+### 8.3 Acknowledgements, rooms and delivery
+
+- `session:authenticate` acknowledges `{ ok: true, session }` with the same payload as
+  `session:ready`, or `{ ok: false, error }` with a fatal error. A refused handshake is
+  followed by `error:fatal` and a server side disconnect, so a client can never hold a
+  half-open session.
+- `match:sync` acknowledges `{ ok: true, snapshot }` or `{ ok: false, reason }` with a
+  rejection reason. Success also joins the socket to the match room and emits
+  `match:snapshot` to that socket.
+- `match:move` and `match:resign` acknowledge with the command acknowledgement of section 6.
+- Broadcasts go to the match room, which means both seats receive `match:move-committed`,
+  `match:clock-sync`, `match:ended` and every corrective `match:snapshot`, including the
+  player who sent the command.
+- A committed move is published as `match:move-committed`. A resignation and a timeout are
+  published as `match:snapshot` followed by `match:ended`, because there is no move to send.
+- A payload that fails schema validation is reported on `error:recoverable` with the field
+  details, because no acknowledgement reason describes a malformed payload. When the envelope
+  metadata is readable the command is also acknowledged as rejected; when it is not, the error
+  event is the only answer.
+- A match that is no longer active is dropped from the clock cadence, so `match:clock-sync`
+  stops after `match:ended`.
 
 ## 9. HTTP endpoint catalogue
 
@@ -311,7 +339,7 @@ A mutation that cannot write its audit record must fail.
 
 ### 10.1 HTTP
 
-Status: planned (Phase 2 for the full shape). Errors use a single JSON problem shape:
+Status: implemented (Phase 2). Errors use a single JSON problem shape:
 
 ```json
 {
@@ -350,7 +378,7 @@ session-level and infrastructure-level failures.
 
 ## 11. Snapshot contract
 
-Status: planned (Phase 2). The snapshot is the only authoritative representation of match
+Status: implemented (Phase 2). The snapshot is the only authoritative representation of match
 state that a client may trust.
 
 ```json
@@ -392,12 +420,19 @@ tokens.
 
 ## 12. Clock synchronisation contract
 
-Status: planned (Phase 2). Full rationale in
+Status: implemented (Phase 2). Full rationale in
 [ADR-0009](adr/0009-server-authoritative-clocks.md).
 
 ```text
 effective_remaining = stored_remaining_ms - (server_now - turn_started_at)
 ```
+
+Where the formula is applied differs by payload, and both readings are consistent:
+
+- `match:snapshot` and `match:move-committed` carry the stored clocks plus `turnStartedAt`, so
+  a client applies the formula itself and can keep counting down between events.
+- `match:clock-sync` carries no turn start, so the server has already applied the formula to
+  the active side. Both values are true as of `serverTime`.
 
 | Trigger                             | Cadence or moment          |
 | ----------------------------------- | -------------------------- |

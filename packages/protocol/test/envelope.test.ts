@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   commandAckSchema,
+  commandEnvelopeHeaderSchema,
   commandEnvelopeMetadataSchema,
   matchMoveCommandSchema,
   matchResignCommandSchema,
@@ -141,5 +142,30 @@ describe("commandAckSchema", () => {
     const ack = commandAckSchema.parse({ ok: true, commandId: COMMAND_ID, newVersion: 18 });
 
     expect(ack.ok ? ack.newVersion : ack.reason).toBe(18);
+  });
+});
+
+describe("commandEnvelopeHeaderSchema", () => {
+  it("reads the metadata of a command that carries a payload", () => {
+    const header = {
+      commandId: COMMAND_ID,
+      matchId: MATCH_ID,
+      expectedVersion: 17,
+      sentAtClient: 1753392003250,
+    };
+
+    expect(commandEnvelopeHeaderSchema.parse({ ...header, payload: { move: "anything" } })).toEqual(
+      header,
+    );
+  });
+
+  it("still requires every metadata field", () => {
+    expect(
+      commandEnvelopeHeaderSchema.safeParse({
+        matchId: MATCH_ID,
+        expectedVersion: 17,
+        sentAtClient: 1753392003250,
+      }).success,
+    ).toBe(false);
   });
 });
