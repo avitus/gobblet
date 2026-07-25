@@ -45,10 +45,11 @@ endpoints and `GET /v1/config`. All other interactions are planned.
         |  static web bundle, cache, TLS         |
         +-------------------+--------------------+
                             |
-        +-------------------v--------------------+          +--------------------+
-        |   Gobblet application server           |<-------->|   Auth0 tenant     |
-        |   Fastify HTTP + Socket.IO realtime    |  OIDC    |  (Phase 3)         |
-        |   authoritative rules, clocks, ratings |          +--------------------+
+        +-------------------v--------------------+
+        |   Gobblet application server           |
+        |   Fastify HTTP + Socket.IO realtime    |
+        |   authoritative rules, clocks, ratings |
+        |   first-party sessions (Phase 3)       |
         +----+-------------------------+---------+
              |                         |
              | SQL                     | telemetry
@@ -99,21 +100,21 @@ endpoints and `GET /v1/config`. All other interactions are planned.
                           +----------------------+
 ```
 
-| Component                | Responsibility                                                          | Status                                              |
-| ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
-| `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Skeleton (Phase 0), gameplay planned (Phase 5)      |
-| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 2), gameplay surface grows later |
-| `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
-| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions   | Implemented (Phase 1)                               |
-| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Implemented (Phase 2)                               |
-| `packages/db`            | Drizzle schema, migrations, transactional repositories                  | Implemented (Phase 2)                               |
-| `packages/config`        | Typed environment parsing and validation                                | Implemented (Phase 0)                               |
-| `packages/auth`          | Auth0 token verification and session helpers                            | Planned (Phase 3)                                   |
-| `packages/observability` | Pino logging, metrics registry, error reporting helpers                 | Planned (Phase 7)                                   |
-| `packages/design-system` | CSS custom property tokens and shared primitives                        | Planned (Phase 5)                                   |
-| `packages/game-ui`       | Shared React game UI reused by web and desktop                          | Planned (Phase 5)                                   |
-| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                | Grows with each phase's suites                      |
+| Component                | Responsibility                                                            | Status                                              |
+| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------- |
+| `apps/web`               | All player-facing UI, optimistic feedback, socket client                  | Skeleton (Phase 0), gameplay planned (Phase 5)      |
+| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates    | Planned (Phase 8)                                   |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                              | Implemented (Phase 2), gameplay surface grows later |
+| `apps/admin`             | Administration surface, may start as protected routes inside `apps/web`   | Planned (Phase 7)                                   |
+| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions     | Implemented (Phase 1)                               |
+| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                  | Implemented (Phase 2)                               |
+| `packages/db`            | Drizzle schema, migrations, transactional repositories                    | Implemented (Phase 2)                               |
+| `packages/config`        | Typed environment parsing and validation                                  | Implemented (Phase 0)                               |
+| `packages/auth`          | Password hashing, session token helpers, email and username normalisation | Implemented (Phase 3)                               |
+| `packages/observability` | Pino logging, metrics registry, error reporting helpers                   | Planned (Phase 7)                                   |
+| `packages/design-system` | CSS custom property tokens and shared primitives                          | Planned (Phase 5)                                   |
+| `packages/game-ui`       | Shared React game UI reused by web and desktop                            | Planned (Phase 5)                                   |
+| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                  | Grows with each phase's suites                      |
 
 The server runs HTTP and real-time transport in one Node process (see
 [ADR-0006](adr/0006-fastify-socketio-server.md)). There is exactly one authoritative
@@ -366,9 +367,9 @@ rewrite:
 There is no native mobile application in the MVP and none is planned in phases 0 to 9. The
 architecture keeps the option open: `@gobblet/game-core` is dependency free and runs unchanged
 in any JavaScript runtime, `@gobblet/protocol` defines the wire contract independently of the
-web client, and Auth0 Universal Login with Authorization Code Flow and PKCE is the same flow a
-native mobile client would use. The responsive web client remains the supported mobile
-experience.
+web client, and authentication is a first-party API that returns an opaque session token, which a
+native client can hold in platform secure storage without a redirect flow. The responsive web
+client remains the supported mobile experience.
 
 A future mobile client would need a native rendering layer, platform secure storage and
 platform deep-link handling. Nothing in the server or the engine would change.
@@ -387,7 +388,7 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Match runtime, command application, clocks                | Implemented | Phase 2      |
 | Guest sessions and the Phase 2 HTTP surface               | Implemented | Phase 2      |
 | Socket.IO gateway: sync, move, resign, clock cadence      | Implemented | Phase 2      |
-| Auth0 identity, guests, profiles                          | Planned     | Phase 3      |
+| First-party authentication, guests, profiles              | Planned     | Phase 3      |
 | Matchmaking, Elo, rematch                                 | Planned     | Phase 4      |
 | 3D client and shared game UI                              | Planned     | Phase 5      |
 | Social surface and progression                            | Planned     | Phase 6      |

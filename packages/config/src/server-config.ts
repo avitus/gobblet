@@ -18,6 +18,8 @@ export type ServerConfig = Readonly<{
   minSupportedClientVersion: string;
   databaseUrl: string | null;
   databasePoolMax: number;
+  guestSessionTtlDays: number;
+  userSessionTtlDays: number;
 }>;
 
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -66,5 +68,7 @@ export function loadServerConfig(env: EnvSource = process.env): ServerConfig {
     minSupportedClientVersion: values.MIN_SUPPORTED_CLIENT_VERSION,
     databaseUrl: values.DATABASE_URL ?? null,
     databasePoolMax: values.DATABASE_POOL_MAX,
+    guestSessionTtlDays: values.GUEST_SESSION_TTL_DAYS,
+    userSessionTtlDays: values.USER_SESSION_TTL_DAYS,
   });
 }

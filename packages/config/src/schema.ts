@@ -42,6 +42,11 @@ export const serverEnvSchema = z.object({
   // Required from Phase 2 onwards, when match state is persisted.
   DATABASE_URL: absoluteUrl.optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+
+  // Phase 3: identity is first party, so a session lifetime is the only knob
+  // (docs/adr/0017-first-party-email-password-authentication.md).
+  GUEST_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  USER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

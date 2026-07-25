@@ -49,30 +49,27 @@ Configuration and secret handling:
 
 ## 3. Environment variable reference
 
-| Name                             | Required         | Default (local)                | Phase                | Description                                            |
-| -------------------------------- | ---------------- | ------------------------------ | -------------------- | ------------------------------------------------------ |
-| `NODE_ENV`                       | Yes              | `development`                  | 0                    | Node runtime mode                                      |
-| `APP_ENV`                        | Yes              | `local`                        | 0                    | One of `local`, `staging`, `production`                |
-| `APP_VERSION`                    | Yes              | `0.1.0`                        | 0                    | Deployed application version, reported by `/v1/config` |
-| `GIT_SHA`                        | Yes              | `local`                        | 0                    | Commit the build came from                             |
-| `LOG_LEVEL`                      | Yes              | `debug`                        | 0                    | Pino log level                                         |
-| `HOST`                           | Yes              | `127.0.0.1`                    | 0                    | Server bind address                                    |
-| `PORT`                           | Yes              | `4000`                         | 0                    | Server port                                            |
-| `PUBLIC_WEB_URL`                 | Yes              | `http://localhost:5173`        | 0                    | Canonical web origin, used for links and redirects     |
-| `CORS_ORIGINS`                   | Yes              | web origin plus desktop origin | 0                    | Comma separated allowed origins                        |
-| `MIN_SUPPORTED_CLIENT_VERSION`   | Yes              | `0.1.0`                        | 0 (enforced Phase 8) | Oldest client version the server accepts               |
-| `DATABASE_URL`                   | Yes              | local PostgreSQL URL           | 0 (used Phase 2)     | PostgreSQL connection string                           |
-| `DATABASE_POOL_MAX`              | Yes              | `10`                           | 0 (used Phase 2)     | Maximum pooled connections                             |
-| `POSTGRES_PORT`                  | No               | `5432`                         | 0                    | Host port for the local Docker PostgreSQL container    |
-| `VITE_API_BASE_URL`              | Yes (web build)  | `http://localhost:4000`        | 0                    | API origin used by the web client                      |
-| `VITE_APP_ENV`                   | Yes (web build)  | `local`                        | 0                    | Environment label shown in the client                  |
-| `AUTH0_DOMAIN`                   | Yes from Phase 3 | unset                          | 3                    | Auth0 tenant domain                                    |
-| `AUTH0_AUDIENCE`                 | Yes from Phase 3 | unset                          | 3                    | API audience for access tokens                         |
-| `AUTH0_CLIENT_ID`                | Yes from Phase 3 | unset                          | 3                    | Public client id for web and desktop                   |
-| `AUTH0_MANAGEMENT_CLIENT_ID`     | Yes from Phase 3 | unset                          | 3                    | Management API client id for account operations        |
-| `AUTH0_MANAGEMENT_CLIENT_SECRET` | Yes from Phase 3 | unset                          | 3                    | Management API client secret, secret store only        |
-| `SENTRY_DSN`                     | Yes from Phase 7 | unset                          | 7                    | Sentry ingestion endpoint                              |
-| `METRICS_ENABLED`                | No               | unset (off)                    | 7                    | Enables the Prometheus-compatible metrics endpoint     |
+| Name                           | Required         | Default (local)                | Phase                | Description                                            |
+| ------------------------------ | ---------------- | ------------------------------ | -------------------- | ------------------------------------------------------ |
+| `NODE_ENV`                     | Yes              | `development`                  | 0                    | Node runtime mode                                      |
+| `APP_ENV`                      | Yes              | `local`                        | 0                    | One of `local`, `staging`, `production`                |
+| `APP_VERSION`                  | Yes              | `0.1.0`                        | 0                    | Deployed application version, reported by `/v1/config` |
+| `GIT_SHA`                      | Yes              | `local`                        | 0                    | Commit the build came from                             |
+| `LOG_LEVEL`                    | Yes              | `debug`                        | 0                    | Pino log level                                         |
+| `HOST`                         | Yes              | `127.0.0.1`                    | 0                    | Server bind address                                    |
+| `PORT`                         | Yes              | `4000`                         | 0                    | Server port                                            |
+| `PUBLIC_WEB_URL`               | Yes              | `http://localhost:5173`        | 0                    | Canonical web origin, used for links and redirects     |
+| `CORS_ORIGINS`                 | Yes              | web origin plus desktop origin | 0                    | Comma separated allowed origins                        |
+| `MIN_SUPPORTED_CLIENT_VERSION` | Yes              | `0.1.0`                        | 0 (enforced Phase 8) | Oldest client version the server accepts               |
+| `DATABASE_URL`                 | Yes              | local PostgreSQL URL           | 0 (used Phase 2)     | PostgreSQL connection string                           |
+| `DATABASE_POOL_MAX`            | Yes              | `10`                           | 0 (used Phase 2)     | Maximum pooled connections                             |
+| `POSTGRES_PORT`                | No               | `5432`                         | 0                    | Host port for the local Docker PostgreSQL container    |
+| `VITE_API_BASE_URL`            | Yes (web build)  | `http://localhost:4000`        | 0                    | API origin used by the web client                      |
+| `VITE_APP_ENV`                 | Yes (web build)  | `local`                        | 0                    | Environment label shown in the client                  |
+| `GUEST_SESSION_TTL_DAYS`       | No               | `30`                           | 2                    | Lifetime of a guest session token                      |
+| `USER_SESSION_TTL_DAYS`        | No               | `30`                           | 3                    | Lifetime of an account session token                   |
+| `SENTRY_DSN`                   | Yes from Phase 7 | unset                          | 7                    | Sentry ingestion endpoint                              |
+| `METRICS_ENABLED`              | No               | unset (off)                    | 7                    | Enables the Prometheus-compatible metrics endpoint     |
 
 ## 4. Local development runbook
 
@@ -310,15 +307,14 @@ Failed update recovery:
 
 Status: planned (Phase 3 onwards).
 
-| Secret                                     | Cadence                           | Procedure summary                                                                                                          |
-| ------------------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Auth0 management client secret             | Annually and on suspicion         | Create a new secret, deploy, verify account operations, revoke the old secret                                              |
-| Auth0 application configuration            | On change of callbacks or origins | Update allowed callbacks, origins and deep-link scheme, verify web and desktop login                                       |
-| Database credentials                       | Annually and on suspicion         | Create a new role or rotate the password, deploy with the new `DATABASE_URL`, drain and restart, revoke the old credential |
-| macOS signing and notarization credentials | Before certificate expiry         | Renew the certificate and app-specific password, verify a signed build end to end                                          |
-| Windows signing certificate                | Before certificate expiry         | Renew, verify a signed installer, then publish                                                                             |
-| Update signing key                         | Only on compromise                | Publish a new key with a transition build, never invalidate installed clients without a reinstall path                     |
-| Sentry DSN                                 | On suspicion                      | Rotate the DSN, deploy, confirm events arrive, retire the old DSN                                                          |
+| Secret                                     | Cadence                    | Procedure summary                                                                                                          |
+| ------------------------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Account session tokens                     | On suspicion of compromise | Revoke the affected sessions in `user_sessions`; the next request from that token is rejected because sessions are opaque  |
+| Database credentials                       | Annually and on suspicion  | Create a new role or rotate the password, deploy with the new `DATABASE_URL`, drain and restart, revoke the old credential |
+| macOS signing and notarization credentials | Before certificate expiry  | Renew the certificate and app-specific password, verify a signed build end to end                                          |
+| Windows signing certificate                | Before certificate expiry  | Renew, verify a signed installer, then publish                                                                             |
+| Update signing key                         | Only on compromise         | Publish a new key with a transition build, never invalidate installed clients without a reinstall path                     |
+| Sentry DSN                                 | On suspicion               | Rotate the DSN, deploy, confirm events arrive, retire the old DSN                                                          |
 
 Rules: rotate one secret at a time, verify the dependent flow before revoking the old value,
 and record every rotation in the operational log.

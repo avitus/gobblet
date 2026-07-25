@@ -58,24 +58,25 @@ Superseding a decision:
 
 ## Index
 
-| Number | Title                                                                                                | Status   | Date       |
-| ------ | ---------------------------------------------------------------------------------------------------- | -------- | ---------- |
-| 0001   | [Record architecture decisions](0001-record-architecture-decisions.md)                               | Accepted | 2026-07-24 |
-| 0002   | [TypeScript monorepo with pnpm workspaces and Turborepo](0002-typescript-monorepo-pnpm-turborepo.md) | Accepted | 2026-07-24 |
-| 0003   | [React and Vite web client](0003-react-vite-web-client.md)                                           | Accepted | 2026-07-24 |
-| 0004   | [Tauri v2 desktop shell](0004-tauri-v2-desktop-shell.md)                                             | Accepted | 2026-07-24 |
-| 0005   | [Three.js via React Three Fiber](0005-threejs-react-three-fiber.md)                                  | Accepted | 2026-07-24 |
-| 0006   | [Fastify HTTP API with Socket.IO real-time transport](0006-fastify-socketio-server.md)               | Accepted | 2026-07-24 |
-| 0007   | [PostgreSQL with Drizzle ORM](0007-postgresql-drizzle.md)                                            | Accepted | 2026-07-24 |
-| 0008   | [Auth0 for identity](0008-auth0-identity.md)                                                         | Accepted | 2026-07-24 |
-| 0009   | [Server-authoritative clocks](0009-server-authoritative-clocks.md)                                   | Accepted | 2026-07-24 |
-| 0010   | [Match event persistence](0010-match-event-persistence.md)                                           | Accepted | 2026-07-24 |
-| 0011   | [Versioned idempotent commands](0011-versioned-idempotent-commands.md)                               | Accepted | 2026-07-24 |
-| 0012   | [Pure shared rules engine](0012-pure-shared-rules-engine.md)                                         | Accepted | 2026-07-24 |
-| 0013   | [CSS Modules with design tokens instead of Tailwind](0013-css-modules-design-tokens.md)              | Accepted | 2026-07-24 |
-| 0014   | [Selection is a preview, not a binding touch-move](0014-selection-is-preview-not-touch-move.md)      | Accepted | 2026-07-24 |
-| 0015   | [Single-region deployment with replaceable scaling interfaces](0015-single-region-deployment.md)     | Accepted | 2026-07-24 |
-| 0016   | [ESM-only internal packages built with tsup](0016-esm-tsup-internal-packages.md)                     | Accepted | 2026-07-24 |
+| Number | Title                                                                                                | Status                 | Date       |
+| ------ | ---------------------------------------------------------------------------------------------------- | ---------------------- | ---------- |
+| 0001   | [Record architecture decisions](0001-record-architecture-decisions.md)                               | Accepted               | 2026-07-24 |
+| 0002   | [TypeScript monorepo with pnpm workspaces and Turborepo](0002-typescript-monorepo-pnpm-turborepo.md) | Accepted               | 2026-07-24 |
+| 0003   | [React and Vite web client](0003-react-vite-web-client.md)                                           | Accepted               | 2026-07-24 |
+| 0004   | [Tauri v2 desktop shell](0004-tauri-v2-desktop-shell.md)                                             | Accepted               | 2026-07-24 |
+| 0005   | [Three.js via React Three Fiber](0005-threejs-react-three-fiber.md)                                  | Accepted               | 2026-07-24 |
+| 0006   | [Fastify HTTP API with Socket.IO real-time transport](0006-fastify-socketio-server.md)               | Accepted               | 2026-07-24 |
+| 0007   | [PostgreSQL with Drizzle ORM](0007-postgresql-drizzle.md)                                            | Accepted               | 2026-07-24 |
+| 0008   | [Auth0 for identity](0008-auth0-identity.md)                                                         | Superseded by ADR-0017 | 2026-07-24 |
+| 0009   | [Server-authoritative clocks](0009-server-authoritative-clocks.md)                                   | Accepted               | 2026-07-24 |
+| 0010   | [Match event persistence](0010-match-event-persistence.md)                                           | Accepted               | 2026-07-24 |
+| 0011   | [Versioned idempotent commands](0011-versioned-idempotent-commands.md)                               | Accepted               | 2026-07-24 |
+| 0012   | [Pure shared rules engine](0012-pure-shared-rules-engine.md)                                         | Accepted               | 2026-07-24 |
+| 0013   | [CSS Modules with design tokens instead of Tailwind](0013-css-modules-design-tokens.md)              | Accepted               | 2026-07-24 |
+| 0014   | [Selection is a preview, not a binding touch-move](0014-selection-is-preview-not-touch-move.md)      | Accepted               | 2026-07-24 |
+| 0015   | [Single-region deployment with replaceable scaling interfaces](0015-single-region-deployment.md)     | Accepted               | 2026-07-24 |
+| 0016   | [ESM-only internal packages built with tsup](0016-esm-tsup-internal-packages.md)                     | Accepted               | 2026-07-24 |
+| 0017   | [First-party email and password authentication](0017-first-party-email-password-authentication.md)   | Accepted               | 2026-07-25 |
 
 Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
 [`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents

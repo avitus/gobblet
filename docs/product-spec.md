@@ -2449,3 +2449,39 @@ specification text, the decision taken, and where the decision is held by a test
 | P2.9  | Section 8.2, display names                              | Display names are trimmed before validation and bounded to the documented length, so trailing whitespace cannot create two visually identical names.                                                                                                                                                                                                | `packages/protocol/test` display name cases                                                                          |
 | P2.10 | Section 20.5, "run server and PostgreSQL in containers" | CI runs PostgreSQL as a `postgres:16-alpine` service container. Locally the same suites run against a native PostgreSQL because this machine has no container runtime, which is the same limitation already recorded for Phase 0. The tests are identical in both places and select the database through `TEST_DATABASE_URL`.                       | `.github/workflows/ci.yml`, `apps/server/test/helpers/test-database.ts`, `.env.example`                              |
 | P2.11 | Section 7.1, session handshake                          | A handshake whose `appEnv` differs from the server configuration is refused with a fatal `environment_mismatch`. A client pointed at the wrong deployment would otherwise play matches it can never find again.                                                                                                                                     | `apps/server/test/socket-gateway.test.ts`                                                                            |
+
+## Appendix P3 — Phase 3 change of direction: first-party authentication
+
+This appendix records a change to fixed product decisions, requested during Phase 3: the product
+must not depend on an external identity provider. Sections 2.3 and 5.6 name Auth0, Universal
+Login, PKCE and five login methods. The decision that replaces them is
+[ADR-0017](adr/0017-first-party-email-password-authentication.md), which supersedes
+[ADR-0008](adr/0008-auth0-identity.md).
+
+What is delivered instead:
+
+| Specification text                                                 | Delivered                                                                                                                                                                 | Reason                                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Section 2.3, 5.6: email and password login                         | Delivered as a first-party credential: `scrypt` hash with per-user salt and stored cost parameters, verified in constant time.                                            | No provider needed.                                                                            |
+| Section 2.3, 5.6: passwordless email link                          | **Not delivered.**                                                                                                                                                        | Requires a transactional mail sender, which is an external service.                            |
+| Section 2.3, 5.6: Google, Apple, GitHub                            | **Not delivered.**                                                                                                                                                        | Each requires an external identity provider.                                                   |
+| Section 5.6: Auth0 Universal Login with PKCE                       | **Not delivered.** Sign-in is a direct API call that returns an opaque session token.                                                                                     | No hosted login page exists to redirect to.                                                    |
+| Section 5.6: desktop system browser and deep-link callback         | **Not applicable.** The desktop shell will use the same HTTP API as the web client.                                                                                       | There is no redirect flow to receive.                                                          |
+| Section 5.6: account linking between verified identities           | **Not applicable while there is one credential type.** An email address identifies exactly one account, enforced in the database.                                         | Linking exists to merge provider identities, and there are no providers.                       |
+| Section 5.6: email verification, verified email before ranked play | The verification token, the `email_verified_at` state and the ranked gate are delivered. Delivery is not: in local and test environments the verification link is logged. | No mail sender exists. The gate is built now so it cannot be forgotten when a sender is added. |
+| Section 5.6: server maps subject identifiers to local users        | Delivered as the local user record owning username, email, moderation state and, later, rating.                                                                           | Unchanged by the direction change; product data was never keyed on a provider identifier.      |
+| Section 14.2: `POST /v1/guests/claim`                              | Delivered: a guest session is claimed by an account, which rewrites the guest's match participation to the user and marks the guest session claimed.                      | Unchanged.                                                                                     |
+
+Phase 3 exit criteria are affected as follows:
+
+| Exit criterion                                       | State                                                                                                                                                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All auth methods work in staging                     | Reduced in scope to the one delivered method, and still blocked on environment: no staging exists (see appendix P0). The method is covered end to end by automated tests against PostgreSQL. |
+| Desktop PKCE deep-link flow works                    | **Void.** There is no PKCE flow. The desktop shell arrives in Phase 8 and will use the same API as the web client.                                                                           |
+| Guest can claim data                                 | Held by automated tests.                                                                                                                                                                     |
+| Duplicate username races are handled transactionally | Held by automated tests that race two claims of the same username against a real database.                                                                                                   |
+| Suspended account cannot queue                       | Enforced at match creation and at every match command, because matchmaking queues arrive in Phase 4. Held by automated tests.                                                                |
+
+Password reset is not available in this phase, because it requires a mail sender. This is a
+product gap, not an oversight: a player who forgets a password cannot recover the account until
+delivery exists.
