@@ -1,0 +1,141 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  checkDatabaseConnection,
+  findMatchById,
+  insertMatch,
+  listMatchesForActor,
+  listUnfinishedMatches,
+  lockMatchForUpdate,
+  updateMatchState,
+} from "../src/index";
+import type { DatabaseHandle } from "../src/index";
+import { matchFixture } from "./helpers/fixtures";
+import { setupTestDatabase, truncateAll } from "./helpers/test-database";
+
+let handle: DatabaseHandle;
+
+beforeAll(async () => {
+  handle = await setupTestDatabase();
+});
+
+afterEach(async () => {
+  await truncateAll(handle);
+});
+
+afterAll(async () => {
+  await handle.close();
+});
+
+describe("match repository", () => {
+  it("connects to the configured database", async () => {
+    expect(await checkDatabaseConnection(handle.db)).toBe(true);
+  });
+
+  it("stores a new match as queued with full clocks", async () => {
+    const inserted = await insertMatch(handle.db, matchFixture());
+
+    expect(inserted.status).toBe("queued");
+    expect(inserted.stateVersion).toBe(0);
+    expect(inserted.moveCount).toBe(0);
+    expect(inserted.lightRemainingMs).toBe(300_000);
+    expect(inserted.turnStartedAt).toBeNull();
+    expect(inserted.result).toBeNull();
+    expect(inserted.endReason).toBeNull();
+
+    const loaded = await findMatchById(handle.db, inserted.id);
+    expect(loaded?.id).toBe(inserted.id);
+  });
+
+  it("returns undefined for an unknown match", async () => {
+    expect(await findMatchById(handle.db, randomUUID())).toBeUndefined();
+  });
+
+  it("locks the match row inside a transaction", async () => {
+    const inserted = await insertMatch(handle.db, matchFixture());
+
+    const locked = await handle.db.transaction(async (tx) => lockMatchForUpdate(tx, inserted.id));
+
+    expect(locked?.id).toBe(inserted.id);
+    expect(
+      await handle.db.transaction(async (tx) => lockMatchForUpdate(tx, randomUUID())),
+    ).toBeUndefined();
+  });
+
+  it("writes state, clocks and terminal fields together", async () => {
+    const inserted = await insertMatch(handle.db, matchFixture());
+    const endedAt = new Date();
+
+    const updated = await updateMatchState(handle.db, inserted.id, {
+      gameState: { version: 1, ply: 4 },
+      stateVersion: 4,
+      activePlayer: "dark",
+      lightRemainingMs: 280_000,
+      darkRemainingMs: 291_000,
+      turnStartedAt: null,
+      lastClockCommitAt: endedAt,
+      moveCount: 4,
+      status: "completed",
+      result: "light",
+      endReason: "line",
+      endedAt,
+    });
+
+    expect(updated.stateVersion).toBe(4);
+    expect(updated.status).toBe("completed");
+    expect(updated.result).toBe("light");
+    expect(updated.endReason).toBe("line");
+    expect(updated.activePlayer).toBe("dark");
+    expect(updated.endedAt?.getTime()).toBe(endedAt.getTime());
+  });
+
+  it("rejects an update for a match that does not exist", async () => {
+    await expect(
+      updateMatchState(handle.db, randomUUID(), {
+        gameState: {},
+        stateVersion: 1,
+        activePlayer: "light",
+        lightRemainingMs: 1,
+        darkRemainingMs: 1,
+        turnStartedAt: null,
+        lastClockCommitAt: new Date(),
+        moveCount: 1,
+      }),
+    ).rejects.toThrow(/found no match/);
+  });
+
+  it("lists only matches that still need the runtime", async () => {
+    const queued = await insertMatch(handle.db, matchFixture());
+    const active = await insertMatch(handle.db, matchFixture({ status: "active" }));
+    await insertMatch(handle.db, matchFixture({ status: "completed", result: "draw" }));
+    await insertMatch(handle.db, matchFixture({ status: "aborted" }));
+
+    const unfinished = await listUnfinishedMatches(handle.db);
+
+    expect(unfinished.map((row) => row.id).sort()).toEqual([queued.id, active.id].sort());
+  });
+
+  it("lists matches of one actor on either side, newest first", async () => {
+    const actorId = randomUUID();
+    const asLight = await insertMatch(
+      handle.db,
+      matchFixture({ lightPlayerId: actorId, createdAt: new Date(Date.now() - 60_000) }),
+    );
+    const asDark = await insertMatch(handle.db, matchFixture({ darkPlayerId: actorId }));
+    await insertMatch(handle.db, matchFixture());
+
+    const rows = await listMatchesForActor(handle.db, { actorType: "guest", actorId });
+
+    expect(rows.map((row) => row.id)).toEqual([asDark.id, asLight.id]);
+  });
+
+  it("honours the listing limit", async () => {
+    const actorId = randomUUID();
+    await insertMatch(handle.db, matchFixture({ lightPlayerId: actorId }));
+    await insertMatch(handle.db, matchFixture({ lightPlayerId: actorId }));
+
+    const rows = await listMatchesForActor(handle.db, { actorType: "guest", actorId }, 1);
+
+    expect(rows).toHaveLength(1);
+  });
+});

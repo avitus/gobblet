@@ -25,6 +25,11 @@ function hasDockerCompose() {
   return probe.status === 0;
 }
 
+function hasLocalPostgres() {
+  const probe = spawnSync("pg_isready", ["-q"], { cwd: repoRoot, stdio: "ignore" });
+  return probe.status === 0;
+}
+
 function ensureEnvFile() {
   if (!existsSync(path.join(repoRoot, ".env"))) {
     console.warn("[dev] No .env found. Falling back to .env.example defaults.");
@@ -33,10 +38,15 @@ function ensureEnvFile() {
 }
 
 function startDatabase() {
+  if (hasLocalPostgres()) {
+    console.log("[dev] Using the PostgreSQL server already listening locally.");
+    return true;
+  }
+
   if (!hasDockerCompose()) {
-    console.warn("[dev] Docker Compose is unavailable - skipping the local PostgreSQL container.");
-    console.warn("[dev] Point DATABASE_URL at a reachable PostgreSQL instance instead.");
-    return;
+    console.warn("[dev] No local PostgreSQL server and no Docker Compose.");
+    console.warn("[dev] Start PostgreSQL or point DATABASE_URL at a reachable instance.");
+    return false;
   }
 
   console.log("[dev] Starting PostgreSQL (docker compose up -d postgres)...");
@@ -45,10 +55,22 @@ function startDatabase() {
     console.error("[dev] Failed to start PostgreSQL. Fix Docker or set DATABASE_URL manually.");
     process.exit(up.status ?? 1);
   }
+  return true;
+}
+
+function applyMigrations() {
+  console.log("[dev] Applying database migrations...");
+  const migrate = run("pnpm", ["--filter", "@gobblet/db", "db:migrate"]);
+  if (migrate.status !== 0) {
+    console.error("[dev] Migrations failed. The server would start without a usable schema.");
+    process.exit(migrate.status ?? 1);
+  }
 }
 
 ensureEnvFile();
-startDatabase();
+if (startDatabase()) {
+  applyMigrations();
+}
 
 console.log("[dev] Starting server and web client...");
 const child = spawn(

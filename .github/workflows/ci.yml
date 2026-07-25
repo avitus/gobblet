@@ -18,6 +18,23 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      # Integration tests need a real PostgreSQL (spec section 20.5). Trust
+      # authentication keeps credentials out of the workflow entirely.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: gobblet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/gobblet_test
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +69,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: packages/*/coverage/
+          path: |
+            packages/*/coverage/
+            apps/*/coverage/
           if-no-files-found: ignore
           retention-days: 14

@@ -10,13 +10,22 @@ Related documents: [`product-spec.md`](product-spec.md),
 
 ## 1. Implementation status
 
-Only the Phase 0 skeleton exists today. The implemented surfaces are `GET /health/live`,
-`GET /health/ready` and `GET /v1/config`.
+Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/config`.
 
-Everything else in this document, including the entire Socket.IO surface, is planned. Each
-table below carries a phase column so no reader can mistake a design for a shipped feature.
-The authoritative schemas will live in `@gobblet/protocol` (planned, Phase 2) and are the
-single source of truth once they exist; this document describes intent and shape.
+The schemas of the command envelope, the acknowledgement contract, the snapshot, the Phase 2
+socket payloads and the Phase 2 HTTP bodies are implemented in `@gobblet/protocol`, which is
+the single source of truth. Where this document and the package disagree, the package wins and
+this document is a defect.
+
+Everything marked with a later phase in the tables below is still planned. Each table carries a
+phase column so no reader can mistake a design for a shipped feature.
+
+Conventions used throughout:
+
+- Socket payloads carry timestamps and durations as integer milliseconds, because the clock
+  formula is arithmetic on them.
+- HTTP bodies carry timestamps as ISO 8601 strings, because they are read by humans and stored
+  as `timestamptz`.
 
 ## 2. Versioning policy
 
@@ -69,7 +78,7 @@ client connects socket
    |-- session:authenticate { clientVersion, appEnv, sessionToken? } -->
    |                                            verify token or issue guest binding
    |                                            reject if clientVersion is unsupported
-   |<-- session:ready { actorId, displayName, isGuest, serverTime, features }
+   |<-- session:ready { actorId, actorType, displayName, isGuest, serverTime, features }
    |
    |-- presence:heartbeat (periodic) -->
 ```
@@ -186,10 +195,10 @@ Status: planned. The phase column states when each event is delivered.
 | Event                   | Purpose                                      | Payload sketch                             | Ack | Phase                   |
 | ----------------------- | -------------------------------------------- | ------------------------------------------ | --- | ----------------------- |
 | `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) |
-| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlMinutes }`             | Yes | 4                       |
+| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       |
 | `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       |
 | `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                              | Yes | 2                       |
-| `match:move`            | Submit a move                                | envelope with `{ payload: { from, to } }`  | Yes | 2                       |
+| `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`      | Yes | 2                       |
 | `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`            | Yes | 2                       |
 | `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       |
 | `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       |
@@ -202,18 +211,22 @@ Status: planned. The phase column states when each event is delivered.
 [`rules.md`](rules.md):
 
 ```json
-{ "from": { "kind": "reserve", "stack": 2 }, "to": { "kind": "board", "row": 1, "column": 3 } }
+{ "move": { "kind": "reserve", "reserveStack": 2, "to": "r1c3" } }
+```
+
+```json
+{ "move": { "kind": "board", "from": "r0c0", "to": "r0c1" } }
 ```
 
 ### 8.2 Server to client
 
 | Event                  | Purpose                                                | Payload sketch                                                                      | Phase                  |
 | ---------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------- |
-| `session:ready`        | Session established, session identity returned         | `{ actorId, displayName, isGuest, serverTime, features }`                           | 2 (guest), 3           |
-| `queue:status`         | Queue position and current search band                 | `{ mode, timeControlMinutes, waitingMs, searchBand }`                               | 4                      |
-| `match:found`          | A match was created for this actor                     | `{ matchId, opponent, colour, timeControlMinutes }`                                 | 4                      |
+| `session:ready`        | Session established, session identity returned         | `{ actorId, actorType, displayName, isGuest, serverTime, features }`                | 2 (guest), 3           |
+| `queue:status`         | Queue position and current search band                 | `{ mode, timeControlSeconds, waitingMs, searchBand }`                               | 4                      |
+| `match:found`          | A match was created for this actor                     | `{ matchId, opponent, colour, timeControlSeconds }`                                 | 4                      |
 | `match:snapshot`       | Full authoritative match state                         | see the snapshot contract below                                                     | 2                      |
-| `match:move-committed` | A move was durably applied                             | `{ matchId, version, move, activePlayer, clocks }`                                  | 2                      |
+| `match:move-committed` | A move was durably applied                             | `{ matchId, version, move, actor, activePlayer, clocks }`                           | 2                      |
 | `match:clock-sync`     | Authoritative clock reading                            | `{ matchId, version, activePlayer, lightRemainingMs, darkRemainingMs, serverTime }` | 2                      |
 | `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratingChange? }`                               | 2 (result), 4 (rating) |
 | `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, expiresAt? }`                                                    | 4                      |
@@ -291,9 +304,9 @@ Status: planned (Phase 2 for the full shape). Errors use a single JSON problem s
 {
   "error": {
     "code": "validation_failed",
-    "message": "timeControlMinutes must be one of 3, 5, 10, 15",
+    "message": "timeControlSeconds must be one of 180, 300, 600, 900",
     "requestId": "01J2Z3T2Q0J8VF2A2P8YQ2K1M9",
-    "details": [{ "path": "timeControlMinutes", "issue": "invalid_enum_value" }]
+    "details": [{ "path": "timeControlSeconds", "issue": "invalid_enum_value" }]
   }
 }
 ```
@@ -331,9 +344,9 @@ state that a client may trust.
 {
   "matchId": "9f0c8c8e-...",
   "version": 18,
-  "status": "in_progress",
+  "status": "active",
   "mode": "ranked",
-  "timeControlMinutes": 5,
+  "timeControlSeconds": 300,
   "players": {
     "light": { "actorId": "usr_...", "displayName": "ada", "isGuest": false, "rating": 1243 },
     "dark": { "actorId": "usr_...", "displayName": "bo", "isGuest": false, "rating": 1198 }
@@ -347,14 +360,14 @@ state that a client may trust.
     "serverTime": 1753392003250
   },
   "result": null,
-  "lastMove": { "from": {}, "to": {}, "version": 18 }
+  "lastMove": { "move": { "kind": "board", "from": "r0c0", "to": "r0c1" }, "version": 18 }
 }
 ```
 
 | Field                  | Notes                                                                            |
 | ---------------------- | -------------------------------------------------------------------------------- |
 | `version`              | Monotonic per match, incremented once per accepted command                       |
-| `status`               | `pending`, `in_progress`, `completed`, `aborted`                                 |
+| `status`               | `queued`, `active`, `completed`, `aborted` (spec section 15.5 vocabulary)        |
 | `state`                | The canonical board and reserve state produced by `@gobblet/game-core`           |
 | `activePlayer`         | `light` or `dark`                                                                |
 | `clocks.turnStartedAt` | Server timestamp the active turn began, used for the effective remaining formula |

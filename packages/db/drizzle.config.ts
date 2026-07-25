@@ -1,0 +1,12 @@
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./src/schema.ts",
+  out: "./migrations",
+  strict: true,
+  verbose: true,
+  dbCredentials: {
+    url: process.env.DATABASE_URL ?? "postgresql://gobblet@localhost:5432/gobblet",
+  },
+});
