@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { loadServerConfig } from "@gobblet/config";
 import type { ServerConfig } from "@gobblet/config";
-import type { DatabaseHandle } from "@gobblet/db";
+import { upsertRating } from "@gobblet/db";
+import type { DatabaseHandle, RatingAggregatePatch } from "@gobblet/db";
 import {
   fatalErrorSchema,
   matchClockSyncEventSchema,
   matchEndedEventSchema,
+  matchFoundEventSchema,
   matchMoveCommittedEventSchema,
   matchSnapshotSchema,
+  queueJoinAckSchema,
+  queueLeaveAckSchema,
+  queueStatusSchema,
   recoverableErrorSchema,
   sessionReadySchema,
 } from "@gobblet/protocol";
@@ -15,13 +20,17 @@ import type {
   CommandAck,
   CreateGuestResponse,
   MatchSyncAck,
+  QueueJoinAck,
+  QueueLeaveAck,
   SessionAuthenticateAck,
 } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
+import { MatchmakingService } from "../src/matchmaking/service";
+import type { MatchmakingQueue } from "../src/matchmaking/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { MatchGateway, isClientVersionSupported } from "../src/socket/gateway";
 import type { GatewayLogger } from "../src/socket/gateway";
@@ -43,6 +52,7 @@ let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
 let identity: IdentityService;
+let matchmaking: MatchmakingService;
 let app: FastifyInstance;
 let gateway: MatchGateway;
 let url: string;
@@ -63,6 +73,7 @@ beforeEach(async () => {
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
   guests = new GuestService({ db: handle.db, config, now: clock.now });
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
+  matchmaking = new MatchmakingService({ runtime, identity, now: clock.now });
   app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
   await app.listen({ host: "127.0.0.1", port: 0 });
   gateway = new MatchGateway({
@@ -70,6 +81,7 @@ beforeEach(async () => {
     config,
     runtime,
     resolvers: { identity, guests },
+    matchmaking,
     log: { error: () => undefined },
     now: clock.now,
     startTicking: false,
@@ -130,6 +142,7 @@ async function spawnGateway(
     config,
     runtime: gatewayRuntime,
     resolvers: { identity, guests },
+    matchmaking: new MatchmakingService({ runtime: gatewayRuntime, identity, now: clock.now }),
     log,
     now: clock.now,
     startTicking: false,
@@ -144,6 +157,39 @@ async function spawnGateway(
     throw new Error("expected a TCP address");
   }
   return { gateway: localGateway, url: `http://127.0.0.1:${address.port}` };
+}
+
+function ratingFixture(rating: number): RatingAggregatePatch {
+  return { rating, gamesPlayed: 1, wins: 1, losses: 0, draws: 0, currentStreak: 1, bestStreak: 1 };
+}
+
+/** A verified account, which a ranked queue requires (appendix P3). */
+async function verifiedAccount(
+  username: string,
+): Promise<Readonly<{ userId: string; sessionToken: string }>> {
+  const registered = await identity.register({
+    email: `${username}@example.com`,
+    password: "correct-horse-7",
+    username,
+  });
+  if (!registered.ok) {
+    throw new Error(`registration failed: ${registered.reason}`);
+  }
+  await identity.verifyEmail(registered.value.emailVerification?.token ?? "");
+  return {
+    userId: registered.value.account.userId,
+    sessionToken: registered.value.session.sessionToken,
+  };
+}
+
+async function authenticatedAccount(sessionToken: string): Promise<TestClient> {
+  const client = await connect();
+  await client.emit<SessionAuthenticateAck>("session:authenticate", {
+    clientVersion: CLIENT_VERSION,
+    appEnv: "local",
+    sessionToken,
+  });
+  return client;
 }
 
 type Table = Readonly<{
@@ -795,5 +841,228 @@ describe("suspension during a match", () => {
     });
 
     expect(ack).toMatchObject({ ok: true, newVersion: 1 });
+  });
+});
+
+describe("matchmaking over the socket", () => {
+  it("reports the queue a guest is waiting in", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+
+    const ack = await client.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 300,
+    });
+
+    expect(queueJoinAckSchema.parse(ack)).toMatchObject({
+      state: "queued",
+      status: { mode: "casual", timeControlSeconds: 300, depth: 1, ratingWindow: null },
+    });
+  });
+
+  it("seats two waiting guests and tells each one its own colour", async () => {
+    const one = await guests.createGuest("guest-one");
+    const two = await guests.createGuest("guest-two");
+    const { client: firstClient } = await authenticated(one);
+    const { client: secondClient } = await authenticated(two);
+
+    await firstClient.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 300,
+    });
+    const ack = await secondClient.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 300,
+    });
+
+    const parsed = queueJoinAckSchema.parse(ack);
+    if (parsed.state !== "matched") {
+      throw new Error(`expected a match, got ${parsed.state}`);
+    }
+    const firstFound = matchFoundEventSchema.parse(await firstClient.next("match:found"));
+    const secondFound = matchFoundEventSchema.parse(await secondClient.next("match:found"));
+    expect(firstFound.matchId).toBe(parsed.matchId);
+    expect(secondFound.matchId).toBe(parsed.matchId);
+    expect([firstFound.yourColor, secondFound.yourColor].sort()).toEqual(["dark", "light"]);
+    expect(firstFound.opponent.displayName).toBe("guest-two");
+    expect(firstFound.snapshot.status).toBe("active");
+  });
+
+  it("lets the paired players move at once, because both are already in the room", async () => {
+    const one = await guests.createGuest("guest-one");
+    const two = await guests.createGuest("guest-two");
+    const { client: firstClient } = await authenticated(one);
+    const { client: secondClient } = await authenticated(two);
+    await firstClient.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+    await secondClient.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 300,
+    });
+    const found = matchFoundEventSchema.parse(await firstClient.next("match:found"));
+    await secondClient.next("match:found");
+
+    const mover = found.yourColor === "light" ? firstClient : secondClient;
+    const watcher = found.yourColor === "light" ? secondClient : firstClient;
+    const ack = await mover.emit<CommandAck>("match:move", {
+      ...envelope(found.matchId, 0),
+      payload: { move: WINNING_SCRIPT[0] },
+    });
+
+    expect(ack).toMatchObject({ ok: true, newVersion: 1 });
+    expect(await watcher.next("match:move-committed")).toMatchObject({ version: 1 });
+  });
+
+  it("answers a leave, and refuses a second one", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+    await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+
+    expect(queueLeaveAckSchema.parse(await client.emit<QueueLeaveAck>("queue:leave", {}))).toEqual({
+      ok: true,
+    });
+    expect(await client.emit<QueueLeaveAck>("queue:leave", {})).toEqual({
+      ok: false,
+      reason: "not-queued",
+    });
+  });
+
+  it("refuses queue commands from a socket that has not authenticated", async () => {
+    const client = await connect();
+
+    expect(
+      await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 }),
+    ).toEqual({ state: "refused", reason: "not-authorized" });
+    expect(await client.emit<QueueLeaveAck>("queue:leave", {})).toEqual({
+      ok: false,
+      reason: "not-authorized",
+    });
+  });
+
+  it("refuses a queue request that is not a queue the server runs", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+
+    const ack = await client.emit<QueueJoinAck>("queue:join", {
+      mode: "casual",
+      timeControlSeconds: 45,
+    });
+
+    expect(ack).toEqual({ state: "refused", reason: "not-authorized" });
+    expect(await client.next("error:recoverable")).toMatchObject({ code: "validation_failed" });
+  });
+
+  it("refuses a leave whose payload is not the documented shape", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+
+    const ack = await client.emit<QueueLeaveAck>("queue:leave", { mode: "casual" });
+
+    expect(ack).toEqual({ ok: false, reason: "not-queued" });
+    expect(await client.next("error:recoverable")).toMatchObject({ code: "validation_failed" });
+  });
+
+  it("refuses a guest that asks for a ranked queue", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+
+    const ack = await client.emit<QueueJoinAck>("queue:join", {
+      mode: "ranked",
+      timeControlSeconds: 300,
+    });
+
+    expect(ack).toEqual({ state: "refused", reason: "ineligible" });
+  });
+
+  it("takes a player out of the queue when their socket goes away", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+    await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+    expect(matchmaking.depths()).toEqual([{ mode: "casual", timeControlSeconds: 300, depth: 1 }]);
+
+    client.close();
+    await vi.waitFor(() => {
+      expect(matchmaking.depths()).toEqual([]);
+    });
+  });
+
+  it("tells a waiting player how long it has waited, on the cadence", async () => {
+    const guest = await guests.createGuest("guest-one");
+    const { client } = await authenticated(guest);
+    await client.emit<QueueJoinAck>("queue:join", { mode: "casual", timeControlSeconds: 300 });
+
+    clock.advance(2_000);
+    await gateway.tick();
+
+    expect(queueStatusSchema.parse(await client.next("queue:status"))).toMatchObject({
+      waitingMs: 2_000,
+      depth: 1,
+    });
+  });
+
+  it("pairs two players whose windows widened while they waited", async () => {
+    const ada = await verifiedAccount("ada");
+    const grace = await verifiedAccount("grace");
+    await upsertRating(handle.db, ada.userId, ratingFixture(1200));
+    await upsertRating(handle.db, grace.userId, ratingFixture(1800));
+    const adaClient = await authenticatedAccount(ada.sessionToken);
+    const graceClient = await authenticatedAccount(grace.sessionToken);
+    await adaClient.emit<QueueJoinAck>("queue:join", { mode: "ranked", timeControlSeconds: 300 });
+    await graceClient.emit<QueueJoinAck>("queue:join", { mode: "ranked", timeControlSeconds: 300 });
+    expect(matchmaking.depths()).toEqual([{ mode: "ranked", timeControlSeconds: 300, depth: 2 }]);
+
+    clock.advance(60_000);
+    await gateway.tick();
+
+    const found = matchFoundEventSchema.parse(await adaClient.next("match:found"));
+    expect(found.mode).toBe("ranked");
+    expect(found.waitedMs).toBe(60_000);
+    expect(found.opponent.rating).toBe(1800);
+  });
+
+  it("publishes a pairing whose players have no socket without failing", async () => {
+    const ada = await verifiedAccount("ada");
+    const grace = await verifiedAccount("grace");
+    await upsertRating(handle.db, ada.userId, ratingFixture(1200));
+    await upsertRating(handle.db, grace.userId, ratingFixture(1800));
+    const alone = await verifiedAccount("alone");
+    const key = { mode: "ranked", timeControlSeconds: 300 } as const;
+    for (const account of [ada, grace]) {
+      await matchmaking.join(
+        { actor: { actorType: "user", actorId: account.userId }, displayName: "player" },
+        key,
+      );
+    }
+    // A third player in another time control still has a status to receive, and no
+    // socket to receive it on.
+    await matchmaking.join(
+      { actor: { actorType: "user", actorId: alone.userId }, displayName: "alone" },
+      { mode: "ranked", timeControlSeconds: 600 },
+    );
+
+    clock.advance(60_000);
+    await expect(gateway.tick()).resolves.toBeUndefined();
+
+    expect(matchmaking.depths()).toEqual([{ mode: "ranked", timeControlSeconds: 600, depth: 1 }]);
+    expect(await runtime.hasUnfinishedMatch({ actorType: "user", actorId: ada.userId })).toBe(true);
+  });
+
+  it("reports a pairing failure through the logger instead of throwing", async () => {
+    const errors: string[] = [];
+    const { gateway: localGateway } = await spawnGateway(runtime, {
+      error: (_context, message) => errors.push(message),
+    });
+    const broken: MatchmakingQueue = {
+      join: () => Promise.resolve({ outcome: "refused", reason: "queue-closed" }),
+      leave: () => false,
+      statusOf: () => null,
+      tick: () => Promise.reject(new Error("queue unavailable")),
+      depths: () => [],
+      stopAcceptingEntries: () => undefined,
+    };
+    Object.assign(localGateway, { matchmaking: broken });
+
+    await localGateway.tick();
+
+    expect(errors).toContain("failed to pair waiting players");
   });
 });

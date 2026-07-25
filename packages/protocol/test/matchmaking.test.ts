@@ -139,15 +139,29 @@ describe("queueStatusSchema", () => {
 });
 
 describe("queue acknowledgements", () => {
-  it("carry either a status or a reason, never both", () => {
-    expect(queueJoinAckSchema.parse({ ok: true, status })).toEqual({ ok: true, status });
-    expect(queueJoinAckSchema.parse({ ok: false, reason: "ineligible" })).toEqual({
-      ok: false,
+  it("name which of the three outcomes a join had", () => {
+    expect(queueJoinAckSchema.parse({ state: "queued", status })).toEqual({
+      state: "queued",
+      status,
+    });
+    expect(queueJoinAckSchema.parse({ state: "matched", matchId: MATCH_ID })).toEqual({
+      state: "matched",
+      matchId: MATCH_ID,
+    });
+    expect(queueJoinAckSchema.parse({ state: "refused", reason: "ineligible" })).toEqual({
+      state: "refused",
       reason: "ineligible",
     });
-    expect(queueJoinAckSchema.safeParse({ ok: true, status, reason: "ineligible" }).success).toBe(
-      false,
-    );
+  });
+
+  it("cannot mix two outcomes or invent a third", () => {
+    expect(
+      queueJoinAckSchema.safeParse({ state: "queued", status, matchId: MATCH_ID }).success,
+    ).toBe(false);
+    expect(queueJoinAckSchema.safeParse({ state: "waiting", status }).success).toBe(false);
+  });
+
+  it("answer a leave with a confirmation or a reason", () => {
     expect(queueLeaveAckSchema.parse({ ok: true })).toEqual({ ok: true });
     expect(queueLeaveAckSchema.parse({ ok: false, reason: "not-queued" })).toEqual({
       ok: false,

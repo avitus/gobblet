@@ -38,9 +38,16 @@ export const queueStatusSchema = z.strictObject({
   serverTime: epochMillisSchema,
 });
 
-export const queueJoinAckSchema = z.discriminatedUnion("ok", [
-  z.strictObject({ ok: z.literal(true), status: queueStatusSchema }),
-  z.strictObject({ ok: z.literal(false), reason: z.enum(QUEUE_REJECTION_REASONS) }),
+/**
+ * A join has three outcomes and the acknowledgement names which one happened: the
+ * player is waiting, an opponent was already waiting so a match exists, or the
+ * request was refused. The match is also announced as `match:found`, so a client
+ * that ignores acknowledgements still learns about it.
+ */
+export const queueJoinAckSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("queued"), status: queueStatusSchema }),
+  z.strictObject({ state: z.literal("matched"), matchId: uuidSchema }),
+  z.strictObject({ state: z.literal("refused"), reason: z.enum(QUEUE_REJECTION_REASONS) }),
 ]);
 
 export const queueLeaveAckSchema = z.discriminatedUnion("ok", [

@@ -47,6 +47,7 @@ export type {
 
 export {
   findMatchById,
+  findUnfinishedMatchForActor,
   insertMatch,
   listMatchesForActor,
   listUnfinishedMatches,

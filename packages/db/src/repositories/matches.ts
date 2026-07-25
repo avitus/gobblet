@@ -71,6 +71,34 @@ export async function updateMatchState(
   return row;
 }
 
+/**
+ * The match an actor is still playing, if any. Matchmaking refuses to queue a
+ * player who already has one, so nobody can hold two clocks at once.
+ */
+export async function findUnfinishedMatchForActor(
+  executor: DatabaseExecutor,
+  actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+): Promise<MatchRow | undefined> {
+  const [row] = await executor
+    .select()
+    .from(matches)
+    .where(
+      and(
+        inArray(matches.status, ["queued", "active"]),
+        or(
+          and(
+            eq(matches.lightPlayerType, actor.actorType),
+            eq(matches.lightPlayerId, actor.actorId),
+          ),
+          and(eq(matches.darkPlayerType, actor.actorType), eq(matches.darkPlayerId, actor.actorId)),
+        ),
+      ),
+    )
+    .orderBy(matches.createdAt)
+    .limit(1);
+  return row;
+}
+
 export async function listUnfinishedMatches(executor: DatabaseExecutor): Promise<MatchRow[]> {
   return executor
     .select()

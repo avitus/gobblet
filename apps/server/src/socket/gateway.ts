@@ -8,6 +8,8 @@ import {
   matchMoveCommandSchema,
   matchResignCommandSchema,
   matchSyncRequestSchema,
+  queueJoinRequestSchema,
+  queueLeaveRequestSchema,
   sessionAuthenticateSchema,
 } from "@gobblet/protocol";
 import type {
@@ -15,6 +17,8 @@ import type {
   FatalError,
   MatchSnapshot,
   MatchSyncAck,
+  QueueJoinAck,
+  QueueLeaveAck,
   SessionAuthenticateAck,
   SessionReady,
 } from "@gobblet/protocol";
@@ -22,6 +26,7 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import { isSuspended, resolveIdentity, toActor } from "../identity/resolve";
 import type { IdentityResolvers } from "../identity/resolve";
+import type { MatchmakingQueue, SeatedMatch } from "../matchmaking/service";
 import type { CommandResult, MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
 import { ClockBroadcaster, TICK_INTERVAL_MS } from "./clock-broadcaster";
@@ -35,6 +40,7 @@ export type GatewayOptions = Readonly<{
   config: ServerConfig;
   runtime: MatchRuntime;
   resolvers: IdentityResolvers;
+  matchmaking: MatchmakingQueue;
   log: GatewayLogger;
   now?: () => number;
   /** Left off in tests so the cadence can be driven by hand. */
@@ -111,11 +117,16 @@ export class MatchGateway {
 
   private readonly resolvers: IdentityResolvers;
 
+  private readonly matchmaking: MatchmakingQueue;
+
   private readonly log: GatewayLogger;
 
   private readonly clock: () => number;
 
   private readonly sessions = new WeakMap<Socket, SocketSession>();
+
+  /** Sockets by actor, so a pairing can be published to the two players it seated. */
+  private readonly socketsByActor = new Map<string, Set<Socket>>();
 
   private readonly clocks = new ClockBroadcaster();
 
@@ -125,6 +136,7 @@ export class MatchGateway {
     this.config = options.config;
     this.runtime = options.runtime;
     this.resolvers = options.resolvers;
+    this.matchmaking = options.matchmaking;
     this.log = options.log;
     this.clock = options.now ?? ((): number => Date.now());
 
@@ -163,6 +175,7 @@ export class MatchGateway {
    */
   async tick(): Promise<void> {
     const now = this.clock();
+    await this.tickMatchmaking();
     const { sync, expired } = this.clocks.tick(now);
 
     for (const event of sync) {
@@ -186,6 +199,24 @@ export class MatchGateway {
     }
   }
 
+  /**
+   * Pairs whoever has become compatible while waiting, and refreshes the status of
+   * the players still searching (spec section 9.2).
+   */
+  private async tickMatchmaking(): Promise<void> {
+    try {
+      const { seated, statuses } = await this.matchmaking.tick();
+      for (const match of seated) {
+        this.publishSeatedMatch(match);
+      }
+      for (const { actorId, status } of statuses) {
+        this.emitToActor(actorId, OUT.queueStatus, status);
+      }
+    } catch (error) {
+      this.log.error({ error }, "failed to pair waiting players");
+    }
+  }
+
   private registerHandlers(socket: Socket): void {
     socket.on(
       IN.sessionAuthenticate,
@@ -193,6 +224,18 @@ export class MatchGateway {
         void this.handleAuthenticate(socket, payload, ack);
       },
     );
+
+    socket.on(IN.queueJoin, (payload: unknown, ack: Acknowledge<QueueJoinAck>) => {
+      void this.handleQueueJoin(socket, payload, ack);
+    });
+
+    socket.on(IN.queueLeave, (payload: unknown, ack: Acknowledge<QueueLeaveAck>) => {
+      this.handleQueueLeave(socket, payload, ack);
+    });
+
+    socket.on("disconnect", () => {
+      this.forgetSocket(socket);
+    });
 
     socket.on(IN.matchSync, (payload: unknown, ack: Acknowledge<MatchSyncAck>) => {
       void this.handleSync(socket, payload, ack);
@@ -261,6 +304,7 @@ export class MatchGateway {
 
     const actor = toActor(identity);
     this.sessions.set(socket, { actor, displayName: identity.displayName });
+    this.rememberSocket(actor.actorId, socket);
 
     const ready: SessionReady = {
       actorId: actor.actorId,
@@ -272,6 +316,69 @@ export class MatchGateway {
     };
     socket.emit(OUT.sessionReady, ready);
     ack?.({ ok: true, session: ready });
+  }
+
+  /**
+   * Joining answers with the queue the player is now in, or with the match if an
+   * opponent was already waiting. A refusal names its reason so the client can say
+   * why rather than spin (spec section 8.1).
+   */
+  private async handleQueueJoin(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<QueueJoinAck>,
+  ): Promise<void> {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      ack?.({ state: "refused", reason: "not-authorized" });
+      return;
+    }
+
+    const parsed = queueJoinRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The queue request is not valid", parsed.error);
+      ack?.({ state: "refused", reason: "not-authorized" });
+      return;
+    }
+
+    const result = await this.matchmaking.join(session, parsed.data);
+    if (result.outcome === "refused") {
+      ack?.({ state: "refused", reason: result.reason });
+      return;
+    }
+
+    if (result.outcome === "seated") {
+      this.publishSeatedMatch(result.seated);
+      ack?.({ state: "matched", matchId: result.seated.snapshot.matchId });
+      return;
+    }
+
+    ack?.({ state: "queued", status: result.status });
+  }
+
+  private handleQueueLeave(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<QueueLeaveAck>,
+  ): void {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+
+    const parsed = queueLeaveRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The queue request is not valid", parsed.error);
+      ack?.({ ok: false, reason: "not-queued" });
+      return;
+    }
+
+    ack?.(
+      this.matchmaking.leave(session.actor.actorId)
+        ? { ok: true }
+        : { ok: false, reason: "not-queued" },
+    );
   }
 
   private rejectHandshake(
@@ -437,6 +544,49 @@ export class MatchGateway {
 
   private publishSnapshot(snapshot: MatchSnapshot): void {
     this.io.to(matchRoom(snapshot.matchId)).emit(OUT.matchSnapshot, snapshot);
+  }
+
+  /**
+   * Both players join the room and are told their own colour before any clock
+   * broadcast, so neither can receive a tick for a match it has not been told about.
+   */
+  private publishSeatedMatch(match: SeatedMatch): void {
+    for (const { actorId, event } of match.events) {
+      for (const socket of this.socketsByActor.get(actorId) ?? []) {
+        void socket.join(matchRoom(event.matchId));
+        socket.emit(OUT.matchFound, event);
+      }
+    }
+    this.clocks.track(match.snapshot, this.clock());
+  }
+
+  private rememberSocket(actorId: string, socket: Socket): void {
+    const sockets = this.socketsByActor.get(actorId) ?? new Set<Socket>();
+    sockets.add(socket);
+    this.socketsByActor.set(actorId, sockets);
+  }
+
+  /**
+   * A disconnected player must not be paired: the opponent would meet an empty seat
+   * on a running clock (ADR-0018).
+   */
+  private forgetSocket(socket: Socket): void {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      return;
+    }
+    const sockets = this.socketsByActor.get(session.actor.actorId);
+    sockets?.delete(socket);
+    if (sockets && sockets.size === 0) {
+      this.socketsByActor.delete(session.actor.actorId);
+      this.matchmaking.leave(session.actor.actorId);
+    }
+  }
+
+  private emitToActor(actorId: string, event: string, payload: unknown): void {
+    for (const socket of this.socketsByActor.get(actorId) ?? []) {
+      socket.emit(event, payload);
+    }
   }
 
   private emitRecoverable(

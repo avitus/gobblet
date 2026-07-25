@@ -2,6 +2,7 @@ import {
   findEventByCommandId,
   findLatestMoveEvent,
   findMatchById,
+  findUnfinishedMatchForActor,
   insertMatch,
   insertMatchEvent,
   listMatchesForActor,
@@ -13,6 +14,7 @@ import type { Database, DatabaseExecutor, MatchRow, MatchStatePatch } from "@gob
 import { applyMove, createInitialGame } from "@gobblet/game-core";
 import type { GameState, Move, Player } from "@gobblet/game-core";
 import type {
+  ColorAssignment,
   CommandEnvelopeMetadata,
   CommandRejectionReason,
   MatchClockSyncEvent,
@@ -38,6 +40,10 @@ export type CreateMatchInput = Readonly<{
   light: Actor & Readonly<{ displayName: string }>;
   dark: Actor & Readonly<{ displayName: string }>;
   firstPlayer?: Player;
+  /** How the seats were decided, recorded for the audit of spec section 9.4. */
+  colorAssignment?: ColorAssignment;
+  /** The match a rematch alternates colours from (spec section 4.5). */
+  rematchOfMatchId?: string;
 }>;
 
 /**
@@ -112,6 +118,8 @@ export class MatchRuntime {
         darkPlayerType: input.dark.actorType,
         darkPlayerId: input.dark.actorId,
         darkDisplayName: input.dark.displayName,
+        colorAssignment: input.colorAssignment ?? "random",
+        ...(input.rematchOfMatchId ? { rematchOfMatchId: input.rematchOfMatchId } : {}),
         gameState: writeGameState(state),
         stateVersion: 0,
         lightRemainingMs: remainingMs,
@@ -166,6 +174,11 @@ export class MatchRuntime {
   async listSummariesForActor(actor: Actor, limit: number): Promise<MatchSummary[]> {
     const rows = await listMatchesForActor(this.db, actor, limit);
     return rows.map((row) => toSummary(row));
+  }
+
+  /** Whether the actor already holds a clock, which bars it from a queue (spec section 9.2). */
+  async hasUnfinishedMatch(actor: Actor): Promise<boolean> {
+    return (await findUnfinishedMatchForActor(this.db, actor)) !== undefined;
   }
 
   /** Backs the periodic `match:clock-sync` broadcast (spec section 8.3). */
