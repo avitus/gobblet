@@ -104,7 +104,7 @@ endpoints and `GET /v1/config`. All other interactions are planned.
 | ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
 | `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Skeleton (Phase 0), gameplay planned (Phase 5)      |
 | `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 3), gameplay surface grows later |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 4), gameplay surface grows later |
 | `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
 | `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions   | Implemented (Phase 1)                               |
 | `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Implemented (Phase 2)                               |
@@ -256,15 +256,18 @@ A claimed guest token resolves as the account that claimed it, because the claim
 guest token's hash as an account session. Suspension is read fresh at every gate rather than
 cached in the session, so a suspension lands on the next action:
 
-| Gate                               | Where                      |
-| ---------------------------------- | -------------------------- |
-| Sign-in                            | `src/identity/service.ts`  |
-| Socket handshake                   | `src/socket/gateway.ts`    |
-| Every `match:move`, `match:resign` | `src/socket/gateway.ts`    |
-| Match creation, later queues       | `src/match/eligibility.ts` |
+| Gate                               | Where                                             |
+| ---------------------------------- | ------------------------------------------------- |
+| Sign-in                            | `src/identity/service.ts`                         |
+| Socket handshake                   | `src/socket/gateway.ts`                           |
+| Every `match:move`, `match:resign` | `src/socket/gateway.ts`                           |
+| Match creation                     | `src/match/eligibility.ts`                        |
+| Queue entry, and again on pairing  | `src/matchmaking/service.ts` via `eligibility.ts` |
+| A rematch offer, and its answer    | `src/matchmaking/rematch.ts` via `eligibility.ts` |
 
 `src/match/eligibility.ts` is the only place that decides who may be seated: guests are casual
-only, and a ranked seat needs an account with a verified email
+only, and a ranked seat needs an account with a verified email. A queue re-reads it when a
+pairing is attempted, because a suspension may land while a player waits
 ([`product-spec.md` appendix P3](product-spec.md#appendix-p3--phase-3-change-of-direction-first-party-authentication)).
 
 ## 8. Data flow: an accepted move
@@ -382,6 +385,12 @@ container and re-synchronise from PostgreSQL. Because match state lives in the d
 clocks are derived, a drained client loses no progress. The full procedure is in
 [`operations.md`](operations.md).
 
+Matchmaking is the exception, because a queue entry and a rematch offer are the only state a
+process holds that is not written down ([ADR-0018](adr/0018-in-process-matchmaking-and-rematch-offers.md)).
+Draining closes the queue first: every waiting player is told with a recoverable `queue_closed`
+error, every open offer is cancelled, and nothing requeues a player automatically, which is what
+specification section 7.5 requires.
+
 ## 12. Deliberate scaling seams
 
 The initial deployment is intentionally small. These seams exist so growth does not require a
@@ -389,9 +398,10 @@ rewrite:
 
 | Seam              | Initial implementation               | Replaceable with                                   | Status                  |
 | ----------------- | ------------------------------------ | -------------------------------------------------- | ----------------------- |
-| Matchmaking queue | In-process queue behind an interface | Shared queue (Redis or database backed)            | Planned (Phase 4)       |
-| Presence          | In-process session registry          | Shared presence store                              | Planned (Phase 4)       |
-| Socket fan-out    | In-process Socket.IO rooms           | Socket.IO Redis adapter across containers          | Planned (Phase 4)       |
+| Matchmaking queue | In-process queue behind an interface | Shared queue (Redis or database backed)            | Implemented (Phase 4)   |
+| Rematch offers    | In-process offers with a deadline    | Shared store, if offers must cross processes       | Implemented (Phase 4)   |
+| Presence          | In-process session registry          | Shared presence store                              | Planned (Phase 6)       |
+| Socket fan-out    | In-process Socket.IO rooms           | Socket.IO Redis adapter across containers          | Planned (Phase 9)       |
 | Transport         | Socket.IO over one origin            | Additional origins behind sticky routing           | Planned (Phase 9)       |
 | Region            | Single region                        | Additional read-local edges, matches stay regional | Not planned for the MVP |
 
@@ -422,7 +432,7 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Guest sessions and the Phase 2 HTTP surface               | Implemented | Phase 2      |
 | Socket.IO gateway: sync, move, resign, clock cadence      | Implemented | Phase 2      |
 | First-party authentication, guests, profiles              | Implemented | Phase 3      |
-| Matchmaking, Elo, rematch                                 | Planned     | Phase 4      |
+| Matchmaking, Elo, rematch                                 | Implemented | Phase 4      |
 | 3D client and shared game UI                              | Planned     | Phase 5      |
 | Social surface and progression                            | Planned     | Phase 6      |
 | Admin API, audit log, metrics, alerting                   | Planned     | Phase 7      |

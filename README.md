@@ -20,7 +20,7 @@ lifecycle.
 | 1     | Authoritative rules engine (`game-core`) | Delivered   |
 | 2     | Persistence and match runtime            | Delivered   |
 | 3     | Authentication, guests, profiles         | Delivered†  |
-| 4     | Matchmaking, Elo, rematches              | Not started |
+| 4     | Matchmaking, Elo, rematches              | Delivered   |
 | 5     | Playable 3D client                       | Not started |
 | 6     | Social surface and progression           | Not started |
 | 7     | Administration and operations            | Not started |

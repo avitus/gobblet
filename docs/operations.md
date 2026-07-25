@@ -24,6 +24,7 @@ with the phase that delivers it. Do not attempt a runbook marked planned.
 | Desktop release                | Planned (Phase 8)                                                                              |
 | Secret and key rotation        | Planned (Phase 3 onwards)                                                                      |
 | Account moderation             | Executable through the database and `IdentityService` only (Phase 3); the admin API is Phase 7 |
+| Matchmaking observation        | Readable from the server log today (Phase 4); dashboards and alerts are Phase 7                |
 
 ## 2. Environments
 
@@ -277,6 +278,14 @@ Status: planned (Phase 7).
 - A Prometheus-compatible metrics endpoint is exposed when `METRICS_ENABLED` is set.
 - Instrumentation boundaries are OpenTelemetry-ready so tracing can be added without moving
   call sites.
+
+What exists today (Phase 4): the server logs one line per pairing, `paired two waiting players`,
+carrying the match id, mode, time control, the wait the pairing ended and the depth of every
+queue that still holds someone. That is the queue metric of specification section 17.1 until the
+metrics endpoint arrives; a queue that is filling up is visible as a growing `depths` array and a
+rising `waitedMs`. Queue depth can also be read in a running process through
+`server.matchmaking.depths()`, which is what the tests assert against
+([appendix P4.9](product-spec.md#appendix-p4--phase-4-decisions-and-deviations-recorded-not-silently-decided)).
 
 ## 13. Desktop release runbook
 

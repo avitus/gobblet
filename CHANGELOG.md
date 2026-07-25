@@ -38,6 +38,14 @@ versioning for desktop releases; the web client tracks the same version number.
   unique usernames, guest-to-account claim that carries a guest's matches and its
   session, profile settings, the public profile page and suspension enforcement at
   match creation and at every match command.
+- Phase 4 matchmaking: casual and ranked queues separated by time control, a rating
+  window that widens while a player waits until it accepts anyone, colour assignment
+  recorded with every match, and a queue that empties when the server drains.
+- Phase 4 ratings: Elo with a K factor of 32 written in the same transaction that
+  completes a ranked match, an append-only audit of every change, and the ranked
+  record shown on a profile.
+- Phase 4 rematches: a thirty second offer after a match ends, which creates a new
+  match with the colours alternated and remembers the match it followed.
 
 ### Notes
 
@@ -54,3 +62,6 @@ versioning for desktop releases; the web client tracks the same version number.
   delivered, and email verification links are not delivered anywhere, because all of
   them need an external service. Appendix P3 of `docs/product-spec.md` records each
   one and the Phase 3 decisions.
+- Phase 4 holds queues and rematch offers in the server process rather than in the
+  database, so a restart discards both on purpose (ADR-0018); leaderboards remain
+  Phase 6. Appendix P4 of `docs/product-spec.md` records each Phase 4 decision.

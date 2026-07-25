@@ -17,13 +17,16 @@ Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/con
 `GET /v1/matches/:matchId`, `GET /v1/matches/:matchId/snapshot` and the development only
 `POST /v1/dev/matches`.
 
-Implemented socket surfaces: `session:authenticate`, `match:sync`, `match:move` and
-`match:resign` inbound; `session:ready`, `match:snapshot`, `match:move-committed`,
-`match:clock-sync`, `match:ended`, `error:recoverable` and `error:fatal` outbound. Matchmaking,
-rematch and communication events remain planned.
+Implemented socket surfaces: `session:authenticate`, `queue:join`, `queue:leave`, `match:sync`,
+`match:move`, `match:resign`, `match:rematch-request` and `match:rematch-respond` inbound;
+`session:ready`, `queue:status`, `match:found`, `match:snapshot`, `match:move-committed`,
+`match:clock-sync`, `match:ended` (with the rating change of a ranked match),
+`match:rematch-status`, `error:recoverable` and `error:fatal` outbound. Presence heartbeats and
+the communication events remain planned.
 
-The schemas of the command envelope, the acknowledgement contract, the snapshot, the Phase 2
-socket payloads and the Phase 2 and Phase 3 HTTP bodies are implemented in `@gobblet/protocol`,
+The schemas of the command envelope, the acknowledgement contract, the snapshot, the queue,
+rematch and rating payloads and the Phase 2 to Phase 4 HTTP bodies are implemented in
+`@gobblet/protocol`,
 which is the single source of truth. Where this document and the package disagree, the package wins and
 this document is a defect.
 
@@ -218,14 +221,14 @@ server answers right now.
 
 | Event                   | Purpose                                      | Payload sketch                             | Ack | Phase                   | Implemented today |
 | ----------------------- | -------------------------------------------- | ------------------------------------------ | --- | ----------------------- | ----------------- |
-| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) | Yes, guests only  |
-| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       | No                |
-| `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       | No                |
+| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) | Yes               |
+| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       | Yes               |
+| `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       | Yes               |
 | `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                              | Yes | 2                       | Yes               |
 | `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`      | Yes | 2                       | Yes               |
 | `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`            | Yes | 2                       | Yes               |
-| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       | No                |
-| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       | No                |
+| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       | Yes               |
+| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       | Yes               |
 | `match:preset-message`  | Send one preset phrase                       | `{ matchId, messageKey }`                  | Yes | 6                       | No                |
 | `match:reaction`        | Send one preset reaction                     | `{ matchId, reactionKey }`                 | Yes | 6                       | No                |
 | `match:mute-state`      | Mute or unmute the opponent's communication  | `{ matchId, muted }`                       | Yes | 6                       | No                |
@@ -246,14 +249,14 @@ server answers right now.
 
 | Event                  | Purpose                                                | Payload sketch                                                                      | Phase                  | Implemented today |
 | ---------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------- | ----------------- |
-| `session:ready`        | Session established, session identity returned         | `{ actorId, actorType, displayName, isGuest, serverTime, features }`                | 2 (guest), 3           | Yes, guests only  |
-| `queue:status`         | Queue position and current search band                 | `{ mode, timeControlSeconds, waitingMs, searchBand }`                               | 4                      | No                |
-| `match:found`          | A match was created for this actor                     | `{ matchId, opponent, colour, timeControlSeconds }`                                 | 4                      | No                |
+| `session:ready`        | Session established, session identity returned         | `{ actorId, actorType, displayName, isGuest, serverTime, features }`                | 2 (guest), 3           | Yes               |
+| `queue:status`         | Queue depth, wait and current rating window            | `{ mode, timeControlSeconds, rating, waitingMs, ratingWindow, depth, serverTime }`  | 4                      | Yes               |
+| `match:found`          | A match was created for this actor                     | `{ matchId, mode, timeControlSeconds, yourColor, opponent, waitedMs, snapshot }`    | 4                      | Yes               |
 | `match:snapshot`       | Full authoritative match state                         | see the snapshot contract below                                                     | 2                      | Yes               |
 | `match:move-committed` | A move was durably applied                             | `{ matchId, version, move, actor, activePlayer, clocks }`                           | 2                      | Yes               |
 | `match:clock-sync`     | Authoritative clock reading                            | `{ matchId, version, activePlayer, lightRemainingMs, darkRemainingMs, serverTime }` | 2                      | Yes               |
-| `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratingChange? }`                               | 2 (result), 4 (rating) | Yes, no rating    |
-| `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, expiresAt? }`                                                    | 4                      | No                |
+| `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratings? }`                                    | 2 (result), 4 (rating) | Yes               |
+| `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, requestedBy, expiresAt, nextMatchId }`                           | 4                      | Yes               |
 | `match:preset-message` | Opponent preset phrase delivered                       | `{ matchId, from, messageKey }`                                                     | 6                      | No                |
 | `match:reaction`       | Opponent reaction delivered                            | `{ matchId, from, reactionKey }`                                                    | 6                      | No                |
 | `error:recoverable`    | The session continues, the last action did not succeed | `{ code, message, retryable: true, context? }`                                      | 2                      | Yes               |
@@ -269,6 +272,12 @@ server answers right now.
   rejection reason. Success also joins the socket to the match room and emits
   `match:snapshot` to that socket.
 - `match:move` and `match:resign` acknowledge with the command acknowledgement of section 6.
+- `queue:join` acknowledges `{ state: "queued", status }`, `{ state: "matched", matchId }` when an
+  opponent was already waiting, or `{ state: "refused", reason }`. `queue:leave` acknowledges
+  `{ ok: true }` or `{ ok: false, reason: "not-queued" }`, so leaving twice is not an error worth
+  a different answer.
+- `match:rematch-request` and `match:rematch-respond` acknowledge `{ ok: true, status }` with the
+  same status both players receive on `match:rematch-status`, or `{ ok: false, reason }`.
 - Broadcasts go to the match room, which means both seats receive `match:move-committed`,
   `match:clock-sync`, `match:ended` and every corrective `match:snapshot`, including the
   player who sent the command.
@@ -281,6 +290,48 @@ server answers right now.
 - A match that is no longer active is dropped from the clock cadence, so `match:clock-sync`
   stops after `match:ended`.
 
+### 8.4 Matchmaking contract
+
+Status: implemented (Phase 4). Queues live in the server process and are keyed by
+`(mode, timeControlSeconds)`; see
+[ADR-0018](adr/0018-in-process-matchmaking-and-rematch-offers.md).
+
+- A player holds at most one entry. A second `queue:join` replaces the first, which is how a
+  client changes mode or time control.
+- A join is refused with `already-in-match` while the player still holds an unfinished match,
+  with `ineligible` when the seating rules refuse the seat (a guest or an unverified account in a
+  ranked queue, a suspended account), with `queue-closed` while the process is draining, and with
+  `not-authorized` when the socket has no session or the payload is not the documented shape.
+- Ranked pairing starts at ±100 rating points, widens by 50 every 10 seconds to a maximum of
+  ±400, and after 60 seconds accepts any opponent in the same queue. Both players' windows must
+  accept each other. Casual pairing has no window and takes the longest-waiting pair, treating an
+  unrated player as 1200 for ordering only (appendix P4.4).
+- `queue:status` is sent to each waiting player about every two seconds. `ratingWindow` is `null`
+  in a casual queue and while a ranked search is unbounded.
+- A pairing sends `match:found` to both players before any clock broadcast, and each recipient is
+  already joined to the match room, so the first move needs no `match:sync`. `yourColor` is that
+  recipient's own seat and `waitedMs` is the wait the pairing ended.
+- Disconnecting removes the entry. Draining releases every waiting player with a recoverable
+  `queue_closed` error, and nothing requeues anybody automatically (spec section 7.5).
+
+### 8.5 Rematch contract
+
+Status: implemented (Phase 4). An offer is held in the process against the match it follows and
+lives for 30 seconds.
+
+- Only a participant of a finished match may offer one, and only once at a time. If the opponent
+  has already offered, a request accepts that offer, so two players who both press rematch get a
+  match rather than an error (appendix P4.11).
+- Refusals are `not-participant` (including a match the caller cannot read), `match-not-ended`,
+  `already-offered`, `no-offer` and `ineligible` (a suspended account, or a player who has since
+  started another match).
+- Both players receive every state on `match:rematch-status`: `offered`, then `accepted`,
+  `declined`, `expired` or `cancelled`. `nextMatchId` is set only by `accepted`.
+- An accepted offer creates a new match with the same mode and time control and the colours
+  swapped, publishes it as `match:found` to both players, and records its predecessor in the
+  database. The player who offered may withdraw it by responding with `accept: false`; either
+  player disconnecting, and a drain, cancel it.
+
 ## 9. HTTP endpoint catalogue
 
 `Auth` column values: `none` (public), `session` (guest or authenticated session),
@@ -288,13 +339,13 @@ server answers right now.
 
 ### 9.1 Public
 
-| Method | Path                     | Auth | Purpose                                                                | Phase | Implemented today |
-| ------ | ------------------------ | ---- | ---------------------------------------------------------------------- | ----- | ----------------- |
-| GET    | `/health/live`           | none | Process liveness                                                       | 0     | Yes               |
-| GET    | `/health/ready`          | none | Dependency readiness, including the database                           | 0     | Yes               |
-| GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits                         | 0     | Yes               |
-| GET    | `/v1/leaderboards`       | none | Global rating leaderboards                                             | 4     | No                |
-| GET    | `/v1/profiles/:username` | none | Public profile: username, avatar, country, member since, casual record | 3     | Yes               |
+| Method | Path                     | Auth | Purpose                                                               | Phase | Implemented today |
+| ------ | ------------------------ | ---- | --------------------------------------------------------------------- | ----- | ----------------- |
+| GET    | `/health/live`           | none | Process liveness                                                      | 0     | Yes               |
+| GET    | `/health/ready`          | none | Dependency readiness, including the database                          | 0     | Yes               |
+| GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits                        | 0     | Yes               |
+| GET    | `/v1/leaderboards`       | none | Global rating leaderboards                                            | 6     | No                |
+| GET    | `/v1/profiles/:username` | none | Public profile: username, avatar, country, member since, both records | 3     | Yes               |
 
 ### 9.2 Session and user
 

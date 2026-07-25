@@ -26,7 +26,9 @@ specification section 27 is silently dropped.
 | E        | Revealing an opponent line and blocking it with the same move     | `reveal.test.ts` > `scenario E: revealing an opponent line and blocking it`         |
 | F        | Threefold repetition draw                                         | `repetition.test.ts` > `scenario F: threefold repetition`                           |
 
-The Elo half of scenario F (ranked players receive draw updates) belongs to Phase 4.
+The Elo half of scenario F (ranked players receive draw updates) is held by
+`apps/server/test/rating-service.test.ts` > `records a draw as a draw for both sides` and the draw
+vectors in `apps/server/test/elo.test.ts`.
 
 Scenarios that need the server runtime are not engine scenarios and are held open
 with their owning phase:
@@ -268,17 +270,17 @@ the database and each suite uses its own (`gobblet_test`, `gobblet_test_server`)
 
 ### 20.1 Protocol tests (spec 20.3)
 
-| Required test                                          | Where                                                                                                                                                                                                     |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Schema compatibility                                   | `packages/protocol/test` (71 tests), `packages/config/test/protocol-alignment.test.ts`                                                                                                                    |
-| Duplicate command IDs                                  | `phase2-exit-criteria.test.ts` > `applies one move when the same command arrives twice at once`; `match-runtime.test.ts` > `rejects a duplicate command without applying it twice`                        |
-| Stale expected versions                                | `phase2-exit-criteria.test.ts` > `accepts one of two different commands that claim the same version`; `socket-gateway.test.ts` > `rejects a stale version and returns the snapshot to correct the client` |
-| Out-of-order events                                    | `phase2-exit-criteria.test.ts` asserts a gapless `sequence`; `packages/db/test` unique `(match_id, sequence)`                                                                                             |
-| Reconnect during move                                  | `socket-gateway.test.ts` > `returns the authoritative snapshot to a participant`; `phase2-exit-criteria.test.ts` restart test resyncs mid-match                                                           |
-| Reconnect after move commit but before acknowledgement | `socket-gateway.test.ts` > `acknowledges a duplicate command without moving twice` (the retry receives the committed snapshot)                                                                            |
-| Match completion exactly once                          | `phase2-exit-criteria.test.ts` > `is committed once and refuses every later command`                                                                                                                      |
-| Rating update exactly once                             | Phase 4, no rating exists yet                                                                                                                                                                             |
-| Achievement award exactly once                         | Phase 6, no achievement exists yet                                                                                                                                                                        |
+| Required test                                          | Where                                                                                                                                                                                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schema compatibility                                   | `packages/protocol/test` (71 tests), `packages/config/test/protocol-alignment.test.ts`                                                                                                                                |
+| Duplicate command IDs                                  | `phase2-exit-criteria.test.ts` > `applies one move when the same command arrives twice at once`; `match-runtime.test.ts` > `rejects a duplicate command without applying it twice`                                    |
+| Stale expected versions                                | `phase2-exit-criteria.test.ts` > `accepts one of two different commands that claim the same version`; `socket-gateway.test.ts` > `rejects a stale version and returns the snapshot to correct the client`             |
+| Out-of-order events                                    | `phase2-exit-criteria.test.ts` asserts a gapless `sequence`; `packages/db/test` unique `(match_id, sequence)`                                                                                                         |
+| Reconnect during move                                  | `socket-gateway.test.ts` > `returns the authoritative snapshot to a participant`; `phase2-exit-criteria.test.ts` restart test resyncs mid-match                                                                       |
+| Reconnect after move commit but before acknowledgement | `socket-gateway.test.ts` > `acknowledges a duplicate command without moving twice` (the retry receives the committed snapshot)                                                                                        |
+| Match completion exactly once                          | `phase2-exit-criteria.test.ts` > `is committed once and refuses every later command`                                                                                                                                  |
+| Rating update exactly once                             | `rating-service.test.ts` > `moves a rating once, even if completion is applied again`, `refuses to extend an audit that lost one of its two rows`; unique `(match_id, user_id)` in `packages/db/test/ratings.test.ts` |
+| Achievement award exactly once                         | Phase 6, no achievement exists yet                                                                                                                                                                                    |
 
 ### 20.2 Clock tests (spec 20.4)
 
@@ -298,16 +300,16 @@ All clock tests inject a fake clock (`TestClock` in `apps/server/test/helpers/ma
 
 ### 20.3 Integration tests (spec 20.5)
 
-| Required test                                         | Where                                                                                                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Guest casual match end to end                         | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once`                                                         |
-| Planned deployment restart with active match recovery | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`                                                    |
-| Account ranked match end to end                       | `phase3-exit-criteria.test.ts` > `carries an account from sign-up through a completed match` (casual); the ranked pairing itself is Phase 4 |
-| Guest claim                                           | `phase3-exit-criteria.test.ts` > `moves the guest's match to the new account`                                                               |
-| Authentication connection mappings                    | `identity-api.test.ts`, `identity-service.test.ts`, `socket-gateway.test.ts` handshake suite; one connection type exists (appendix P3)      |
-| Matchmaking rating expansion                          | Phase 4                                                                                                                                     |
-| Rematch                                               | Phase 4                                                                                                                                     |
-| Desktop deep-link callback                            | Phase 8                                                                                                                                     |
+| Required test                                         | Where                                                                                                                                  |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Guest casual match end to end                         | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once`                                                    |
+| Planned deployment restart with active match recovery | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`                                               |
+| Account ranked match end to end                       | `phase4-exit-criteria.test.ts` > `pairs two verified accounts and rates the match they play`                                           |
+| Guest claim                                           | `phase3-exit-criteria.test.ts` > `moves the guest's match to the new account`                                                          |
+| Authentication connection mappings                    | `identity-api.test.ts`, `identity-service.test.ts`, `socket-gateway.test.ts` handshake suite; one connection type exists (appendix P3) |
+| Matchmaking rating expansion                          | `phase4-exit-criteria.test.ts` > `widens the rating window until two distant accounts can meet`; `pairing.test.ts` window suite        |
+| Rematch                                               | `phase4-exit-criteria.test.ts` > `alternates the colours and records the match it followed`; `rematch.test.ts`                         |
+| Desktop deep-link callback                            | Phase 8                                                                                                                                |
 
 Specification section 20.5 asks for the server and PostgreSQL in containers. CI runs the
 `postgres:16-alpine` service container; locally the suites use a native PostgreSQL because this
@@ -350,3 +352,32 @@ The Phase 3 product surfaces, and what holds each one:
 | Section 11.2: own match summaries without the event log          | `apps/server/src/routes/me.ts`; `identity-api.test.ts` > `lists the matches of the calling account, and none for a fresh guest`                                                                                                 |
 | Section 15.3: only credential hashes are stored                  | `packages/auth/test/password.test.ts`, `packages/auth/test/tokens.test.ts`; `packages/db/test/user-sessions.test.ts`                                                                                                            |
 | Section 19.3: suspended accounts cannot queue                    | `apps/server/src/socket/gateway.ts` per-command check; `phase3-exit-criteria.test.ts` suspension suite                                                                                                                          |
+
+## 23. Phase 4 exit criteria (spec 24, as amended by appendix P4)
+
+Test roots: `apps/server/test`, `packages/db/test`, `packages/protocol/test`.
+
+| Criterion                                     | Evidence                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Guest casual matching works                   | `phase4-exit-criteria.test.ts` > `pairs two guests who never registered, and lets them play at once`, `tells a waiting guest what it is waiting for, and lets it leave`                                                                                                                                                  |
+| Registered ranked matching works              | `phase4-exit-criteria.test.ts` > `pairs two verified accounts and rates the match they play`, `refuses a ranked queue to a guest and to an unverified account`                                                                                                                                                           |
+| Elo calculations match reference test vectors | `elo.test.ts` (27 hand-computed vectors); `phase4-exit-criteria.test.ts` > `moves a 1000 who beats an 1800 by the full K factor, and the 1800 by the same`                                                                                                                                                               |
+| Rematch alternates colors                     | `phase4-exit-criteria.test.ts` > `alternates the colours and records the match it followed`; `rematch.test.ts` > `creates a new match with the colours alternated and records the predecessor`                                                                                                                           |
+| Queue restart behavior documented and tested  | [`operations.md` drain-and-reconnect](operations.md), [ADR-0018](adr/0018-in-process-matchmaking-and-rematch-offers.md); `phase4-exit-criteria.test.ts` > `releases waiting players when the process drains, and starts the next one empty`, `keeps the match a restart interrupted, but not the offer that followed it` |
+
+The Phase 4 product surfaces, and what holds each one:
+
+| Specification requirement                                        | Where held                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section 9.1: separate queues per mode and time control           | `apps/server/src/matchmaking/pairing.ts`; `pairing.test.ts` > `separates queues by mode and by time control`; `matchmaking.test.ts` > `never pairs across a mode or a time control`                                                                     |
+| Section 9.2: ±100 widening by 50 every 10 seconds, capped at 400 | `pairing.test.ts` window suite; appendix P4.10 records that the cap is reached exactly when the window is removed                                                                                                                                       |
+| Section 9.2: any opponent after 60 seconds                       | `pairing.test.ts` > `stops limiting the search after a minute (spec section 9.2)`; `phase4-exit-criteria.test.ts` widening test                                                                                                                         |
+| Section 9.2: never paired with itself                            | `pairing.test.ts` > `refuses to pair a player with itself, however it was queued twice`                                                                                                                                                                 |
+| Section 9.3: casual uses rating as a soft preference             | `pairing.test.ts` casual suite; appendix P4.4                                                                                                                                                                                                           |
+| Section 9.4: colour assignment stored                            | `packages/db/src/schema.ts` `matches.color_assignment`; `matchmaking.test.ts` > `records that the colours were chosen at random (spec section 9.4)`; `rematch.test.ts` colour alternation test                                                          |
+| Section 10: K factor 32, rounded, floored at zero                | `apps/server/src/rating/elo.ts`; `elo.test.ts`                                                                                                                                                                                                          |
+| Section 10: ranked only, both sides accounts                     | `rating-service.test.ts` > `leaves ratings alone in a casual match between two accounts`, `leaves ratings alone when a seat is a guest, even in a ranked match`                                                                                         |
+| Section 10: rating and match completion in one transaction       | `apps/server/src/match/runtime.ts` `settle()`; [ADR-0019](adr/0019-elo-in-the-completion-transaction.md); `rating-service.test.ts`                                                                                                                      |
+| Section 4.5: 30 second rematch offer, colours alternate          | `apps/server/src/matchmaking/rematch.ts`; `rematch.test.ts`; appendix P4.11                                                                                                                                                                             |
+| Section 15.4: ratings aggregate                                  | `packages/db/src/schema.ts`; `packages/db/test/ratings.test.ts`                                                                                                                                                                                         |
+| Section 17.1: queue metrics                                      | `apps/server/src/socket/gateway.ts` pairing log; `socket-gateway.test.ts` > `logs each pairing with the wait it ended and the queues left behind`; `matchmaking.test.ts` > `reports depth per mode and time control (spec section 17.1)`; appendix P4.9 |
