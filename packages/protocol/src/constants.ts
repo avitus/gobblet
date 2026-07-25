@@ -100,6 +100,50 @@ export const RESERVED_USERNAMES: readonly string[] = Object.freeze([
   "unknown",
 ]);
 
+/** Why a `queue:join` or `queue:leave` was refused (docs/protocol.md section 8.1). */
+export const QUEUE_REJECTION_REASONS = Object.freeze([
+  "not-authorized",
+  "ineligible",
+  "already-in-match",
+  "not-queued",
+  "queue-closed",
+] as const);
+
+/** The lifecycle of a rematch offer (docs/product-spec.md section 4.5). */
+export const REMATCH_STATES = Object.freeze([
+  "offered",
+  "accepted",
+  "declined",
+  "expired",
+  "cancelled",
+] as const);
+
+export const REMATCH_REJECTION_REASONS = Object.freeze([
+  "not-authorized",
+  "not-participant",
+  "match-not-ended",
+  "already-offered",
+  "no-offer",
+  "opponent-gone",
+  "ineligible",
+] as const);
+
+/** How the colours of a match were decided (docs/product-spec.md section 9.4). */
+export const COLOR_ASSIGNMENTS = Object.freeze(["random", "alternated"] as const);
+
+/** A player's result in a rated match, as stored in the rating audit. */
+export const RATING_OUTCOMES = Object.freeze(["win", "loss", "draw"] as const);
+
+/**
+ * Elo parameters fixed by docs/product-spec.md sections 2.6 and 10. They live here
+ * because the rating audit stores the formula version alongside every change, and a
+ * client may need to explain a delta it is shown.
+ */
+export const STARTING_RATING = 1200;
+export const ELO_K_FACTOR = 32;
+export const RATING_FORMULA_VERSION = 1;
+export const MINIMUM_RATING = 0;
+
 export const CLIENT_TO_SERVER_EVENTS = Object.freeze({
   sessionAuthenticate: "session:authenticate",
   queueJoin: "queue:join",
@@ -138,6 +182,11 @@ export type MatchEndReason = (typeof MATCH_END_REASONS)[number];
 export type ActorType = (typeof ACTOR_TYPES)[number];
 export type UserStatus = (typeof USER_STATUSES)[number];
 export type UsernameUnavailableReason = (typeof USERNAME_UNAVAILABLE_REASONS)[number];
+export type QueueRejectionReason = (typeof QUEUE_REJECTION_REASONS)[number];
+export type RematchState = (typeof REMATCH_STATES)[number];
+export type RematchRejectionReason = (typeof REMATCH_REJECTION_REASONS)[number];
+export type ColorAssignment = (typeof COLOR_ASSIGNMENTS)[number];
+export type RatingOutcome = (typeof RATING_OUTCOMES)[number];
 export type CommandRejectionReason = (typeof COMMAND_REJECTION_REASONS)[number];
 export type HttpErrorCode = (typeof HTTP_ERROR_CODES)[number];
 export type FatalErrorAction = (typeof FATAL_ERROR_ACTIONS)[number];
@@ -182,4 +231,12 @@ export function isUserStatus(value: unknown): value is UserStatus {
 
 export function isCommandRejectionReason(value: unknown): value is CommandRejectionReason {
   return isMemberOf(COMMAND_REJECTION_REASONS, value);
+}
+
+export function isRematchState(value: unknown): value is RematchState {
+  return isMemberOf(REMATCH_STATES, value);
+}
+
+export function isColorAssignment(value: unknown): value is ColorAssignment {
+  return isMemberOf(COLOR_ASSIGNMENTS, value);
 }

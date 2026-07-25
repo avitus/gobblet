@@ -41,6 +41,7 @@ const me: MeResponse = {
   account,
   profile,
   casual: { wins: 3, losses: 1, draws: 0, played: 4 },
+  ranked: null,
 };
 
 describe("accountSchema", () => {
@@ -201,6 +202,15 @@ describe("publicProfileSchema", () => {
       countryCode: "GB",
       memberSince: "2026-07",
       casual: { wins: 3, losses: 1, draws: 0, played: 4 },
+      ranked: {
+        rating: 1216,
+        wins: 1,
+        losses: 0,
+        draws: 0,
+        played: 1,
+        currentStreak: 1,
+        bestStreak: 1,
+      },
     };
 
     expect(publicProfileSchema.parse(publicProfile)).toEqual(publicProfile);

@@ -8,6 +8,7 @@ import {
   usernameSchema,
 } from "./identity";
 import { displayNameSchema, isoTimestampSchema, uuidSchema } from "./primitives";
+import { rankedRecordSchema } from "./rating";
 
 /**
  * Account, session and profile payloads for the first-party credential flow
@@ -40,7 +41,7 @@ export const profileSettingsSchema = z.strictObject({
   reducedMotion: z.boolean(),
 });
 
-/** Casual results only: ranked statistics and Elo arrive with ranked play in Phase 5. */
+/** Casual results, which are tracked separately from ranked ones (spec section 2.6). */
 export const casualRecordSchema = z.strictObject({
   wins: z.int().nonnegative(),
   losses: z.int().nonnegative(),
@@ -55,6 +56,8 @@ export const publicProfileSchema = z.strictObject({
   /** Creation month, not the exact day: section 11.1 shows month and year only. */
   memberSince: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   casual: casualRecordSchema,
+  /** `null` until the account has finished a ranked match, so nothing is invented. */
+  ranked: rankedRecordSchema.nullable(),
 });
 
 export const registerRequestSchema = z.strictObject({
@@ -92,6 +95,7 @@ export const meResponseSchema = z.strictObject({
   account: accountSchema,
   profile: profileSettingsSchema,
   casual: casualRecordSchema,
+  ranked: rankedRecordSchema.nullable(),
 });
 
 /**

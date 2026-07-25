@@ -855,6 +855,7 @@ describe("GET /v1/profiles/:username", () => {
       countryCode: "GB",
       memberSince: new Date(clock.now()).toISOString().slice(0, 7),
       casual: { wins: 0, losses: 0, draws: 0, played: 0 },
+      ranked: null,
     });
     expect(JSON.stringify(profile)).not.toContain("ada@example.com");
   });

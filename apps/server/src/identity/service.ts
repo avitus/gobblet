@@ -391,6 +391,7 @@ export class IdentityService {
       countryCode: profile.countryCode,
       memberSince: user.createdAt.toISOString().slice(0, 7),
       casual: await this.casualRecord(user.id),
+      ranked: null,
     };
   }
 
@@ -405,6 +406,7 @@ export class IdentityService {
       account: toAccount(user),
       profile: toProfileSettings(profile),
       casual: await this.casualRecord(userId),
+      ranked: null,
     };
   }
 

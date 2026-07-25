@@ -10,9 +10,11 @@ export {
   ACTOR_TYPES,
   APP_ENVIRONMENTS,
   CLIENT_TO_SERVER_EVENTS,
+  COLOR_ASSIGNMENTS,
   COMMAND_REJECTION_REASONS,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
+  ELO_K_FACTOR,
   EMAIL_MAX_LENGTH,
   FATAL_ERROR_ACTIONS,
   HTTP_ERROR_CODES,
@@ -20,22 +22,31 @@ export {
   MATCH_MODES,
   MATCH_RESULTS,
   MATCH_STATUSES,
+  MINIMUM_RATING,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   PROTOCOL_VERSION,
+  QUEUE_REJECTION_REASONS,
+  RATING_FORMULA_VERSION,
+  RATING_OUTCOMES,
+  REMATCH_REJECTION_REASONS,
+  REMATCH_STATES,
   RESERVED_USERNAMES,
   SERVER_TO_CLIENT_EVENTS,
+  STARTING_RATING,
   TIME_CONTROL_SECONDS,
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
   USERNAME_UNAVAILABLE_REASONS,
   USER_STATUSES,
   isActorType,
+  isColorAssignment,
   isCommandRejectionReason,
   isMatchEndReason,
   isMatchMode,
   isMatchResultOutcome,
   isMatchStatus,
+  isRematchState,
   isTimeControlSeconds,
   isUserStatus,
 } from "./constants";
@@ -45,6 +56,7 @@ export type {
   AppEnvironment,
   ClientToServerEventKey,
   ClientToServerEventName,
+  ColorAssignment,
   CommandRejectionReason,
   FatalErrorAction,
   HttpErrorCode,
@@ -52,6 +64,10 @@ export type {
   MatchMode,
   MatchResultOutcome,
   MatchStatus,
+  QueueRejectionReason,
+  RatingOutcome,
+  RematchRejectionReason,
+  RematchState,
   ServerToClientEventKey,
   ServerToClientEventName,
   TimeControlSeconds,
@@ -238,3 +254,45 @@ export type {
   MatchHistoryResponse,
   MatchSummary,
 } from "./http";
+
+export {
+  matchFoundEventSchema,
+  queueJoinAckSchema,
+  queueJoinRequestSchema,
+  queueKeySchema,
+  queueLeaveAckSchema,
+  queueLeaveRequestSchema,
+  queueOpponentSchema,
+  queueStatusSchema,
+  ratingWindowSchema,
+} from "./queue";
+
+export type {
+  MatchFoundEvent,
+  QueueJoinAck,
+  QueueJoinRequest,
+  QueueKey,
+  QueueLeaveAck,
+  QueueLeaveRequest,
+  QueueOpponent,
+  QueueStatus,
+  RatingWindow,
+} from "./queue";
+
+export {
+  rematchAckSchema,
+  rematchRequestSchema,
+  rematchRespondSchema,
+  rematchStatusEventSchema,
+} from "./rematch";
+
+export type { RematchAck, RematchRequest, RematchRespond, RematchStatusEvent } from "./rematch";
+
+export {
+  matchRatingChangesSchema,
+  rankedRecordSchema,
+  ratingChangeSchema,
+  ratingValueSchema,
+} from "./rating";
+
+export type { MatchRatingChanges, RankedRecord, RatingChange } from "./rating";

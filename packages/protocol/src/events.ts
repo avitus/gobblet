@@ -7,6 +7,7 @@ import {
 } from "./constants";
 import { moveSchema, playerSchema } from "./game-state";
 import { matchClocksSchema, matchSnapshotSchema } from "./match";
+import { matchRatingChangesSchema } from "./rating";
 import {
   epochMillisSchema,
   matchVersionSchema,
@@ -51,6 +52,8 @@ export const matchEndedEventSchema = z.strictObject({
   version: matchVersionSchema,
   result: z.enum(MATCH_RESULTS),
   reason: z.enum(MATCH_END_REASONS),
+  /** Present only for a ranked match between two accounts (spec section 10). */
+  ratings: matchRatingChangesSchema.nullable().optional(),
 });
 
 export const recoverableErrorSchema = z.strictObject({
