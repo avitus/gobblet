@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ACTOR_TYPES, HTTP_ERROR_CODES, MATCH_MODES, MATCH_STATUSES } from "./constants";
+import {
+  ACTOR_TYPES,
+  APP_ENVIRONMENTS,
+  HTTP_ERROR_CODES,
+  MATCH_MODES,
+  MATCH_STATUSES,
+} from "./constants";
 import { playerSchema } from "./game-state";
 import {
   matchPlayersSchema,
@@ -38,6 +44,19 @@ export function httpErrorDetails(error: z.ZodError): readonly HttpErrorDetail[] 
     issue: issue.code,
   }));
 }
+
+/**
+ * The public configuration document (`GET /v1/config`). A client reads it before it
+ * connects, so the supported modes and time controls come from the server instead
+ * of being hard-coded in the bundle.
+ */
+export const publicServerConfigSchema = z.strictObject({
+  appEnv: z.enum(APP_ENVIRONMENTS),
+  appVersion: z.string().min(1),
+  minSupportedClientVersion: z.string().min(1),
+  modes: z.array(z.enum(MATCH_MODES)).min(1),
+  timeControlsSeconds: z.array(timeControlSecondsSchema).min(1),
+});
 
 export const createGuestRequestSchema = z.strictObject({
   displayName: displayNameSchema.optional(),
@@ -88,6 +107,7 @@ export const createDevMatchResponseSchema = z.strictObject({
 
 export type HttpErrorDetail = z.infer<typeof httpErrorDetailSchema>;
 export type HttpErrorBody = z.infer<typeof httpErrorBodySchema>;
+export type PublicServerConfig = z.infer<typeof publicServerConfigSchema>;
 export type CreateGuestRequest = z.infer<typeof createGuestRequestSchema>;
 export type CreateGuestResponse = z.infer<typeof createGuestResponseSchema>;
 export type MatchSummary = z.infer<typeof matchSummarySchema>;

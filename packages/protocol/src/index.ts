@@ -242,6 +242,7 @@ export {
   httpErrorDetails,
   matchHistoryResponseSchema,
   matchSummarySchema,
+  publicServerConfigSchema,
 } from "./http";
 
 export type {
@@ -254,6 +255,7 @@ export type {
   HttpErrorDetail,
   MatchHistoryResponse,
   MatchSummary,
+  PublicServerConfig,
 } from "./http";
 
 export {

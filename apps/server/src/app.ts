@@ -2,6 +2,8 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "@gobblet/config";
+import { MATCH_MODES } from "@gobblet/protocol";
+import type { PublicServerConfig } from "@gobblet/protocol";
 import type { GuestService } from "./guests/service";
 import { sendError } from "./http/errors";
 import { AttemptLimiter } from "./identity/rate-limit";
@@ -103,12 +105,12 @@ export async function buildApp({
     });
   });
 
-  app.get("/v1/config", () => ({
+  app.get("/v1/config", (): PublicServerConfig => ({
     appEnv: config.appEnv,
     appVersion: config.appVersion,
     minSupportedClientVersion: config.minSupportedClientVersion,
-    modes: ["casual", "ranked"] as const,
-    timeControlsSeconds: TIME_CONTROLS_SECONDS,
+    modes: [...MATCH_MODES],
+    timeControlsSeconds: [...TIME_CONTROLS_SECONDS],
   }));
 
   if (services) {
