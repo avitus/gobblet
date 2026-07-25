@@ -7,16 +7,16 @@ Related documents: [`architecture.md`](architecture.md), [`protocol.md`](protoco
 
 ## 1. Implementation status
 
-Only the local development runbook and the continuous integration gates are executable today
-(Phase 0). Nothing is deployed, there is no staging or production environment, no database is
-provisioned, and no desktop release pipeline exists. Every runbook below is labelled with the
-phase that delivers it. Do not attempt a runbook marked planned.
+The local development runbook, the continuous integration gates and the local database
+migration procedure are executable today. Nothing is deployed, there is no staging or
+production environment and no desktop release pipeline exists. Every runbook below is labelled
+with the phase that delivers it. Do not attempt a runbook marked planned.
 
 | Runbook                        | Status                                 |
 | ------------------------------ | -------------------------------------- |
 | Local development              | Executable (Phase 0)                   |
 | CI gates                       | Executable (Phase 0)                   |
-| Database migrations            | Planned (Phase 2)                      |
+| Database migrations            | Executable locally (Phase 2)           |
 | Staging deploy                 | Planned (Phase 2)                      |
 | Production deploy and rollback | Planned (Phase 7)                      |
 | Backup and restore             | Planned (Phase 2, drills from Phase 7) |
@@ -130,7 +130,10 @@ verification (Phase 8), load and soak runs (Phase 9).
 
 ## 6. Database migration procedure
 
-Status: planned (Phase 2).
+Status: executable locally (Phase 2); the deploy steps stay planned until an environment
+exists. Locally, `pnpm db:generate` writes a migration from the Drizzle schema and
+`pnpm db:migrate` applies it. `pnpm dev` applies pending migrations before the server starts,
+and the test suites apply them to their own databases.
 
 1. Author the migration alongside the Drizzle schema change in `packages/db`.
 2. Migrations must be forward-only and additive where possible. A destructive change is split
