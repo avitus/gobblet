@@ -13,6 +13,7 @@ import {
   countCasualResults,
   findEmailVerificationToken,
   findProfileByUserId,
+  findRating,
   findUserByEmail,
   findUserById,
   findUserByUsername,
@@ -49,6 +50,7 @@ import type {
   MeResponse,
   ProfileSettings,
   PublicProfile,
+  RankedRecord,
   RegisterRequest,
   SignInRequest,
   UpdateProfileRequest,
@@ -391,7 +393,7 @@ export class IdentityService {
       countryCode: profile.countryCode,
       memberSince: user.createdAt.toISOString().slice(0, 7),
       casual: await this.casualRecord(user.id),
-      ranked: null,
+      ranked: await this.rankedRecord(user.id),
     };
   }
 
@@ -406,12 +408,29 @@ export class IdentityService {
       account: toAccount(user),
       profile: toProfileSettings(profile),
       casual: await this.casualRecord(userId),
-      ranked: null,
+      ranked: await this.rankedRecord(userId),
     };
   }
 
   async updateProfile(userId: string, patch: UpdateProfileRequest): Promise<ProfileSettings> {
     return toProfileSettings(await updateProfile(this.db, userId, patch));
+  }
+
+  /** `null` until a ranked match has finished, so an unrated account shows no rating. */
+  async rankedRecord(userId: string): Promise<RankedRecord | null> {
+    const rating = await findRating(this.db, userId);
+    if (!rating) {
+      return null;
+    }
+    return {
+      rating: rating.rating,
+      wins: rating.wins,
+      losses: rating.losses,
+      draws: rating.draws,
+      played: rating.gamesPlayed,
+      currentStreak: rating.currentStreak,
+      bestStreak: rating.bestStreak,
+    };
   }
 
   async casualRecord(userId: string): Promise<CasualRecord> {

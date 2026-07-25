@@ -23,6 +23,7 @@ import type {
   MovePayload,
   TimeControl,
 } from "@gobblet/protocol";
+import { applyRatingsForCompletion, readSeatRatings } from "../rating/service";
 import { chargeActiveSide, readClocks, zeroActiveSide } from "./clock";
 import type { CommittedClocks } from "./clock";
 import { matchClocks, participantSide, toSnapshot, toSummary } from "./snapshot";
@@ -134,7 +135,7 @@ export class MatchRuntime {
         createdAt: startedAt,
       });
 
-      return toSnapshot(row, now, null);
+      return toSnapshot(row, now, null, await readSeatRatings(tx, row));
     });
   }
 
@@ -331,7 +332,13 @@ export class MatchRuntime {
       }),
     );
 
-    const snapshot = toSnapshot(updated, now, { move, version });
+    const ended = await this.settle(tx, updated, version, outcome);
+    const snapshot = toSnapshot(
+      updated,
+      now,
+      { move, version },
+      await readSeatRatings(tx, updated),
+    );
     return {
       ack: { ok: true, commandId: envelope.commandId, newVersion: version },
       snapshot,
@@ -343,7 +350,7 @@ export class MatchRuntime {
         clocks: matchClocks(updated, now),
         actor: side,
       },
-      ended: endedEvent(updated, version, outcome),
+      ended,
     };
   }
 
@@ -379,11 +386,12 @@ export class MatchRuntime {
       }),
     );
 
+    const ended = await this.settle(tx, updated, version, outcome);
     return {
       ack: { ok: true, commandId: envelope.commandId, newVersion: version },
       snapshot: await this.snapshotOf(tx, updated, now),
       moveCommitted: null,
-      ended: endedEvent(updated, version, outcome),
+      ended,
     };
   }
 
@@ -423,10 +431,35 @@ export class MatchRuntime {
       }),
     );
 
+    const ended = await this.settle(tx, updated, version, outcome);
     return {
       snapshot: await this.snapshotOf(tx, updated, now),
-      ended: endedEvent(updated, version, outcome),
+      ended,
     };
+  }
+
+  /**
+   * The terminal write. Ratings move here rather than in a follow-up job, so a
+   * completed ranked match and the ratings it produced share one transaction
+   * (docs/adr/0019-elo-in-the-completion-transaction.md).
+   */
+  private async settle(
+    tx: DatabaseExecutor,
+    row: MatchRow,
+    version: number,
+    outcome: RulesOutcome | null,
+  ): Promise<MatchEndedEvent | null> {
+    if (!outcome) {
+      return null;
+    }
+    const ratings = await applyRatingsForCompletion(tx, row);
+    const ended: MatchEndedEvent = {
+      matchId: row.id,
+      version,
+      result: outcome.outcome,
+      reason: outcome.reason,
+    };
+    return ratings ? { ...ended, ratings } : ended;
   }
 
   private patch(
@@ -471,7 +504,12 @@ export class MatchRuntime {
     row: MatchRow,
     now: number,
   ): Promise<MatchSnapshot> {
-    return toSnapshot(row, now, await this.readLastMove(executor, row));
+    return toSnapshot(
+      row,
+      now,
+      await this.readLastMove(executor, row),
+      await readSeatRatings(executor, row),
+    );
   }
 
   private async readLastMove(executor: DatabaseExecutor, row: MatchRow): Promise<LastMove | null> {
@@ -497,15 +535,4 @@ function rejection(
     moveCommitted: null,
     ended: null,
   };
-}
-
-function endedEvent(
-  row: MatchRow,
-  version: number,
-  outcome: RulesOutcome | null,
-): MatchEndedEvent | null {
-  if (!outcome) {
-    return null;
-  }
-  return { matchId: row.id, version, result: outcome.outcome, reason: outcome.reason };
 }

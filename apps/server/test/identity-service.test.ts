@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { loadServerConfig } from "@gobblet/config";
 import type { ServerConfig } from "@gobblet/config";
+import { upsertRating } from "@gobblet/db";
 import type { Database, DatabaseHandle } from "@gobblet/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GuestService } from "../src/guests/service";
@@ -179,6 +180,38 @@ describe("IdentityService", () => {
     expect(await identity.accountFlags(randomUUID())).toBeNull();
     expect(await identity.getMe(randomUUID())).toBeNull();
     expect(await identity.publicProfile("nobody")).toBeNull();
+  });
+
+  it("shows the ranked record once the account has a rating, and nothing before", async () => {
+    const registered = await identity.register(credentials);
+    if (!registered.ok) {
+      throw new Error("expected registration to succeed");
+    }
+    const userId = registered.value.account.userId;
+
+    expect((await identity.getMe(userId))?.ranked).toBeNull();
+
+    await upsertRating(handle.db, userId, {
+      rating: 1284,
+      gamesPlayed: 7,
+      wins: 4,
+      losses: 2,
+      draws: 1,
+      currentStreak: 2,
+      bestStreak: 3,
+    });
+
+    const ranked = {
+      rating: 1284,
+      wins: 4,
+      losses: 2,
+      draws: 1,
+      played: 7,
+      currentStreak: 2,
+      bestStreak: 3,
+    };
+    expect((await identity.getMe(userId))?.ranked).toEqual(ranked);
+    expect((await identity.publicProfile("ada"))?.ranked).toEqual(ranked);
   });
 
   it("reports the flags a match gate reads", async () => {

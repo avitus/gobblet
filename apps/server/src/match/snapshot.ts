@@ -20,21 +20,26 @@ export type LastMove = Readonly<{
   version: number;
 }>;
 
-export function matchPlayers(row: MatchRow): MatchPlayers {
+/** The rating shown beside each seat, `null` for a guest or an unrated account. */
+export type SeatRatings = Readonly<{ light: number | null; dark: number | null }>;
+
+const UNRATED_SEATS: SeatRatings = Object.freeze({ light: null, dark: null });
+
+export function matchPlayers(row: MatchRow, ratings: SeatRatings = UNRATED_SEATS): MatchPlayers {
   return {
     light: {
       actorId: row.lightPlayerId,
       actorType: row.lightPlayerType,
       displayName: row.lightDisplayName,
       isGuest: row.lightPlayerType === "guest",
-      rating: null,
+      rating: ratings.light,
     },
     dark: {
       actorId: row.darkPlayerId,
       actorType: row.darkPlayerType,
       displayName: row.darkDisplayName,
       isGuest: row.darkPlayerType === "guest",
-      rating: null,
+      rating: ratings.dark,
     },
   };
 }
@@ -72,14 +77,19 @@ export function matchClocks(row: MatchRow, now: number): MatchClocks {
   };
 }
 
-export function toSnapshot(row: MatchRow, now: number, lastMove: LastMove | null): MatchSnapshot {
+export function toSnapshot(
+  row: MatchRow,
+  now: number,
+  lastMove: LastMove | null,
+  ratings: SeatRatings = UNRATED_SEATS,
+): MatchSnapshot {
   return {
     matchId: row.id,
     version: row.stateVersion,
     status: row.status,
     mode: row.mode,
     timeControlSeconds: row.timeControlSeconds as TimeControl,
-    players: matchPlayers(row),
+    players: matchPlayers(row, ratings),
     state: row.gameState as MatchSnapshot["state"],
     activePlayer: row.activePlayer,
     clocks: matchClocks(row, now),
@@ -88,14 +98,14 @@ export function toSnapshot(row: MatchRow, now: number, lastMove: LastMove | null
   };
 }
 
-export function toSummary(row: MatchRow): MatchSummary {
+export function toSummary(row: MatchRow, ratings: SeatRatings = UNRATED_SEATS): MatchSummary {
   return {
     matchId: row.id,
     mode: row.mode,
     timeControlSeconds: row.timeControlSeconds as TimeControl,
     status: row.status,
     result: matchResultOf(row),
-    players: matchPlayers(row),
+    players: matchPlayers(row, ratings),
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     endedAt: row.endedAt?.toISOString() ?? null,
