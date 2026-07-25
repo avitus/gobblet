@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import { GuestService } from "./guests/service";
 import { IdentityService } from "./identity/service";
+import { RematchService } from "./matchmaking/rematch";
 import { MatchmakingService } from "./matchmaking/service";
 import { MatchRuntime } from "./match/runtime";
 import { MatchGateway } from "./socket/gateway";
@@ -20,6 +21,7 @@ export type BootstrappedServer = Readonly<{
   guests: GuestService;
   identity: IdentityService;
   matchmaking: MatchmakingService;
+  rematch: RematchService;
   gateway: MatchGateway;
   /** Matches whose clock expired while this process was down (spec section 7.5). */
   settledOnBoot: number;
@@ -46,6 +48,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
   const guests = new GuestService({ db: database.db, config });
   const identity = new IdentityService({ db: database.db, config });
   const matchmaking = new MatchmakingService({ runtime, identity });
+  const rematch = new RematchService({ runtime, identity });
 
   const app = await buildApp({
     config,
@@ -66,6 +69,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     runtime,
     resolvers: { identity, guests },
     matchmaking,
+    rematch,
     log: app.log,
   });
 
@@ -76,12 +80,14 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     guests,
     identity,
     matchmaking,
+    rematch,
     gateway,
     settledOnBoot: settled.length,
     close: async (): Promise<void> => {
       // Draining stops accepting queue entries before anything else, so nobody is
       // paired into a match this process is about to stop serving (spec section 7.6).
       matchmaking.stopAcceptingEntries();
+      rematch.forgetAll();
       await gateway.close();
       await app.close();
       await database.close();

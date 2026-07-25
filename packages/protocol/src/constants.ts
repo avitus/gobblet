@@ -131,6 +131,9 @@ export const REMATCH_REJECTION_REASONS = Object.freeze([
 /** How the colours of a match were decided (docs/product-spec.md section 9.4). */
 export const COLOR_ASSIGNMENTS = Object.freeze(["random", "alternated"] as const);
 
+/** How long a rematch offer stands before it expires (docs/product-spec.md section 4.5). */
+export const REMATCH_OFFER_MS = 30_000;
+
 /** A player's result in a rated match, as stored in the rating audit. */
 export const RATING_OUTCOMES = Object.freeze(["win", "loss", "draw"] as const);
 

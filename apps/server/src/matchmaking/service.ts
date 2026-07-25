@@ -227,19 +227,7 @@ export class MatchmakingService implements MatchmakingQueue {
       colorAssignment: "random",
     });
 
-    return {
-      snapshot,
-      events: [
-        {
-          actorId: seats.light.actor.actorId,
-          event: foundEvent(snapshot, "light", seats.dark, pairing.waitedMs),
-        },
-        {
-          actorId: seats.dark.actor.actorId,
-          event: foundEvent(snapshot, "dark", seats.light, pairing.waitedMs),
-        },
-      ],
-    };
+    return seatedMatchOf(snapshot, pairing.waitedMs);
   }
 
   /** A first match assigns colours at random (spec section 9.4). */
@@ -320,19 +308,32 @@ export class MatchmakingService implements MatchmakingQueue {
   }
 }
 
-function foundEvent(
-  snapshot: MatchSnapshot,
-  side: Player,
-  opponent: QueueEntry,
-  waitedMs: number,
-): MatchFoundEvent {
+/**
+ * The two `match:found` events a new match implies, one per seat. A rematch uses
+ * this too, so both ways of starting a match publish the same shape.
+ */
+export function seatedMatchOf(snapshot: MatchSnapshot, waitedMs: number): SeatedMatch {
+  return {
+    snapshot,
+    events: [
+      {
+        actorId: snapshot.players.light.actorId,
+        event: foundEvent(snapshot, "light", waitedMs),
+      },
+      { actorId: snapshot.players.dark.actorId, event: foundEvent(snapshot, "dark", waitedMs) },
+    ],
+  };
+}
+
+function foundEvent(snapshot: MatchSnapshot, side: Player, waitedMs: number): MatchFoundEvent {
+  const opponent = snapshot.players[side === "light" ? "dark" : "light"];
   return {
     matchId: snapshot.matchId,
     mode: snapshot.mode,
     timeControlSeconds: snapshot.timeControlSeconds,
     yourColor: side,
     opponent: {
-      actorType: opponent.actor.actorType,
+      actorType: opponent.actorType,
       displayName: opponent.displayName,
       rating: opponent.rating,
     },

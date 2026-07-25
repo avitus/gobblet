@@ -6,6 +6,7 @@ import {
   QUEUE_REJECTION_REASONS,
   RATING_FORMULA_VERSION,
   RATING_OUTCOMES,
+  REMATCH_OFFER_MS,
   REMATCH_REJECTION_REASONS,
   REMATCH_STATES,
   STARTING_RATING,
@@ -185,6 +186,10 @@ describe("matchFoundEventSchema", () => {
 });
 
 describe("rematch payloads", () => {
+  it("stand for the thirty seconds the specification allows", () => {
+    expect(REMATCH_OFFER_MS).toBe(30_000);
+  });
+
   it("round trip a request, a response and a status", () => {
     expect(rematchRequestSchema.parse({ matchId: MATCH_ID })).toEqual({ matchId: MATCH_ID });
     expect(rematchRespondSchema.parse({ matchId: MATCH_ID, accept: true })).toEqual({

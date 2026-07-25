@@ -4,6 +4,7 @@ import type { ServerConfig } from "@gobblet/config";
 import { upsertRating } from "@gobblet/db";
 import type { DatabaseHandle, RatingAggregatePatch } from "@gobblet/db";
 import {
+  REMATCH_OFFER_MS,
   fatalErrorSchema,
   matchClockSyncEventSchema,
   matchEndedEventSchema,
@@ -14,6 +15,8 @@ import {
   queueLeaveAckSchema,
   queueStatusSchema,
   recoverableErrorSchema,
+  rematchAckSchema,
+  rematchStatusEventSchema,
   sessionReadySchema,
 } from "@gobblet/protocol";
 import type {
@@ -22,6 +25,7 @@ import type {
   MatchSyncAck,
   QueueJoinAck,
   QueueLeaveAck,
+  RematchAck,
   SessionAuthenticateAck,
 } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
@@ -29,6 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
+import { RematchService } from "../src/matchmaking/rematch";
 import { MatchmakingService } from "../src/matchmaking/service";
 import type { MatchmakingQueue } from "../src/matchmaking/service";
 import { MatchRuntime } from "../src/match/runtime";
@@ -53,6 +58,7 @@ let runtime: MatchRuntime;
 let guests: GuestService;
 let identity: IdentityService;
 let matchmaking: MatchmakingService;
+let rematch: RematchService;
 let app: FastifyInstance;
 let gateway: MatchGateway;
 let url: string;
@@ -74,6 +80,7 @@ beforeEach(async () => {
   guests = new GuestService({ db: handle.db, config, now: clock.now });
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
   matchmaking = new MatchmakingService({ runtime, identity, now: clock.now });
+  rematch = new RematchService({ runtime, identity, now: clock.now });
   app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
   await app.listen({ host: "127.0.0.1", port: 0 });
   gateway = new MatchGateway({
@@ -82,6 +89,7 @@ beforeEach(async () => {
     runtime,
     resolvers: { identity, guests },
     matchmaking,
+    rematch,
     log: { error: () => undefined },
     now: clock.now,
     startTicking: false,
@@ -143,6 +151,7 @@ async function spawnGateway(
     runtime: gatewayRuntime,
     resolvers: { identity, guests },
     matchmaking: new MatchmakingService({ runtime: gatewayRuntime, identity, now: clock.now }),
+    rematch: new RematchService({ runtime: gatewayRuntime, identity, now: clock.now }),
     log,
     now: clock.now,
     startTicking: false,
@@ -1064,5 +1073,165 @@ describe("matchmaking over the socket", () => {
     await localGateway.tick();
 
     expect(errors).toContain("failed to pair waiting players");
+  });
+});
+
+describe("rematches over the socket", () => {
+  /** Waits for the offer both players are told about, so later assertions see the answer. */
+  async function awaitOffer(table: Table): Promise<void> {
+    for (const client of [table.lightClient, table.darkClient]) {
+      expect(await client.next("match:rematch-status")).toMatchObject({ state: "offered" });
+    }
+  }
+
+  /** A seated match ended by the dark player resigning, which both clients see. */
+  async function endedTable(): Promise<Table> {
+    const table = await seatedMatch();
+    await table.darkClient.emit<CommandAck>("match:resign", {
+      ...envelope(table.matchId, 0),
+      payload: {},
+    });
+    await table.lightClient.next("match:ended");
+    await table.darkClient.next("match:ended");
+    return table;
+  }
+
+  it("tells both players an offer is standing", async () => {
+    const table = await endedTable();
+
+    const ack = await table.lightClient.emit<RematchAck>("match:rematch-request", {
+      matchId: table.matchId,
+    });
+
+    expect(rematchAckSchema.parse(ack)).toEqual({
+      ok: true,
+      status: {
+        matchId: table.matchId,
+        state: "offered",
+        requestedBy: table.light.guestId,
+        expiresAt: clock.now() + REMATCH_OFFER_MS,
+        nextMatchId: null,
+      },
+    });
+    for (const client of [table.lightClient, table.darkClient]) {
+      expect(
+        rematchStatusEventSchema.parse(await client.next("match:rematch-status")),
+      ).toMatchObject({ state: "offered" });
+    }
+  });
+
+  it("seats the next match with the colours alternated when the offer is accepted", async () => {
+    const table = await endedTable();
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+
+    const ack = await table.darkClient.emit<RematchAck>("match:rematch-respond", {
+      matchId: table.matchId,
+      accept: true,
+    });
+
+    const parsed = rematchAckSchema.parse(ack);
+    if (!parsed.ok) {
+      throw new Error(`expected an accepted offer, got ${parsed.reason}`);
+    }
+    const nextMatchId = parsed.status.nextMatchId;
+    expect(nextMatchId).not.toBeNull();
+    const forDark = matchFoundEventSchema.parse(await table.darkClient.next("match:found"));
+    const forLight = matchFoundEventSchema.parse(await table.lightClient.next("match:found"));
+    expect(forDark).toMatchObject({ matchId: nextMatchId, yourColor: "light", waitedMs: 0 });
+    expect(forLight).toMatchObject({ matchId: nextMatchId, yourColor: "dark" });
+
+    // Both are already in the new room, so the first move needs no sync.
+    const moved = await table.darkClient.emit<CommandAck>("match:move", {
+      ...envelope(forDark.matchId, 0),
+      payload: { move: WINNING_SCRIPT[0] },
+    });
+    expect(moved).toMatchObject({ ok: true, newVersion: 1 });
+    expect(await table.lightClient.next("match:move-committed")).toMatchObject({ version: 1 });
+  });
+
+  it("tells both players when an offer is declined", async () => {
+    const table = await endedTable();
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+    await awaitOffer(table);
+
+    await table.darkClient.emit<RematchAck>("match:rematch-respond", {
+      matchId: table.matchId,
+      accept: false,
+    });
+
+    for (const client of [table.lightClient, table.darkClient]) {
+      expect(await client.next("match:rematch-status")).toMatchObject({ state: "declined" });
+    }
+  });
+
+  it("expires an unanswered offer on the cadence", async () => {
+    const table = await endedTable();
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+    await awaitOffer(table);
+
+    clock.advance(REMATCH_OFFER_MS);
+    await gateway.tick();
+
+    for (const client of [table.lightClient, table.darkClient]) {
+      expect(await client.next("match:rematch-status")).toMatchObject({
+        state: "expired",
+        nextMatchId: null,
+      });
+    }
+  });
+
+  it("ends an offer when the player who made it disconnects", async () => {
+    const table = await endedTable();
+    await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+    await awaitOffer(table);
+
+    table.lightClient.close();
+
+    expect(await table.darkClient.next("match:rematch-status")).toMatchObject({
+      state: "cancelled",
+    });
+  });
+
+  it("refuses a rematch of a match the player did not play", async () => {
+    const table = await endedTable();
+    const stranger = await guests.createGuest("stranger");
+    const { client } = await authenticated(stranger);
+
+    const ack = await client.emit<RematchAck>("match:rematch-request", { matchId: table.matchId });
+
+    expect(rematchAckSchema.parse(ack)).toEqual({ ok: false, reason: "not-participant" });
+  });
+
+  it("refuses rematch commands from a socket that has not authenticated", async () => {
+    const client = await connect();
+
+    expect(
+      await client.emit<RematchAck>("match:rematch-request", { matchId: randomUUID() }),
+    ).toEqual({ ok: false, reason: "not-authorized" });
+    expect(
+      await client.emit<RematchAck>("match:rematch-respond", {
+        matchId: randomUUID(),
+        accept: true,
+      }),
+    ).toEqual({ ok: false, reason: "not-authorized" });
+  });
+
+  it("refuses rematch payloads that are not the documented shape", async () => {
+    const table = await endedTable();
+
+    expect(
+      await table.lightClient.emit<RematchAck>("match:rematch-request", { matchId: "not-a-uuid" }),
+    ).toEqual({ ok: false, reason: "not-authorized" });
+    expect(await table.lightClient.next("error:recoverable")).toMatchObject({
+      code: "validation_failed",
+    });
+    expect(
+      await table.lightClient.emit<RematchAck>("match:rematch-respond", {
+        matchId: table.matchId,
+      }),
+    ).toEqual({ ok: false, reason: "not-authorized" });
+    expect(await table.lightClient.next("error:recoverable")).toMatchObject({
+      code: "validation_failed",
+    });
   });
 });

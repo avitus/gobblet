@@ -10,6 +10,8 @@ import {
   matchSyncRequestSchema,
   queueJoinRequestSchema,
   queueLeaveRequestSchema,
+  rematchRequestSchema,
+  rematchRespondSchema,
   sessionAuthenticateSchema,
 } from "@gobblet/protocol";
 import type {
@@ -19,6 +21,7 @@ import type {
   MatchSyncAck,
   QueueJoinAck,
   QueueLeaveAck,
+  RematchAck,
   SessionAuthenticateAck,
   SessionReady,
 } from "@gobblet/protocol";
@@ -26,6 +29,7 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import { isSuspended, resolveIdentity, toActor } from "../identity/resolve";
 import type { IdentityResolvers } from "../identity/resolve";
+import type { RematchBroadcast, RematchResult, RematchService } from "../matchmaking/rematch";
 import type { MatchmakingQueue, SeatedMatch } from "../matchmaking/service";
 import type { CommandResult, MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
@@ -41,6 +45,7 @@ export type GatewayOptions = Readonly<{
   runtime: MatchRuntime;
   resolvers: IdentityResolvers;
   matchmaking: MatchmakingQueue;
+  rematch: RematchService;
   log: GatewayLogger;
   now?: () => number;
   /** Left off in tests so the cadence can be driven by hand. */
@@ -119,6 +124,8 @@ export class MatchGateway {
 
   private readonly matchmaking: MatchmakingQueue;
 
+  private readonly rematch: RematchService;
+
   private readonly log: GatewayLogger;
 
   private readonly clock: () => number;
@@ -137,6 +144,7 @@ export class MatchGateway {
     this.runtime = options.runtime;
     this.resolvers = options.resolvers;
     this.matchmaking = options.matchmaking;
+    this.rematch = options.rematch;
     this.log = options.log;
     this.clock = options.now ?? ((): number => Date.now());
 
@@ -176,6 +184,9 @@ export class MatchGateway {
   async tick(): Promise<void> {
     const now = this.clock();
     await this.tickMatchmaking();
+    for (const broadcast of this.rematch.sweep()) {
+      this.publishRematch(broadcast);
+    }
     const { sync, expired } = this.clocks.tick(now);
 
     for (const event of sync) {
@@ -247,6 +258,14 @@ export class MatchGateway {
 
     socket.on(IN.matchResign, (payload: unknown, ack: Acknowledge<CommandAck>) => {
       void this.handleResign(socket, payload, ack);
+    });
+
+    socket.on(IN.matchRematchRequest, (payload: unknown, ack: Acknowledge<RematchAck>) => {
+      void this.handleRematchRequest(socket, payload, ack);
+    });
+
+    socket.on(IN.matchRematchRespond, (payload: unknown, ack: Acknowledge<RematchAck>) => {
+      void this.handleRematchRespond(socket, payload, ack);
     });
   }
 
@@ -379,6 +398,76 @@ export class MatchGateway {
         ? { ok: true }
         : { ok: false, reason: "not-queued" },
     );
+  }
+
+  private async handleRematchRequest(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<RematchAck>,
+  ): Promise<void> {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+
+    const parsed = rematchRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The rematch request is not valid", parsed.error);
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+
+    const result = await this.rematch.request(session.actor, parsed.data.matchId);
+    this.answerRematch(result, ack);
+  }
+
+  private async handleRematchRespond(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<RematchAck>,
+  ): Promise<void> {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+
+    const parsed = rematchRespondSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The rematch answer is not valid", parsed.error);
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+
+    const result = await this.rematch.respond(
+      session.actor,
+      parsed.data.matchId,
+      parsed.data.accept,
+    );
+    this.answerRematch(result, ack);
+  }
+
+  /**
+   * Every participant hears the same status, including the player who spoke, so a
+   * client never has to infer the offer's state from its own acknowledgement.
+   */
+  private answerRematch(result: RematchResult, ack: Acknowledge<RematchAck>): void {
+    if (!result.ok) {
+      ack?.({ ok: false, reason: result.reason });
+      return;
+    }
+    this.publishRematch(result.broadcast);
+    ack?.({ ok: true, status: result.broadcast.status });
+  }
+
+  private publishRematch(broadcast: RematchBroadcast): void {
+    for (const actorId of broadcast.actorIds) {
+      this.emitToActor(actorId, OUT.matchRematchStatus, broadcast.status);
+    }
+    if (broadcast.next) {
+      this.publishSeatedMatch(broadcast.next);
+    }
   }
 
   private rejectHandshake(
@@ -580,6 +669,9 @@ export class MatchGateway {
     if (sockets && sockets.size === 0) {
       this.socketsByActor.delete(session.actor.actorId);
       this.matchmaking.leave(session.actor.actorId);
+      for (const broadcast of this.rematch.cancelFor(session.actor.actorId)) {
+        this.publishRematch(broadcast);
+      }
     }
   }
 
