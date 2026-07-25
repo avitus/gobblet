@@ -37,6 +37,7 @@ export type { MatchStatePatch } from "./repositories/matches";
 export {
   countMatchEvents,
   findEventByCommandId,
+  findLatestMoveEvent,
   insertMatchEvent,
   listMatchEvents,
 } from "./repositories/match-events";

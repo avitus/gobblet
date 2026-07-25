@@ -1,9 +1,8 @@
-import { sql } from "drizzle-orm";
 import { createDatabase, runMigrations } from "../../src/index";
 import type { DatabaseHandle } from "../../src/index";
+import { ensureTestDatabase, testDatabaseUrl, truncateAllTables } from "../../src/testing";
 
-export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ?? "postgresql://gobblet@localhost:5432/gobblet_test";
+export const TEST_DATABASE_URL = testDatabaseUrl();
 
 /**
  * Integration tests need a real PostgreSQL instance (spec section 20.5). The
@@ -11,6 +10,12 @@ export const TEST_DATABASE_URL =
  * mistaken for a broken repository.
  */
 export async function setupTestDatabase(): Promise<DatabaseHandle> {
+  try {
+    await ensureTestDatabase(TEST_DATABASE_URL);
+  } catch (error) {
+    throw new Error(unreachableMessage(error));
+  }
+
   const handle = createDatabase({
     connectionString: TEST_DATABASE_URL,
     poolMax: 4,
@@ -21,18 +26,20 @@ export async function setupTestDatabase(): Promise<DatabaseHandle> {
     await runMigrations(handle.db);
   } catch (error) {
     await handle.close();
-    throw new Error(
-      `Cannot reach the test database at ${TEST_DATABASE_URL}. Start PostgreSQL or set TEST_DATABASE_URL. Cause: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    throw new Error(unreachableMessage(error));
   }
 
   return handle;
 }
 
+function unreachableMessage(error: unknown): string {
+  return `Cannot reach the test database at ${TEST_DATABASE_URL}. Start PostgreSQL or set TEST_DATABASE_URL. Cause: ${
+    error instanceof Error ? error.message : String(error)
+  }`;
+}
+
 export async function truncateAll(handle: DatabaseHandle): Promise<void> {
-  await handle.db.execute(sql`truncate table match_events, matches, guest_sessions cascade`);
+  await truncateAllTables(handle.db);
 }
 
 export type PostgresFailure = Readonly<{ code: string; constraint: string }>;

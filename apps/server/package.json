@@ -18,6 +18,9 @@
   "dependencies": {
     "@fastify/cors": "^11.0.1",
     "@gobblet/config": "workspace:*",
+    "@gobblet/db": "workspace:*",
+    "@gobblet/game-core": "workspace:*",
+    "@gobblet/protocol": "workspace:*",
     "fastify": "^5.4.0"
   },
   "devDependencies": {

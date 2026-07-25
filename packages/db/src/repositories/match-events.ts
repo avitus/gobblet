@@ -27,6 +27,20 @@ export async function findEventByCommandId(
   return row;
 }
 
+/** Backs the `lastMove` field of a snapshot, which the game state does not carry. */
+export async function findLatestMoveEvent(
+  executor: DatabaseExecutor,
+  matchId: string,
+): Promise<MatchEventRow | undefined> {
+  const [row] = await executor
+    .select()
+    .from(matchEvents)
+    .where(and(eq(matchEvents.matchId, matchId), eq(matchEvents.type, "move")))
+    .orderBy(sql`${matchEvents.sequence} desc`)
+    .limit(1);
+  return row;
+}
+
 export async function listMatchEvents(
   executor: DatabaseExecutor,
   matchId: string,

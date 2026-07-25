@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",
+    // Match runtime suites share one PostgreSQL database and truncate between
+    // tests, so files must not run in parallel.
+    fileParallelism: false,
     coverage: {
       enabled: false,
       provider: "v8",

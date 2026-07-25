@@ -44,6 +44,15 @@ importers:
       '@gobblet/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@gobblet/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@gobblet/game-core':
+        specifier: workspace:*
+        version: link:../../packages/game-core
+      '@gobblet/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       fastify:
         specifier: ^5.4.0
         version: 5.10.0
