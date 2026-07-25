@@ -1,0 +1,99 @@
+/*
+ * Design tokens (ADR-0013). Components read these variables and never raw values.
+ * Animation durations are the ones recorded in Appendix P5.10 of the product
+ * specification, so a timing change is a token change.
+ */
+:root {
+  --color-surface-base: #1b1512;
+  --color-surface-raised: #241c17;
+  --color-surface-inset: #15100d;
+  --color-surface-overlay: rgb(10 7 5 / 72%);
+  --color-border-subtle: #3a2c22;
+  --color-border-strong: #55402f;
+  --color-text-primary: #f4ece4;
+  --color-text-secondary: #bdaa99;
+  --color-text-inverse: #1b1512;
+  --color-accent: #c88a3f;
+  --color-accent-strong: #e0a457;
+  --color-accent-muted: #6d4a1f;
+  --color-status-ok: #6fbf73;
+  --color-status-warn: #e0b341;
+  --color-status-error: #d9736a;
+  --color-status-info: #79a7d9;
+  --color-piece-light: #e4c79a;
+  --color-piece-dark: #6b4326;
+  --color-board-frame: #4a3323;
+  --color-board-square: #8a6238;
+  --color-board-square-alt: #7a5530;
+  --color-destination-legal: #6fbf73;
+  --color-destination-warning: #d9736a;
+  --color-focus-ring: #f0c987;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%);
+
+  --border-width-thin: 1px;
+  --border-width-thick: 2px;
+
+  --font-family-base:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-family-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 2rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.2;
+  --line-height-base: 1.5;
+
+  --duration-instant: 90ms;
+  --duration-fast: 120ms;
+  --duration-move: 220ms;
+  --duration-gobble: 260ms;
+  --duration-medium: 240ms;
+  --duration-emphasis: 400ms;
+  --duration-transition: 600ms;
+  --duration-crossfade: 80ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0.2, 1);
+  --easing-settle: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout envelope, Appendix P5.9: designed for 1280x800, supported to 1024x640. */
+  --layout-min-width: 768px;
+  --layout-content-max: 1440px;
+  --layout-side-panel: 20rem;
+  --layout-stack-breakpoint: 1024px;
+
+  --z-board: 1;
+  --z-overlay: 10;
+  --z-dialog: 20;
+  --z-toast: 30;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: var(--duration-crossfade);
+    --duration-fast: var(--duration-crossfade);
+    --duration-move: var(--duration-crossfade);
+    --duration-gobble: var(--duration-crossfade);
+    --duration-medium: var(--duration-crossfade);
+    --duration-emphasis: var(--duration-crossfade);
+    --duration-transition: var(--duration-crossfade);
+  }
+}

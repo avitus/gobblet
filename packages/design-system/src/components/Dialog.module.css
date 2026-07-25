@@ -1,0 +1,51 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  background: var(--color-surface-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.dialog {
+  background: var(--color-surface-raised);
+  border: var(--border-width-thin) solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  padding: var(--space-6);
+  width: min(30rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  animation: appear var(--duration-medium) var(--easing-settle);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 /**
@@ -39,6 +40,35 @@ const GAME_CORE_FORBIDDEN_IMPORTS = [
   },
 ];
 
+/**
+ * A workspace package is reached through its `exports` surface only, including the
+ * browser-only packages that ship TypeScript source (see ADR-0016 and ADR-0024).
+ */
+const WORKSPACE_DEEP_IMPORTS = [
+  {
+    group: ["@gobblet/*/src", "@gobblet/*/src/*", "@gobblet/*/dist", "@gobblet/*/dist/*"],
+    message: "Import a workspace package through its exports surface, not by file path.",
+  },
+];
+
+/** The server renders nothing (see docs/architecture.md section 6). */
+const SERVER_FORBIDDEN_IMPORTS = [
+  ...WORKSPACE_DEEP_IMPORTS,
+  {
+    group: [
+      "react",
+      "react-dom",
+      "react/*",
+      "react-dom/*",
+      "three",
+      "@react-three/*",
+      "@gobblet/game-ui",
+      "@gobblet/design-system",
+    ],
+    message: "The server must not depend on client rendering packages.",
+  },
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -66,6 +96,7 @@ export default tseslint.config(
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-implicit-coercion": "error",
       "prefer-const": "error",
+      "no-restricted-imports": ["error", { patterns: WORKSPACE_DEEP_IMPORTS }],
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -117,7 +148,28 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.test.ts", "**/*.test.tsx", "**/test/**/*.ts"],
+    files: ["apps/server/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: SERVER_FORBIDDEN_IMPORTS }],
+    },
+  },
+  {
+    files: [
+      "apps/web/**/*.ts",
+      "apps/web/**/*.tsx",
+      "packages/design-system/**/*.ts",
+      "packages/design-system/**/*.tsx",
+      "packages/game-ui/**/*.ts",
+      "packages/game-ui/**/*.tsx",
+    ],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/test/**/*.ts", "**/test/**/*.tsx"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
