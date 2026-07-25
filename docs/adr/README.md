@@ -79,6 +79,10 @@ Superseding a decision:
 | 0017   | [First-party email and password authentication](0017-first-party-email-password-authentication.md)    | Accepted               | 2026-07-25 |
 | 0018   | [In-process matchmaking queues and rematch offers](0018-in-process-matchmaking-and-rematch-offers.md) | Accepted               | 2026-07-25 |
 | 0019   | [Elo written in the match completion transaction](0019-elo-in-the-completion-transaction.md)          | Accepted               | 2026-07-25 |
+| 0020   | [Client match state is the server snapshot](0020-client-match-state-is-the-server-snapshot.md)        | Accepted               | 2026-07-25 |
+| 0021   | [Playwright browser end-to-end tests](0021-playwright-browser-end-to-end-tests.md)                    | Accepted               | 2026-07-25 |
+| 0022   | [Procedural placeholder assets and synthesised sound](0022-procedural-placeholder-assets.md)          | Accepted               | 2026-07-25 |
+| 0023   | [Rendering tiers and a flat fallback board](0023-rendering-tiers-and-a-flat-fallback-board.md)        | Accepted               | 2026-07-25 |
 
 Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
 [`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents
