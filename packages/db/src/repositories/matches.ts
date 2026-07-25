@@ -79,6 +79,33 @@ export async function listUnfinishedMatches(executor: DatabaseExecutor): Promise
     .orderBy(matches.createdAt);
 }
 
+/**
+ * Moves a guest's match participation to the account that claimed it. The display
+ * names are left as they were played, so an opponent's history keeps the label
+ * they actually saw at the table.
+ */
+export async function reassignMatchParticipation(
+  executor: DatabaseExecutor,
+  from: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+  to: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+): Promise<number> {
+  const light = await executor
+    .update(matches)
+    .set({ lightPlayerType: to.actorType, lightPlayerId: to.actorId })
+    .where(
+      and(eq(matches.lightPlayerType, from.actorType), eq(matches.lightPlayerId, from.actorId)),
+    )
+    .returning({ id: matches.id });
+
+  const dark = await executor
+    .update(matches)
+    .set({ darkPlayerType: to.actorType, darkPlayerId: to.actorId })
+    .where(and(eq(matches.darkPlayerType, from.actorType), eq(matches.darkPlayerId, from.actorId)))
+    .returning({ id: matches.id });
+
+  return new Set([...light, ...dark].map((row) => row.id)).size;
+}
+
 export async function listMatchesForActor(
   executor: DatabaseExecutor,
   actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>,

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { guestSessions } from "../schema";
 import type { GuestSessionRow, NewGuestSessionRow } from "../schema";
 import type { DatabaseExecutor } from "../executor";
@@ -48,4 +48,23 @@ export async function touchGuestSession(
     .update(guestSessions)
     .set({ lastSeenAt: seenAt })
     .where(eq(guestSessions.id, guestId));
+}
+
+/**
+ * Attaches a guest session to the account that claimed it, and reports whether
+ * this call was the one that did it. A second claim of the same guest session
+ * must not move history twice (docs/product-spec.md section 2.3).
+ */
+export async function claimGuestSession(
+  executor: DatabaseExecutor,
+  guestId: string,
+  userId: string,
+  claimedAt: Date,
+): Promise<boolean> {
+  const rows = await executor
+    .update(guestSessions)
+    .set({ claimedByUserId: userId, claimedAt })
+    .where(and(eq(guestSessions.id, guestId), isNull(guestSessions.claimedByUserId)))
+    .returning({ id: guestSessions.id });
+  return rows.length === 1;
 }

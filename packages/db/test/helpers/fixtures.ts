@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { NewGuestSessionRow, NewMatchRow } from "../../src/index";
+import type { NewGuestSessionRow, NewMatchRow, NewUserRow } from "../../src/index";
 
 /**
  * `game_state` is opaque JSONB to this package; the engine shape is validated by
@@ -23,6 +23,18 @@ export function matchFixture(overrides: Partial<NewMatchRow> = {}): NewMatchRow 
     lightRemainingMs: timeControlSeconds * 1000,
     darkRemainingMs: timeControlSeconds * 1000,
     activePlayer: "light",
+    ...overrides,
+  };
+}
+
+export function userFixture(overrides: Partial<NewUserRow> = {}): NewUserRow {
+  const username = overrides.username ?? `player_${randomUUID().slice(0, 8)}`;
+  return {
+    email: `${username}@example.com`.toLowerCase(),
+    passwordHash: "scrypt$32768$8$1$placeholder$placeholder",
+    username,
+    usernameNormalized: username.toLowerCase(),
+    displayName: username,
     ...overrides,
   };
 }

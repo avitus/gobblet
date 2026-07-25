@@ -1,5 +1,6 @@
 import {
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -13,13 +14,14 @@ import {
 import { sql } from "drizzle-orm";
 
 /**
- * Phase 2 tables from docs/product-spec.md section 15. `users`, `profiles`,
- * `ratings`, achievements and audit tables arrive with the phases that own them
- * (3, 4, 6 and 7); match participants are therefore polymorphic
- * (`actor_type` plus `actor_id`) and carry no foreign key yet.
+ * Tables from docs/product-spec.md section 15. `ratings`, achievements and audit
+ * tables arrive with the phases that own them (4, 6 and 7); match participants
+ * are therefore polymorphic (`actor_type` plus `actor_id`) and carry no foreign
+ * key, because a participant may be a guest.
  */
 
 export const actorTypeEnum = pgEnum("actor_type", ["user", "guest"]);
+export const userStatusEnum = pgEnum("user_status", ["active", "suspended", "deleted"]);
 export const matchModeEnum = pgEnum("match_mode", ["casual", "ranked"]);
 export const matchStatusEnum = pgEnum("match_status", ["queued", "active", "completed", "aborted"]);
 export const matchResultEnum = pgEnum("match_result", ["light", "dark", "draw"]);
@@ -40,13 +42,98 @@ export const matchEventTypeEnum = pgEnum("match_event_type", [
   "match-ended",
 ]);
 
+/**
+ * Section 15.1 names `auth_subject` because identity was going to be delegated.
+ * It is replaced by the credential this project owns (appendix P3):
+ * `email` plus `password_hash`. `username_normalized` is the column uniqueness is
+ * enforced on, so two names that differ only by capitalisation cannot coexist.
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    username: text("username").notNull(),
+    usernameNormalized: text("username_normalized").notNull(),
+    displayName: text("display_name").notNull(),
+    status: userStatusEnum("status").notNull().default("active"),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    suspendedReason: text("suspended_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("users_email_key").on(table.email),
+    uniqueIndex("users_username_normalized_key").on(table.usernameNormalized),
+  ],
+);
+
+export const profiles = pgTable("profiles", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  avatarUrl: text("avatar_url"),
+  countryCode: text("country_code"),
+  presetMessagesMuted: boolean("preset_messages_muted").notNull().default(false),
+  reactionsMuted: boolean("reactions_muted").notNull().default(false),
+  gameSoundMuted: boolean("game_sound_muted").notNull().default(false),
+  reducedMotion: boolean("reduced_motion").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Account sessions, stored the same way as guest sessions: hash only. */
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_sessions_token_hash_key").on(table.tokenHash),
+    index("user_sessions_user_idx").on(table.userId),
+  ],
+);
+
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("email_verification_tokens_token_hash_key").on(table.tokenHash),
+    index("email_verification_tokens_user_idx").on(table.userId),
+  ],
+);
+
 export const guestSessions = pgTable(
   "guest_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tokenHash: text("token_hash").notNull(),
     displayName: text("display_name").notNull(),
-    claimedByUserId: uuid("claimed_by_user_id"),
+    claimedByUserId: uuid("claimed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
@@ -112,6 +199,14 @@ export const matchEvents = pgTable(
   ],
 );
 
+export type UserRow = typeof users.$inferSelect;
+export type NewUserRow = typeof users.$inferInsert;
+export type ProfileRow = typeof profiles.$inferSelect;
+export type NewProfileRow = typeof profiles.$inferInsert;
+export type UserSessionRow = typeof userSessions.$inferSelect;
+export type NewUserSessionRow = typeof userSessions.$inferInsert;
+export type EmailVerificationTokenRow = typeof emailVerificationTokens.$inferSelect;
+export type NewEmailVerificationTokenRow = typeof emailVerificationTokens.$inferInsert;
 export type GuestSessionRow = typeof guestSessions.$inferSelect;
 export type NewGuestSessionRow = typeof guestSessions.$inferInsert;
 export type MatchRow = typeof matches.$inferSelect;
