@@ -99,6 +99,28 @@ describe("createMatch", () => {
     expect(snapshot.mode).toBe("ranked");
     expect(snapshot.clocks.darkRemainingMs).toBe(180_000);
   });
+
+  it.each([180, 300, 600, 900] as const)(
+    "gives both sides %i seconds and expires at exactly that budget",
+    async (timeControlSeconds) => {
+      const budget = timeControlSeconds * 1_000;
+      const snapshot = await createMatch(timeControlSeconds);
+
+      expect(snapshot.timeControlSeconds).toBe(timeControlSeconds);
+      expect(snapshot.clocks.lightRemainingMs).toBe(budget);
+      expect(snapshot.clocks.darkRemainingMs).toBe(budget);
+
+      clock.advance(budget - 1);
+      expect((await runtime.settleExpiredClock(snapshot.matchId))?.ended).toBeNull();
+      clock.advance(1);
+      expect((await runtime.settleExpiredClock(snapshot.matchId))?.ended).toEqual({
+        matchId: snapshot.matchId,
+        version: 1,
+        result: "dark",
+        reason: "timeout",
+      });
+    },
+  );
 });
 
 describe("playing a match through the runtime", () => {
@@ -311,6 +333,21 @@ describe("resignation", () => {
 });
 
 describe("clock expiry", () => {
+  it("accepts a move that arrives one millisecond before the flag falls", async () => {
+    const { matchId } = await createMatch(180);
+    clock.advance(179_999);
+
+    const result = await runtime.applyMoveCommand(LIGHT_ACTOR, {
+      ...envelope(matchId, 0),
+      payload: { move: WINNING_SCRIPT[0]! },
+    });
+
+    expectAccepted(result, 1);
+    // The remaining millisecond is charged and nothing is added back: no increment.
+    expect(result.moveCommitted?.clocks.lightRemainingMs).toBe(1);
+    expect(result.snapshot?.status).toBe("active");
+  });
+
   it("settles a timeout when a command arrives too late", async () => {
     const { matchId } = await createMatch(180);
     clock.advance(180_001);

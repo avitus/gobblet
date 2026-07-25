@@ -18,7 +18,7 @@ lifecycle.
 | ----- | ---------------------------------------- | ----------- |
 | 0     | Repository, decisions, delivery skeleton | Delivered\* |
 | 1     | Authoritative rules engine (`game-core`) | Delivered   |
-| 2     | Persistence and match runtime            | Not started |
+| 2     | Persistence and match runtime            | Delivered   |
 | 3     | Authentication, guests, profiles         | Not started |
 | 4     | Matchmaking, Elo, rematches              | Not started |
 | 5     | Playable 3D client                       | Not started |
@@ -41,8 +41,12 @@ and in section 18 of the traceability matrix.
 
 - Node.js 22 or newer (see `.nvmrc`)
 - pnpm 10 (`corepack enable pnpm`)
-- Docker with Compose (optional locally, used for PostgreSQL)
+- PostgreSQL 16, either through Docker Compose or natively (`brew install postgresql@16`)
 - Rust toolchain (only needed to build the desktop shell)
+
+The server and database test suites need a reachable PostgreSQL. They create their own
+databases (`gobblet_test`, `gobblet_test_server`) from `TEST_DATABASE_URL`; see
+`.env.example`.
 
 ## Quick start
 
@@ -53,7 +57,8 @@ cp .env.example .env
 pnpm dev
 ```
 
-`pnpm dev` starts PostgreSQL (via Docker Compose when available), the API server on
+`pnpm dev` starts PostgreSQL (via Docker Compose when available, otherwise it uses the
+PostgreSQL already listening locally), applies the migrations, then starts the API server on
 `http://localhost:4000` and the web client on `http://localhost:5173`.
 
 ## Repository layout
@@ -63,9 +68,11 @@ What exists today:
 ```
 apps/
   web/          React + Vite web client shell (design tokens, /v1/config probe)
-  server/       Fastify HTTP API (health endpoints, public config)
+  server/       Fastify HTTP API, match runtime and Socket.IO gateway
 packages/
   game-core/    Pure, dependency-free authoritative rules engine
+  protocol/     Zod schemas for the command envelope, snapshots, events and HTTP bodies
+  db/           PostgreSQL schema, migrations and repositories (Drizzle)
   config/       Typed environment configuration (zod)
 docs/           Specification, rules, architecture, protocol, operations, ADRs
 scripts/        Local development entry point
@@ -78,11 +85,9 @@ needs them:
 apps/
   desktop/      Tauri v2 shell packaging the same client build (Phase 8)
 packages/
-  protocol/     Zod schemas and shared event/command types (Phase 2)
-  db/           PostgreSQL access (Drizzle) and migrations (Phase 2)
   observability/ Logging, metrics and error reporting helpers (Phase 7)
   design-system/ Shared UI primitives on top of the tokens (Phase 5)
-  test-utils/   Shared deterministic test helpers (Phase 2)
+  test-utils/   Shared deterministic test helpers (Phase 5)
 assets/         Brand, models, textures, audio and license records (Phase 5)
 infra/          Deployment, monitoring and backup definitions (Phase 7)
 ```

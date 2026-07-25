@@ -21,6 +21,15 @@ versioning for desktop releases; the web client tracks the same version number.
 - Phase 1 `@gobblet/game-core`: the authoritative, dependency-free 4x4 Gobblet
   rules engine with move enumeration, terminal evaluation, canonical position
   keys, invariant assertions, unit tests and property-based tests.
+- Phase 2 `@gobblet/protocol`: the wire contract as Zod schemas, shared between
+  server and clients, including the command envelope, acknowledgements, snapshots,
+  socket events and HTTP bodies.
+- Phase 2 `@gobblet/db`: PostgreSQL schema and migrations for guest sessions,
+  matches and the append-only match event log, with row-locking repositories.
+- Phase 2 `@gobblet/server`: the authoritative match runtime (versioned idempotent
+  commands, server-owned clocks, resignation, timeout, restart recovery), guest
+  sessions, the Phase 2 HTTP surface and the Socket.IO gateway that lets two
+  clients play a full match through the server.
 
 ### Notes
 
@@ -28,3 +37,6 @@ versioning for desktop releases; the web client tracks the same version number.
   in `docs/product-spec.md`.
 - Two Phase 0 exit criteria remain open (empty Tauri shells in CI, reachable staging
   health check) and are recorded in appendix P0 of `docs/product-spec.md`.
+- Phase 2 decisions and deviations, including the development only match creation
+  route and the native PostgreSQL used locally instead of a container, are recorded
+  in appendix P2 of `docs/product-spec.md`.

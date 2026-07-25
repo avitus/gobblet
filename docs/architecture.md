@@ -103,12 +103,12 @@ endpoints and `GET /v1/config`. All other interactions are planned.
 | ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
 | `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Skeleton (Phase 0), gameplay planned (Phase 5)      |
 | `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Skeleton (Phase 0), match runtime planned (Phase 2) |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 2), gameplay surface grows later |
 | `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
 | `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions   | Implemented (Phase 1)                               |
-| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Planned (Phase 2)                                   |
-| `packages/db`            | Drizzle schema, migrations, transactional repositories                  | Planned (Phase 2)                                   |
-| `packages/config`        | Typed environment parsing and validation                                | Skeleton (Phase 0)                                  |
+| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Implemented (Phase 2)                               |
+| `packages/db`            | Drizzle schema, migrations, transactional repositories                  | Implemented (Phase 2)                               |
+| `packages/config`        | Typed environment parsing and validation                                | Implemented (Phase 0)                               |
 | `packages/auth`          | Auth0 token verification and session helpers                            | Planned (Phase 3)                                   |
 | `packages/observability` | Pino logging, metrics registry, error reporting helpers                 | Planned (Phase 7)                                   |
 | `packages/design-system` | CSS custom property tokens and shared primitives                        | Planned (Phase 5)                                   |
@@ -235,8 +235,8 @@ timeout.
 
 ## 8. Data flow: an accepted move
 
-Status: planned (Phase 2). The sequence below is the contract the match runtime must
-implement.
+Status: implemented (Phase 2) in `apps/server/src/match/runtime.ts`. The sequence below is the
+contract the match runtime implements.
 
 ```text
 Client                                  Server                          PostgreSQL
@@ -287,7 +287,7 @@ Invariants:
 
 ## 9. Data flow: reconnection and recovery
 
-Status: planned (Phase 2).
+Status: implemented (Phase 2) in `apps/server/src/socket/gateway.ts`.
 
 ```text
 Client reconnects
@@ -304,12 +304,12 @@ Client reconnects
 ```
 
 If the socket transport is unavailable but HTTP is reachable, participants can recover state
-through `GET /v1/matches/:matchId/snapshot` (planned, Phase 2). Recovery never depends on
+through `GET /v1/matches/:matchId/snapshot` (implemented, Phase 2). Recovery never depends on
 in-memory server state, so a client can reconnect to a different container after a deploy.
 
 ## 10. Clock architecture
 
-Status: planned (Phase 2). Recorded in
+Status: implemented (Phase 2). Recorded in
 [ADR-0009](adr/0009-server-authoritative-clocks.md).
 
 Chess-style clocks, no increment, no delay, no latency compensation. Persisted fields on the
@@ -330,7 +330,8 @@ effective_remaining = stored_remaining_ms - (server_now - turn_started_at)
 
 ## 11. Restart, recovery and deploy draining
 
-Status: planned (Phase 2 for restart recovery, Phase 7 for the full deploy pipeline).
+Status: restart recovery implemented (Phase 2) in `apps/server/src/bootstrap.ts`; the full
+deploy pipeline with draining arrives in Phase 7.
 
 On process start:
 
@@ -378,12 +379,14 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | --------------------------------------------------------- | ----------- | ------------ |
 | Monorepo, task graph, lint, formatting                    | Implemented | Phase 0      |
 | Package boundary enforcement for `game-core`              | Implemented | Phase 0      |
-| Typed environment configuration                           | Skeleton    | Phase 0      |
+| Typed environment configuration                           | Implemented | Phase 0      |
 | `GET /health/live`, `GET /health/ready`, `GET /v1/config` | Implemented | Phase 0      |
 | Pure rules engine `@gobblet/game-core`                    | Implemented | Phase 1      |
-| Zod protocol package                                      | Planned     | Phase 2      |
-| PostgreSQL schema, migrations, match persistence          | Planned     | Phase 2      |
-| Match runtime, command application, clocks                | Planned     | Phase 2      |
+| Zod protocol package                                      | Implemented | Phase 2      |
+| PostgreSQL schema, migrations, match persistence          | Implemented | Phase 2      |
+| Match runtime, command application, clocks                | Implemented | Phase 2      |
+| Guest sessions and the Phase 2 HTTP surface               | Implemented | Phase 2      |
+| Socket.IO gateway: sync, move, resign, clock cadence      | Implemented | Phase 2      |
 | Auth0 identity, guests, profiles                          | Planned     | Phase 3      |
 | Matchmaking, Elo, rematch                                 | Planned     | Phase 4      |
 | 3D client and shared game UI                              | Planned     | Phase 5      |

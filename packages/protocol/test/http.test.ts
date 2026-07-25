@@ -44,6 +44,11 @@ describe("guest endpoints", () => {
   it("treats the requested display name as optional but bounded", () => {
     expect(createGuestRequestSchema.parse({})).toEqual({});
     expect(createGuestRequestSchema.parse({ displayName: "ada" })).toEqual({ displayName: "ada" });
+    // Trimmed before validation, so padding cannot create two identical looking names.
+    expect(createGuestRequestSchema.parse({ displayName: "  ada  " })).toEqual({
+      displayName: "ada",
+    });
+    expect(createGuestRequestSchema.safeParse({ displayName: "   " }).success).toBe(false);
     expect(createGuestRequestSchema.safeParse({ displayName: "" }).success).toBe(false);
     expect(createGuestRequestSchema.safeParse({ displayName: "a".repeat(33) }).success).toBe(false);
   });

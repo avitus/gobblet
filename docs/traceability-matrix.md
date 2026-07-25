@@ -31,12 +31,12 @@ The Elo half of scenario F (ranked players receive draw updates) belongs to Phas
 Scenarios that need the server runtime are not engine scenarios and are held open
 with their owning phase:
 
-| Scenario | Description                     | Planned home                                                   |
-| -------- | ------------------------------- | -------------------------------------------------------------- |
-| G        | Timeout during disconnect       | Phase 2, clock and runtime integration tests (spec 20.4, 20.5) |
-| H        | Retry after lost acknowledgment | Phase 2, protocol idempotency tests (spec 20.3)                |
-| I        | Guest claim                     | Phase 3, integration tests (spec 20.5)                         |
-| J        | Active match deployment         | Phase 7, restart and drain recovery tests (spec 20.5)          |
+| Scenario | Description                     | Where or planned home                                                                                                    |
+| -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| G        | Timeout during disconnect       | `socket-gateway.test.ts` > `ends the match on time with no command from either player` (held)                            |
+| H        | Retry after lost acknowledgment | `socket-gateway.test.ts` > `acknowledges a duplicate command without moving twice` (held)                                |
+| I        | Guest claim                     | Phase 3, integration tests (spec 20.5)                                                                                   |
+| J        | Active match deployment         | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`, hardened in Phase 7 with drain |
 
 ## 2. Equipment and setup
 
@@ -259,3 +259,69 @@ Reserve entries never reveal anything, which is covered by `reveal.test.ts` >
 | No UI or server dependency                      | Purity lint boundary in `eslint.config.mjs`                                                                                    |
 | Rules documentation with examples               | [`rules.md`](rules.md), worked edge cases in section 16                                                                        |
 | Ambiguities recorded, not silently decided      | [`rules.md` section 13](rules.md#13-open-questions-and-interpretations), `product-spec.md` appendix P1                         |
+
+## 20. Specification test checklist for the match runtime (spec 20.3, 20.4, 20.5)
+
+Test roots: `apps/server/test`, `packages/db/test`, `packages/protocol/test`. Run everything
+with `pnpm verify`. The server and database suites need PostgreSQL; `TEST_DATABASE_URL` selects
+the database and each suite uses its own (`gobblet_test`, `gobblet_test_server`).
+
+### 20.1 Protocol tests (spec 20.3)
+
+| Required test                                          | Where                                                                                                                                                                                                     |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schema compatibility                                   | `packages/protocol/test` (71 tests), `packages/config/test/protocol-alignment.test.ts`                                                                                                                    |
+| Duplicate command IDs                                  | `phase2-exit-criteria.test.ts` > `applies one move when the same command arrives twice at once`; `match-runtime.test.ts` > `rejects a duplicate command without applying it twice`                        |
+| Stale expected versions                                | `phase2-exit-criteria.test.ts` > `accepts one of two different commands that claim the same version`; `socket-gateway.test.ts` > `rejects a stale version and returns the snapshot to correct the client` |
+| Out-of-order events                                    | `phase2-exit-criteria.test.ts` asserts a gapless `sequence`; `packages/db/test` unique `(match_id, sequence)`                                                                                             |
+| Reconnect during move                                  | `socket-gateway.test.ts` > `returns the authoritative snapshot to a participant`; `phase2-exit-criteria.test.ts` restart test resyncs mid-match                                                           |
+| Reconnect after move commit but before acknowledgement | `socket-gateway.test.ts` > `acknowledges a duplicate command without moving twice` (the retry receives the committed snapshot)                                                                            |
+| Match completion exactly once                          | `phase2-exit-criteria.test.ts` > `is committed once and refuses every later command`                                                                                                                      |
+| Rating update exactly once                             | Phase 4, no rating exists yet                                                                                                                                                                             |
+| Achievement award exactly once                         | Phase 6, no achievement exists yet                                                                                                                                                                        |
+
+### 20.2 Clock tests (spec 20.4)
+
+All clock tests inject a fake clock (`TestClock` in `apps/server/test/helpers/match-fixtures.ts`).
+
+| Required test                          | Where                                                                                                                                          |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Move immediately before timeout        | `match-runtime.test.ts` > `accepts a move that arrives one millisecond before the flag falls`                                                  |
+| Move received at timeout               | `match-runtime.test.ts` > `settles a timeout when a command arrives too late`                                                                  |
+| Clock after reconnect                  | `socket-gateway.test.ts` > `returns the authoritative snapshot to a participant`, cadence suite                                                |
+| Clock after process restart            | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`                                                       |
+| Clock after system sleep               | `bootstrap.test.ts` > `settles matches whose clock expired while the process was down` (a clock jump is a sleep as far as the server can tell) |
+| No increment                           | `match-runtime.test.ts` > `charges only the moving side and restarts the turn clock`, and the no-increment assertion in the pre-timeout test   |
+| Every time control                     | `match-runtime.test.ts` > `gives both sides %i seconds and expires at exactly that budget` (180, 300, 600, 900)                                |
+| Resignation while clock running        | `match-runtime.test.ts` > `stops the clock of the side that was thinking`                                                                      |
+| Simultaneous timeout and move ordering | `match-runtime.test.ts` > `settles exactly once when two commands race`, `never settles twice`                                                 |
+
+### 20.3 Integration tests (spec 20.5)
+
+| Required test                                         | Where                                                                                    |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Guest casual match end to end                         | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once`      |
+| Planned deployment restart with active match recovery | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions` |
+| Account ranked match end to end                       | Phase 3 and Phase 4                                                                      |
+| Guest claim                                           | Phase 3                                                                                  |
+| Authentication connection mappings                    | Phase 3                                                                                  |
+| Matchmaking rating expansion                          | Phase 4                                                                                  |
+| Rematch                                               | Phase 4                                                                                  |
+| Desktop deep-link callback                            | Phase 8                                                                                  |
+
+Specification section 20.5 asks for the server and PostgreSQL in containers. CI runs the
+`postgres:16-alpine` service container; locally the suites use a native PostgreSQL because this
+machine has no container runtime, recorded in
+[`product-spec.md` appendix P2](product-spec.md#appendix-p2--phase-2-decisions-and-deviations).
+
+## 21. Phase 2 exit criteria (spec 24)
+
+| Criterion                                                 | Evidence                                                                                                                                                                         |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two test clients complete a full match through the server | `phase2-exit-criteria.test.ts` > `commits every move and the terminal outcome once` (two sockets, real database)                                                                 |
+| Restart during an active match recovers state and clocks  | `phase2-exit-criteria.test.ts` > `recovers the state, the clocks and the guest sessions`; `bootstrap.test.ts` > `settles matches whose clock expired while the process was down` |
+| Duplicate move commands do not duplicate moves            | `phase2-exit-criteria.test.ts` > `applies one move when the same command arrives twice at once`                                                                                  |
+| Terminal outcome committed exactly once                   | `phase2-exit-criteria.test.ts` > `is committed once and refuses every later command`; `match-runtime.test.ts` > `settles exactly once when two commands race`                    |
+| Server-authoritative clock with no client trust           | `match-clock.test.ts`, `clock-broadcaster.test.ts`, `match-runtime.test.ts` > `uses the server clock, not the client timestamp`                                                  |
+| Append-only event log per match                           | `packages/db/test`, `match-runtime.test.ts` sequence and state-hash assertions                                                                                                   |
+| One copy of the rule logic                                | `eslint.config.mjs` purity boundary, `apps/server/src/match/state.ts` delegates every decision to `@gobblet/game-core`                                                           |
