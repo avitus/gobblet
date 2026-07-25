@@ -3,9 +3,11 @@ import type { BinaryLike, ScryptOptions } from "node:crypto";
 import { promisify } from "node:util";
 
 /**
- * Password verification owned by this project, decided in
+ * Password storage owned by this project, decided in
  * docs/adr/0017-first-party-email-password-authentication.md. The cost is stored
  * with every hash, so it can be raised later without invalidating old records.
+ * What counts as an acceptable password is a wire rule and lives in
+ * `@gobblet/protocol`, which the browser can also load.
  */
 export const PASSWORD_HASH_ALGORITHM = "scrypt";
 
@@ -26,9 +28,6 @@ export const DEFAULT_SCRYPT_COST: ScryptCost = Object.freeze({
   saltLength: 16,
 });
 
-export const PASSWORD_MIN_LENGTH = 10;
-export const PASSWORD_MAX_LENGTH = 200;
-
 /**
  * Floor for a stored hash. A shorter value is either a truncated record or a
  * weakened one, and either way it must not verify.
@@ -40,33 +39,6 @@ const MIN_SALT_LENGTH = 8;
 const MAX_STORED_N = 2 ** 22;
 const MAX_STORED_R = 32;
 const MAX_STORED_P = 16;
-
-export type PasswordPolicyFailure =
-  "too-short" | "too-long" | "whitespace-only" | "no-letter" | "no-number-or-symbol";
-
-/**
- * A deliberately small policy: length does the work, and a single character
- * class requirement stops "aaaaaaaaaa". Composition rules beyond this push
- * players towards predictable substitutions without adding entropy.
- */
-export function checkPasswordPolicy(password: string): PasswordPolicyFailure | null {
-  if (password.trim().length === 0) {
-    return "whitespace-only";
-  }
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return "too-short";
-  }
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    return "too-long";
-  }
-  if (!/\p{L}/u.test(password)) {
-    return "no-letter";
-  }
-  if (!/[\p{N}\p{P}\p{S}]/u.test(password)) {
-    return "no-number-or-symbol";
-  }
-  return null;
-}
 
 const scryptAsync = promisify<BinaryLike, BinaryLike, number, ScryptOptions, Buffer>(scrypt);
 

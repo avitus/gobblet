@@ -1,44 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_SCRYPT_COST,
-  checkPasswordPolicy,
-  hashPassword,
-  needsRehash,
-  verifyPassword,
-} from "../src/index";
+import { DEFAULT_SCRYPT_COST, hashPassword, needsRehash, verifyPassword } from "../src/index";
 
 /** A cheap cost keeps the suite fast; the parameters are what is under test, not the CPU burn. */
 const testCost = { N: 1_024, r: 8, p: 1, keyLength: 32, saltLength: 16 } as const;
-
-describe("checkPasswordPolicy", () => {
-  it("accepts a password with length, a letter and a number", () => {
-    expect(checkPasswordPolicy("correct-horse-7")).toBeNull();
-  });
-
-  it("accepts a letter with a symbol instead of a number", () => {
-    expect(checkPasswordPolicy("correct horse!")).toBeNull();
-  });
-
-  it("rejects a password that is only whitespace", () => {
-    expect(checkPasswordPolicy("              ")).toBe("whitespace-only");
-  });
-
-  it("rejects a short password", () => {
-    expect(checkPasswordPolicy("short1!")).toBe("too-short");
-  });
-
-  it("rejects an absurdly long password", () => {
-    expect(checkPasswordPolicy(`${"a1".repeat(200)}`)).toBe("too-long");
-  });
-
-  it("rejects digits with no letter", () => {
-    expect(checkPasswordPolicy("1234567890")).toBe("no-letter");
-  });
-
-  it("rejects letters with nothing else", () => {
-    expect(checkPasswordPolicy("abcdefghijk")).toBe("no-number-or-symbol");
-  });
-});
 
 describe("hashPassword", () => {
   it("produces a self-describing hash with its parameters", async () => {

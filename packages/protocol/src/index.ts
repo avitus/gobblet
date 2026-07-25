@@ -13,15 +13,23 @@ export {
   COMMAND_REJECTION_REASONS,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
+  EMAIL_MAX_LENGTH,
   FATAL_ERROR_ACTIONS,
   HTTP_ERROR_CODES,
   MATCH_END_REASONS,
   MATCH_MODES,
   MATCH_RESULTS,
   MATCH_STATUSES,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
   PROTOCOL_VERSION,
+  RESERVED_USERNAMES,
   SERVER_TO_CLIENT_EVENTS,
   TIME_CONTROL_SECONDS,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_UNAVAILABLE_REASONS,
+  USER_STATUSES,
   isActorType,
   isCommandRejectionReason,
   isMatchEndReason,
@@ -29,6 +37,7 @@ export {
   isMatchResultOutcome,
   isMatchStatus,
   isTimeControlSeconds,
+  isUserStatus,
 } from "./constants";
 
 export type {
@@ -46,7 +55,60 @@ export type {
   ServerToClientEventKey,
   ServerToClientEventName,
   TimeControlSeconds,
+  UserStatus,
+  UsernameUnavailableReason,
 } from "./constants";
+
+export {
+  avatarUrlSchema,
+  countryCodeSchema,
+  emailSchema,
+  isReservedUsername,
+  normalizeEmail,
+  normalizeUsername,
+  passwordSchema,
+  usernameSchema,
+} from "./identity";
+
+export type { CountryCode, Email, Username } from "./identity";
+
+export {
+  accountSchema,
+  authResponseSchema,
+  casualRecordSchema,
+  checkUsernameRequestSchema,
+  checkUsernameResponseSchema,
+  claimGuestRequestSchema,
+  claimGuestResponseSchema,
+  emailVerificationHandoffSchema,
+  issuedSessionSchema,
+  meResponseSchema,
+  profileSettingsSchema,
+  publicProfileSchema,
+  registerRequestSchema,
+  signInRequestSchema,
+  updateProfileRequestSchema,
+  verifyEmailRequestSchema,
+} from "./account";
+
+export type {
+  Account,
+  AuthResponse,
+  CasualRecord,
+  CheckUsernameRequest,
+  CheckUsernameResponse,
+  ClaimGuestRequest,
+  ClaimGuestResponse,
+  EmailVerificationHandoff,
+  IssuedSession,
+  MeResponse,
+  ProfileSettings,
+  PublicProfile,
+  RegisterRequest,
+  SignInRequest,
+  UpdateProfileRequest,
+  VerifyEmailRequest,
+} from "./account";
 
 export {
   boardMoveSchema,

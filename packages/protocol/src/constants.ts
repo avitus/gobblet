@@ -61,6 +61,45 @@ export const APP_ENVIRONMENTS = Object.freeze(["local", "staging", "production"]
 export const DISPLAY_NAME_MIN_LENGTH = 2;
 export const DISPLAY_NAME_MAX_LENGTH = 24;
 
+/** Account status from docs/product-spec.md section 15.1. */
+export const USER_STATUSES = Object.freeze(["active", "suspended", "deleted"] as const);
+
+export const EMAIL_MAX_LENGTH = 254;
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MAX_LENGTH = 200;
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+
+/** Why a requested username cannot be used, for `POST /v1/usernames/check`. */
+export const USERNAME_UNAVAILABLE_REASONS = Object.freeze([
+  "invalid",
+  "reserved",
+  "taken",
+] as const);
+
+/**
+ * Names that must not become a player identity because they read as authority or
+ * as a system surface.
+ */
+export const RESERVED_USERNAMES: readonly string[] = Object.freeze([
+  "admin",
+  "administrator",
+  "api",
+  "gobblet",
+  "guest",
+  "help",
+  "me",
+  "mod",
+  "moderator",
+  "official",
+  "owner",
+  "root",
+  "staff",
+  "support",
+  "system",
+  "unknown",
+]);
+
 export const CLIENT_TO_SERVER_EVENTS = Object.freeze({
   sessionAuthenticate: "session:authenticate",
   queueJoin: "queue:join",
@@ -97,6 +136,8 @@ export type MatchStatus = (typeof MATCH_STATUSES)[number];
 export type MatchResultOutcome = (typeof MATCH_RESULTS)[number];
 export type MatchEndReason = (typeof MATCH_END_REASONS)[number];
 export type ActorType = (typeof ACTOR_TYPES)[number];
+export type UserStatus = (typeof USER_STATUSES)[number];
+export type UsernameUnavailableReason = (typeof USERNAME_UNAVAILABLE_REASONS)[number];
 export type CommandRejectionReason = (typeof COMMAND_REJECTION_REASONS)[number];
 export type HttpErrorCode = (typeof HTTP_ERROR_CODES)[number];
 export type FatalErrorAction = (typeof FATAL_ERROR_ACTIONS)[number];
@@ -133,6 +174,10 @@ export function isMatchEndReason(value: unknown): value is MatchEndReason {
 
 export function isActorType(value: unknown): value is ActorType {
   return isMemberOf(ACTOR_TYPES, value);
+}
+
+export function isUserStatus(value: unknown): value is UserStatus {
+  return isMemberOf(USER_STATUSES, value);
 }
 
 export function isCommandRejectionReason(value: unknown): value is CommandRejectionReason {
