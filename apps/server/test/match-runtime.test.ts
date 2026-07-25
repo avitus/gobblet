@@ -118,7 +118,7 @@ describe("playing a match through the runtime", () => {
       expect(result.moveCommitted?.actor).toBe(index % 2 === 0 ? "light" : "dark");
     }
 
-    const final = await runtime.getSnapshot(matchId);
+    const final = await runtime.getSnapshotForActor(matchId, LIGHT_ACTOR);
     expect(final?.status).toBe("completed");
     expect(final?.result).toEqual({ outcome: "light", reason: "line" });
     expect(final?.version).toBe(WINNING_SCRIPT.length);
@@ -147,7 +147,7 @@ describe("playing a match through the runtime", () => {
       expectAccepted(result, index + 1);
     }
 
-    const final = await runtime.getSnapshot(matchId);
+    const final = await runtime.getSnapshotForActor(matchId, LIGHT_ACTOR);
     expect(final?.status).toBe("completed");
     expect(final?.result).toEqual({ outcome: "draw", reason: "repetition" });
   });
@@ -402,7 +402,7 @@ describe("restart recovery", () => {
       { matchId: expiring.matchId, version: 1, result: "dark", reason: "timeout" },
     ]);
 
-    const recovered = await restarted.getSnapshot(surviving.matchId);
+    const recovered = await restarted.getSnapshotForActor(surviving.matchId, LIGHT_ACTOR);
     expect(recovered?.status).toBe("active");
     expect(recovered?.clocks.lightRemainingMs).toBe(900_000);
     expect(recovered?.clocks.turnStartedAt).toBe(clock.now() - 181_000);
@@ -418,7 +418,7 @@ describe("restart recovery", () => {
     });
 
     const restarted = new MatchRuntime({ db: handle.db, now: clock.now });
-    const snapshot = await restarted.getSnapshot(matchId);
+    const snapshot = await restarted.getSnapshotForActor(matchId, DARK_ACTOR);
     expect(snapshot?.version).toBe(1);
     expect(snapshot?.activePlayer).toBe("dark");
     expect(snapshot?.lastMove).toEqual({ move: WINNING_SCRIPT[0], version: 1 });
@@ -443,15 +443,15 @@ describe("reads", () => {
   it("returns null for unknown matches", async () => {
     const unknown = randomUUID();
 
-    expect(await runtime.getSnapshot(unknown)).toBeNull();
-    expect(await runtime.getSummary(unknown)).toBeNull();
+    expect(await runtime.getSnapshotForActor(unknown, LIGHT_ACTOR)).toBeNull();
+    expect(await runtime.getSummaryForActor(unknown, LIGHT_ACTOR)).toBeNull();
     expect(await runtime.getClockSync(unknown)).toBeNull();
   });
 
   it("summarises a match for the HTTP surface", async () => {
     const { matchId } = await createMatch();
 
-    const summary = await runtime.getSummary(matchId);
+    const summary = await runtime.getSummaryForActor(matchId, LIGHT_ACTOR);
 
     expect(summary?.status).toBe("active");
     expect(summary?.players.dark.displayName).toBe("dark-player");

@@ -10,7 +10,9 @@ Related documents: [`product-spec.md`](product-spec.md),
 
 ## 1. Implementation status
 
-Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/config`.
+Implemented HTTP surfaces: `GET /health/live`, `GET /health/ready`, `GET /v1/config`,
+`POST /v1/guests`, `GET /v1/matches/:matchId`, `GET /v1/matches/:matchId/snapshot` and the
+development only `POST /v1/dev/matches`. The Socket.IO surface is not implemented yet.
 
 The schemas of the command envelope, the acknowledgement contract, the snapshot, the Phase 2
 socket payloads and the Phase 2 HTTP bodies are implemented in `@gobblet/protocol`, which is
@@ -254,7 +256,7 @@ Status: planned. The phase column states when each event is delivered.
 
 | Method | Path                  | Auth    | Purpose                                     | Phase | Implemented today |
 | ------ | --------------------- | ------- | ------------------------------------------- | ----- | ----------------- |
-| POST   | `/v1/guests`          | none    | Create a guest session                      | 3     | No                |
+| POST   | `/v1/guests`          | none    | Create a guest session                      | 2     | Yes               |
 | POST   | `/v1/guests/claim`    | session | Convert a guest session into an account     | 3     | No                |
 | GET    | `/v1/me`              | user    | Current account, verification state, rating | 3     | No                |
 | PATCH  | `/v1/me/profile`      | user    | Update profile fields                       | 3     | No                |
@@ -267,11 +269,22 @@ Status: planned. The phase column states when each event is delivered.
 
 | Method | Path                            | Auth        | Purpose                             | Phase | Implemented today |
 | ------ | ------------------------------- | ----------- | ----------------------------------- | ----- | ----------------- |
-| GET    | `/v1/matches/:matchId`          | participant | Match metadata and result           | 2     | No                |
-| GET    | `/v1/matches/:matchId/snapshot` | participant | Authoritative snapshot for recovery | 2     | No                |
+| GET    | `/v1/matches/:matchId`          | participant | Match metadata and result           | 2     | Yes               |
+| GET    | `/v1/matches/:matchId/snapshot` | participant | Authoritative snapshot for recovery | 2     | Yes               |
 
 Both endpoints are restricted to match participants and admins. A non-participant receives the
-same not-found shape as an unknown match id so match existence is not leaked.
+same not-found shape as an unknown match id so match existence is not leaked. In Phase 2 the only
+credential is a guest session token, sent as `Authorization: Bearer <sessionToken>`.
+
+### 9.3.1 Development only
+
+| Method | Path              | Auth | Purpose                        | Phase | Implemented today |
+| ------ | ----------------- | ---- | ------------------------------ | ----- | ----------------- |
+| POST   | `/v1/dev/matches` | none | Create a match without a queue | 2     | Yes               |
+
+Matchmaking arrives in Phase 4, so Phase 2 needs a way to start a match. The route is only
+registered when `APP_ENV` is `local` or `NODE_ENV` is `test`; a deployed environment answers
+`404 not_found` because the route does not exist there.
 
 ### 9.4 Administration
 

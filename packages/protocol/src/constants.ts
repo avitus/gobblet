@@ -34,6 +34,18 @@ export const COMMAND_REJECTION_REASONS = Object.freeze([
   "duplicate-command",
 ] as const);
 
+/** HTTP problem codes from docs/protocol.md section 10.1. */
+export const HTTP_ERROR_CODES = Object.freeze([
+  "validation_failed",
+  "unauthenticated",
+  "forbidden",
+  "not_found",
+  "conflict",
+  "rate_limited",
+  "internal_error",
+  "dependency_unavailable",
+] as const);
+
 export const FATAL_ERROR_ACTIONS = Object.freeze([
   "reauthenticate",
   "update-client",
@@ -86,6 +98,7 @@ export type MatchResultOutcome = (typeof MATCH_RESULTS)[number];
 export type MatchEndReason = (typeof MATCH_END_REASONS)[number];
 export type ActorType = (typeof ACTOR_TYPES)[number];
 export type CommandRejectionReason = (typeof COMMAND_REJECTION_REASONS)[number];
+export type HttpErrorCode = (typeof HTTP_ERROR_CODES)[number];
 export type FatalErrorAction = (typeof FATAL_ERROR_ACTIONS)[number];
 export type AppEnvironment = (typeof APP_ENVIRONMENTS)[number];
 

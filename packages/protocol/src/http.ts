@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACTOR_TYPES, MATCH_MODES, MATCH_STATUSES } from "./constants";
+import { ACTOR_TYPES, HTTP_ERROR_CODES, MATCH_MODES, MATCH_STATUSES } from "./constants";
 import { playerSchema } from "./game-state";
 import {
   matchPlayersSchema,
@@ -8,6 +8,36 @@ import {
   timeControlSecondsSchema,
 } from "./match";
 import { displayNameSchema, isoTimestampSchema, uuidSchema } from "./primitives";
+
+/**
+ * The single problem shape every HTTP error uses (docs/protocol.md section 10.1).
+ * `details` is for developers and must never carry tokens or credentials.
+ */
+export const httpErrorDetailSchema = z.strictObject({
+  path: z.string(),
+  issue: z.string().min(1),
+});
+
+export const httpErrorBodySchema = z.strictObject({
+  error: z.strictObject({
+    code: z.enum(HTTP_ERROR_CODES),
+    message: z.string().min(1),
+    requestId: z.string().min(1),
+    details: z.array(httpErrorDetailSchema).optional(),
+  }),
+});
+
+/**
+ * Turns a validation failure into wire details. It lives here because the shape
+ * is part of the contract, and because it keeps consumers from having to reach
+ * for Zod themselves.
+ */
+export function httpErrorDetails(error: z.ZodError): readonly HttpErrorDetail[] {
+  return error.issues.map((issue) => ({
+    path: issue.path.map((segment) => String(segment)).join("."),
+    issue: issue.code,
+  }));
+}
 
 export const createGuestRequestSchema = z.strictObject({
   displayName: displayNameSchema.optional(),
@@ -51,6 +81,8 @@ export const createDevMatchResponseSchema = z.strictObject({
   snapshot: matchSnapshotSchema,
 });
 
+export type HttpErrorDetail = z.infer<typeof httpErrorDetailSchema>;
+export type HttpErrorBody = z.infer<typeof httpErrorBodySchema>;
 export type CreateGuestRequest = z.infer<typeof createGuestRequestSchema>;
 export type CreateGuestResponse = z.infer<typeof createGuestResponseSchema>;
 export type MatchSummary = z.infer<typeof matchSummarySchema>;

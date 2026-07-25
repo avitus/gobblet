@@ -4,6 +4,8 @@ import {
   createDevMatchResponseSchema,
   createGuestRequestSchema,
   createGuestResponseSchema,
+  httpErrorBodySchema,
+  httpErrorDetails,
   matchSummarySchema,
   type CreateDevMatchRequest,
   type CreateGuestResponse,
@@ -44,6 +46,57 @@ describe("guest endpoints", () => {
     expect(createGuestRequestSchema.parse({ displayName: "ada" })).toEqual({ displayName: "ada" });
     expect(createGuestRequestSchema.safeParse({ displayName: "" }).success).toBe(false);
     expect(createGuestRequestSchema.safeParse({ displayName: "a".repeat(33) }).success).toBe(false);
+  });
+});
+
+describe("error bodies", () => {
+  it("accepts the documented problem shape with and without details", () => {
+    const withoutDetails = {
+      error: { code: "not_found", message: "Unknown match", requestId: "req-1" },
+    };
+    const withDetails = {
+      error: {
+        code: "validation_failed",
+        message: "Invalid request",
+        requestId: "req-2",
+        details: [{ path: "timeControlSeconds", issue: "invalid_value" }],
+      },
+    };
+
+    expect(httpErrorBodySchema.parse(withoutDetails)).toEqual(withoutDetails);
+    expect(httpErrorBodySchema.parse(withDetails)).toEqual(withDetails);
+  });
+
+  it("rejects an undocumented code or a missing request id", () => {
+    expect(
+      httpErrorBodySchema.safeParse({
+        error: { code: "kaboom", message: "no", requestId: "req-3" },
+      }).success,
+    ).toBe(false);
+    expect(
+      httpErrorBodySchema.safeParse({ error: { code: "internal_error", message: "no" } }).success,
+    ).toBe(false);
+  });
+
+  it("describes a validation failure by path and rule, never by value", () => {
+    const result = createDevMatchRequestSchema.safeParse({
+      ...devMatchRequest,
+      timeControlSeconds: 60,
+      light: { actorType: "guest", actorId: "not-a-uuid", displayName: "ada" },
+    });
+    if (result.success) {
+      throw new Error("expected the request to be rejected");
+    }
+
+    const details = httpErrorDetails(result.error);
+
+    expect(details).toEqual(
+      expect.arrayContaining([
+        { path: "timeControlSeconds", issue: expect.any(String) },
+        { path: "light.actorId", issue: expect.any(String) },
+      ]),
+    );
+    expect(JSON.stringify(details)).not.toContain("not-a-uuid");
   });
 });
 

@@ -1,4 +1,5 @@
 import { loadServerConfig } from "@gobblet/config";
+import { httpErrorBodySchema } from "@gobblet/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
@@ -124,14 +125,22 @@ describe("public configuration", () => {
 });
 
 describe("unknown routes", () => {
-  it("answers with a structured error", async () => {
+  it("answers with the documented problem shape", async () => {
     const server = await start();
     const response = await server.inject({ method: "GET", url: "/v1/does-not-exist" });
 
     expect(response.statusCode).toBe(404);
-    expect(response.json()).toEqual({
-      error: { code: "not-found", message: "Unknown endpoint" },
-    });
+    const body = httpErrorBodySchema.parse(response.json());
+    expect(body.error.code).toBe("not_found");
+    expect(body.error.message).toBe("Unknown endpoint");
+  });
+
+  it("does not expose match endpoints without services", async () => {
+    const server = await start();
+
+    expect(
+      (await server.inject({ method: "POST", url: "/v1/guests", payload: {} })).statusCode,
+    ).toBe(404);
   });
 
   it("applies the configured cors origins", async () => {

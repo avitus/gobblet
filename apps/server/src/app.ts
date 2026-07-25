@@ -2,6 +2,12 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "@gobblet/config";
+import type { GuestService } from "./guests/service";
+import { sendError } from "./http/errors";
+import type { MatchRuntime } from "./match/runtime";
+import { registerDevMatchRoutes } from "./routes/dev-matches";
+import { registerGuestRoutes } from "./routes/guests";
+import { registerMatchRoutes } from "./routes/matches";
 import { TIME_CONTROLS_SECONDS } from "./time-controls";
 
 /**
@@ -14,9 +20,20 @@ export type ReadinessProbe = Readonly<{
   check: () => Promise<boolean> | boolean;
 }>;
 
+/**
+ * The stateful services. They are optional so the health and config endpoints
+ * stay testable without a database, and so a process with no database still
+ * reports its own liveness.
+ */
+export type AppServices = Readonly<{
+  runtime: MatchRuntime;
+  guests: GuestService;
+}>;
+
 export type BuildAppOptions = Readonly<{
   config: ServerConfig;
   readiness?: readonly ReadinessProbe[];
+  services?: AppServices;
   now?: () => number;
 }>;
 
@@ -25,6 +42,7 @@ const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
 export async function buildApp({
   config,
   readiness = [],
+  services,
   now = Date.now,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const startedAt = now();
@@ -41,8 +59,8 @@ export async function buildApp({
 
   await app.register(cors, { origin: [...config.corsOrigins], credentials: true });
 
-  app.setNotFoundHandler((_request, reply) => {
-    void reply.status(404).send({ error: { code: "not-found", message: "Unknown endpoint" } });
+  app.setNotFoundHandler((request, reply) => {
+    void sendError(request, reply, "not_found", "Unknown endpoint");
   });
 
   app.get("/health/live", () => ({
@@ -77,6 +95,12 @@ export async function buildApp({
     modes: ["casual", "ranked"] as const,
     timeControlsSeconds: TIME_CONTROLS_SECONDS,
   }));
+
+  if (services) {
+    registerGuestRoutes(app, services.guests);
+    registerMatchRoutes(app, services.runtime, services.guests);
+    registerDevMatchRoutes(app, services.runtime, config);
+  }
 
   return app;
 }

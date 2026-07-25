@@ -12,7 +12,9 @@ export {
   CLIENT_TO_SERVER_EVENTS,
   COMMAND_REJECTION_REASONS,
   DISPLAY_NAME_MAX_LENGTH,
+  DISPLAY_NAME_MIN_LENGTH,
   FATAL_ERROR_ACTIONS,
+  HTTP_ERROR_CODES,
   MATCH_END_REASONS,
   MATCH_MODES,
   MATCH_RESULTS,
@@ -36,6 +38,7 @@ export type {
   ClientToServerEventName,
   CommandRejectionReason,
   FatalErrorAction,
+  HttpErrorCode,
   MatchEndReason,
   MatchMode,
   MatchResultOutcome,
@@ -148,6 +151,9 @@ export {
   createGuestRequestSchema,
   createGuestResponseSchema,
   devMatchParticipantSchema,
+  httpErrorBodySchema,
+  httpErrorDetailSchema,
+  httpErrorDetails,
   matchSummarySchema,
 } from "./http";
 
@@ -157,5 +163,7 @@ export type {
   CreateGuestRequest,
   CreateGuestResponse,
   DevMatchParticipant,
+  HttpErrorBody,
+  HttpErrorDetail,
   MatchSummary,
 } from "./http";

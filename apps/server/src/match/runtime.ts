@@ -137,17 +137,24 @@ export class MatchRuntime {
     });
   }
 
-  async getSnapshot(matchId: string): Promise<MatchSnapshot | null> {
+  /**
+   * Reads are actor scoped: a caller that is not a participant gets null, so no
+   * endpoint can leak that a match exists (spec section 14.3).
+   */
+  async getSnapshotForActor(matchId: string, actor: Actor): Promise<MatchSnapshot | null> {
     const row = await findMatchById(this.db, matchId);
-    if (!row) {
+    if (!row || participantSide(row, actor) === null) {
       return null;
     }
     return this.snapshotOf(this.db, row, this.now());
   }
 
-  async getSummary(matchId: string): Promise<MatchSummary | null> {
+  async getSummaryForActor(matchId: string, actor: Actor): Promise<MatchSummary | null> {
     const row = await findMatchById(this.db, matchId);
-    return row ? toSummary(row) : null;
+    if (!row || participantSide(row, actor) === null) {
+      return null;
+    }
+    return toSummary(row);
   }
 
   /** Backs the periodic `match:clock-sync` broadcast (spec section 8.3). */
