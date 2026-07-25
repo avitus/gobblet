@@ -1,3 +1,4 @@
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   bigserial,
   boolean,
@@ -14,10 +15,10 @@ import {
 import { sql } from "drizzle-orm";
 
 /**
- * Tables from docs/product-spec.md section 15. `ratings`, achievements and audit
- * tables arrive with the phases that own them (4, 6 and 7); match participants
- * are therefore polymorphic (`actor_type` plus `actor_id`) and carry no foreign
- * key, because a participant may be a guest.
+ * Tables from docs/product-spec.md section 15. Achievement and audit tables arrive
+ * with the phases that own them (6 and 7); match participants are polymorphic
+ * (`actor_type` plus `actor_id`) and carry no foreign key, because a participant
+ * may be a guest.
  */
 
 export const actorTypeEnum = pgEnum("actor_type", ["user", "guest"]);
@@ -34,6 +35,8 @@ export const matchEndReasonEnum = pgEnum("match_end_reason", [
   "admin",
 ]);
 export const playerSideEnum = pgEnum("player_side", ["light", "dark"]);
+export const colorAssignmentEnum = pgEnum("color_assignment", ["random", "alternated"]);
+export const ratingOutcomeEnum = pgEnum("rating_outcome", ["win", "loss", "draw"]);
 export const matchEventTypeEnum = pgEnum("match_event_type", [
   "match-created",
   "move",
@@ -164,6 +167,12 @@ export const matches = pgTable(
     turnStartedAt: timestamp("turn_started_at", { withTimezone: true }),
     lastClockCommitAt: timestamp("last_clock_commit_at", { withTimezone: true }),
     moveCount: integer("move_count").notNull().default(0),
+    /** How the seats were decided, which section 9.4 requires to be auditable. */
+    colorAssignment: colorAssignmentEnum("color_assignment").notNull().default("random"),
+    /** The match this one alternates colours from, for a rematch (section 4.5). */
+    rematchOfMatchId: uuid("rematch_of_match_id").references((): AnyPgColumn => matches.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
@@ -172,6 +181,58 @@ export const matches = pgTable(
     index("matches_status_idx").on(table.status),
     index("matches_light_player_idx").on(table.lightPlayerType, table.lightPlayerId),
     index("matches_dark_player_idx").on(table.darkPlayerType, table.darkPlayerId),
+  ],
+);
+
+/**
+ * The rating aggregate of section 15.4. A row exists once an account has finished
+ * a ranked match, so an account that has never played ranked has no rating rather
+ * than a fictional one.
+ */
+export const ratings = pgTable("ratings", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(),
+  gamesPlayed: integer("games_played").notNull().default(0),
+  wins: integer("wins").notNull().default(0),
+  losses: integer("losses").notNull().default(0),
+  draws: integer("draws").notNull().default(0),
+  /** Positive while winning, negative while losing, zero after a draw. */
+  currentStreak: integer("current_streak").notNull().default(0),
+  bestStreak: integer("best_streak").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * The append-only audit section 10 requires: what each player's rating was, what
+ * it became, and which formula produced the delta. One row per player per match,
+ * so a replay of the ledger reproduces every aggregate
+ * (docs/adr/0019-elo-in-the-completion-transaction.md).
+ */
+export const ratingChanges = pgTable(
+  "rating_changes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    side: playerSideEnum("side").notNull(),
+    ratingBefore: integer("rating_before").notNull(),
+    ratingAfter: integer("rating_after").notNull(),
+    delta: integer("delta").notNull(),
+    opponentRatingBefore: integer("opponent_rating_before").notNull(),
+    outcome: ratingOutcomeEnum("outcome").notNull(),
+    formulaVersion: integer("formula_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("rating_changes_match_user_key").on(table.matchId, table.userId),
+    index("rating_changes_user_idx").on(table.userId),
   ],
 );
 
@@ -213,3 +274,7 @@ export type MatchRow = typeof matches.$inferSelect;
 export type NewMatchRow = typeof matches.$inferInsert;
 export type MatchEventRow = typeof matchEvents.$inferSelect;
 export type NewMatchEventRow = typeof matchEvents.$inferInsert;
+export type RatingRow = typeof ratings.$inferSelect;
+export type NewRatingRow = typeof ratings.$inferInsert;
+export type RatingChangeRow = typeof ratingChanges.$inferSelect;
+export type NewRatingChangeRow = typeof ratingChanges.$inferInsert;

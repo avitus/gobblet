@@ -77,6 +77,8 @@ export function matchRowFixture(overrides: Partial<MatchRow> = {}): MatchRow {
     turnStartedAt: new Date(CLOCK_START),
     lastClockCommitAt: new Date(CLOCK_START),
     moveCount: 0,
+    colorAssignment: "random",
+    rematchOfMatchId: null,
     createdAt: new Date(CLOCK_START),
     startedAt: new Date(CLOCK_START),
     endedAt: null,

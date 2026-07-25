@@ -15,15 +15,25 @@ afterAll(async () => {
 });
 
 describe("migrations", () => {
-  it("creates the Phase 2 tables", async () => {
+  it("creates every table the delivered phases own", async () => {
     const result = await handle.db.execute<{ table_name: string }>(
       sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`,
     );
 
     const tables = result.rows.map((row) => row.table_name);
-    expect(tables).toContain("guest_sessions");
-    expect(tables).toContain("matches");
-    expect(tables).toContain("match_events");
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        "email_verification_tokens",
+        "guest_sessions",
+        "match_events",
+        "matches",
+        "profiles",
+        "rating_changes",
+        "ratings",
+        "user_sessions",
+        "users",
+      ]),
+    );
   });
 
   it("is idempotent when applied again", async () => {

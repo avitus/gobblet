@@ -5,6 +5,7 @@ export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 
 export {
   actorTypeEnum,
+  colorAssignmentEnum,
   emailVerificationTokens,
   guestSessions,
   matchEndReasonEnum,
@@ -16,6 +17,9 @@ export {
   matches,
   playerSideEnum,
   profiles,
+  ratingChanges,
+  ratingOutcomeEnum,
+  ratings,
   userSessions,
   userStatusEnum,
   users,
@@ -30,9 +34,13 @@ export type {
   NewMatchEventRow,
   NewMatchRow,
   NewProfileRow,
+  NewRatingChangeRow,
+  NewRatingRow,
   NewUserRow,
   NewUserSessionRow,
   ProfileRow,
+  RatingChangeRow,
+  RatingRow,
   UserRow,
   UserSessionRow,
 } from "./schema";
@@ -92,6 +100,16 @@ export {
   insertMatchEvent,
   listMatchEvents,
 } from "./repositories/match-events";
+
+export {
+  findRating,
+  insertRatingChanges,
+  listRatingChangesForMatch,
+  listRatingChangesForUser,
+  lockRatingsForUpdate,
+  upsertRating,
+} from "./repositories/ratings";
+export type { RatingAggregatePatch } from "./repositories/ratings";
 
 export {
   claimGuestSession,

@@ -15,6 +15,13 @@
       "when": 1785010812298,
       "tag": "0001_phase3_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785014627332,
+      "tag": "0002_phase4_ratings",
+      "breakpoints": true
     }
   ]
 }
