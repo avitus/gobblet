@@ -48,6 +48,7 @@ import type {
   IssuedSession,
   MeResponse,
   ProfileSettings,
+  PublicProfile,
   RegisterRequest,
   SignInRequest,
   UpdateProfileRequest,
@@ -63,6 +64,12 @@ import type {
  */
 
 export const EMAIL_VERIFICATION_TTL_MS = 3 * DAY_MS;
+
+/** What a match gate needs to know about an account (spec sections 2.3 and 5.6). */
+export type AccountFlags = Readonly<{
+  status: UserStatus;
+  emailVerified: boolean;
+}>;
 
 /** A resolved credential, whichever kind it was. */
 export type UserIdentity = Readonly<{
@@ -335,13 +342,39 @@ export class IdentityService {
   }
 
   /**
-   * The moderation state of an account, read fresh. Suspension is enforced at
-   * match creation and at every match command, so a suspension that lands
-   * mid-session stops the next action rather than the next sign-in.
+   * The gating state of an account, read fresh. Suspension is enforced at match
+   * creation and at every match command, so a suspension that lands mid-session
+   * stops the next action rather than the next sign-in.
    */
-  async accountStatus(userId: string): Promise<UserStatus | null> {
+  async accountFlags(userId: string): Promise<AccountFlags | null> {
     const user = await findUserById(this.db, userId);
-    return user ? user.status : null;
+    if (!user) {
+      return null;
+    }
+    return { status: user.status, emailVerified: user.emailVerifiedAt !== null };
+  }
+
+  /**
+   * The profile page anyone may read (spec section 11.1). It carries none of the
+   * fields section 11.1 forbids, and a deleted account has no page at all.
+   */
+  async publicProfile(username: string): Promise<PublicProfile | null> {
+    const user = await findUserByUsername(this.db, normalizeUsername(username));
+    if (!user || user.status === "deleted") {
+      return null;
+    }
+    const profile = await findProfileByUserId(this.db, user.id);
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      username: user.username,
+      avatarUrl: profile.avatarUrl,
+      countryCode: profile.countryCode,
+      memberSince: user.createdAt.toISOString().slice(0, 7),
+      casual: await this.casualRecord(user.id),
+    };
   }
 
   async getMe(userId: string): Promise<MeResponse | null> {

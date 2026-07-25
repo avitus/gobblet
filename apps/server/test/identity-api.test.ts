@@ -10,6 +10,7 @@ import {
   matchHistoryResponseSchema,
   meResponseSchema,
   profileSettingsSchema,
+  publicProfileSchema,
 } from "@gobblet/protocol";
 import type { AuthResponse, CreateGuestResponse } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
@@ -18,7 +19,7 @@ import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
 import { MatchRuntime } from "../src/match/runtime";
-import { TestClock } from "./helpers/match-fixtures";
+import { TestClock, envelope } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
 const config: ServerConfig = loadServerConfig({
@@ -792,6 +793,80 @@ describe("POST /v1/guests/claim", () => {
   });
 });
 
+describe("GET /v1/profiles/:username", () => {
+  it("shows the public fields of a profile to anyone", async () => {
+    const registered = await register();
+    await app.inject({
+      method: "PATCH",
+      url: "/v1/me/profile",
+      headers: auth(registered.session.sessionToken),
+      payload: { countryCode: "gb", avatarUrl: "https://cdn.example.com/a.png" },
+    });
+
+    const response = await app.inject({ method: "GET", url: "/v1/profiles/ADA" });
+
+    expect(response.statusCode).toBe(200);
+    const profile = publicProfileSchema.parse(response.json());
+    expect(profile).toEqual({
+      username: "ada",
+      avatarUrl: "https://cdn.example.com/a.png",
+      countryCode: "GB",
+      memberSince: new Date(clock.now()).toISOString().slice(0, 7),
+      casual: { wins: 0, losses: 0, draws: 0, played: 0 },
+    });
+    expect(JSON.stringify(profile)).not.toContain("ada@example.com");
+  });
+
+  it("counts finished casual matches in the record", async () => {
+    const registered = await register();
+    const opponent = await createGuest();
+    const snapshot = await runtime.createMatch({
+      mode: "casual",
+      timeControlSeconds: 300,
+      light: { actorType: "user", actorId: registered.account.userId, displayName: "ada" },
+      dark: { actorType: "guest", actorId: opponent.guestId, displayName: opponent.displayName },
+    });
+    await runtime.applyResignCommand(
+      { actorType: "guest", actorId: opponent.guestId },
+      envelope(snapshot.matchId, 0),
+    );
+
+    const response = await app.inject({ method: "GET", url: "/v1/profiles/ada" });
+
+    expect(publicProfileSchema.parse(response.json()).casual).toEqual({
+      wins: 1,
+      losses: 0,
+      draws: 0,
+      played: 1,
+    });
+  });
+
+  it("has no page for an unknown account, a deleted one or one without settings", async () => {
+    const registered = await register();
+    const unknown = await app.inject({ method: "GET", url: "/v1/profiles/grace" });
+    await handle.db.execute(`delete from profiles where user_id = '${registered.account.userId}'`);
+    const withoutSettings = await app.inject({ method: "GET", url: "/v1/profiles/ada" });
+    await handle.db.execute(
+      `update users set status = 'deleted' where id = '${registered.account.userId}'`,
+    );
+    const deleted = await app.inject({ method: "GET", url: "/v1/profiles/ada" });
+
+    expect(unknown.statusCode).toBe(404);
+    expect(withoutSettings.statusCode).toBe(404);
+    expect(deleted.statusCode).toBe(404);
+  });
+
+  it("still shows the page of a suspended account, without saying so", async () => {
+    const registered = await register();
+    await identity.suspend(registered.account.userId, "abuse");
+
+    const response = await app.inject({ method: "GET", url: "/v1/profiles/ada" });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.stringify(response.json())).not.toContain("suspended");
+  });
+});
+
 describe("suspension and match creation", () => {
   it("refuses to seat a suspended account", async () => {
     const registered = await register();
@@ -819,7 +894,117 @@ describe("suspension and match creation", () => {
 
     expect(response.statusCode).toBe(403);
     expect(httpErrorBodySchema.parse(response.json()).error.details).toEqual([
-      { path: "account", issue: "suspended" },
+      { path: "light", issue: "suspended" },
+    ]);
+  });
+
+  it("keeps a guest and an unverified account out of a ranked match", async () => {
+    const registered = await register();
+    const opponent = await createGuest();
+    const seats = {
+      light: {
+        actorType: "user" as const,
+        actorId: registered.account.userId,
+        displayName: "ada",
+      },
+      dark: {
+        actorType: "guest" as const,
+        actorId: opponent.guestId,
+        displayName: opponent.displayName,
+      },
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/auth/verify-email",
+      payload: { token: registered.emailVerification?.token ?? "" },
+    });
+    const guestRanked = await app.inject({
+      method: "POST",
+      url: "/v1/dev/matches",
+      payload: { mode: "ranked", timeControlSeconds: 300, ...seats },
+    });
+    const unverifiedOpponent = await register({
+      email: "grace@example.com",
+      password: "correct-horse-7",
+      username: "grace",
+    });
+    const unverified = await app.inject({
+      method: "POST",
+      url: "/v1/dev/matches",
+      payload: {
+        mode: "ranked",
+        timeControlSeconds: 300,
+        light: seats.light,
+        dark: {
+          actorType: "user",
+          actorId: unverifiedOpponent.account.userId,
+          displayName: "grace",
+        },
+      },
+    });
+
+    expect(httpErrorBodySchema.parse(guestRanked.json()).error.details).toEqual([
+      { path: "dark", issue: "guest-ranked" },
+    ]);
+    expect(httpErrorBodySchema.parse(unverified.json()).error.details).toEqual([
+      { path: "dark", issue: "email-unverified" },
+    ]);
+  });
+
+  it("seats two verified accounts in a ranked match", async () => {
+    const first = await register();
+    const second = await register({
+      email: "grace@example.com",
+      password: "correct-horse-7",
+      username: "grace",
+    });
+    for (const account of [first, second]) {
+      await app.inject({
+        method: "POST",
+        url: "/v1/auth/verify-email",
+        payload: { token: account.emailVerification?.token ?? "" },
+      });
+    }
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/dev/matches",
+      payload: {
+        mode: "ranked",
+        timeControlSeconds: 300,
+        light: { actorType: "user", actorId: first.account.userId, displayName: "ada" },
+        dark: { actorType: "user", actorId: second.account.userId, displayName: "grace" },
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+  });
+
+  it("refuses a seat for an account that no longer exists", async () => {
+    const registered = await register();
+    const opponent = await createGuest();
+    await handle.db.execute(
+      `update users set status = 'deleted' where id = '${registered.account.userId}'`,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/dev/matches",
+      payload: {
+        mode: "casual",
+        timeControlSeconds: 300,
+        light: { actorType: "user", actorId: registered.account.userId, displayName: "ada" },
+        dark: {
+          actorType: "guest",
+          actorId: opponent.guestId,
+          displayName: opponent.displayName,
+        },
+      },
+    });
+
+    expect(httpErrorBodySchema.parse(response.json()).error.details).toEqual([
+      { path: "light", issue: "unknown-account" },
     ]);
   });
 

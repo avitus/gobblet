@@ -144,8 +144,26 @@ describe("IdentityService", () => {
   });
 
   it("reports nothing for an account that does not exist", async () => {
-    expect(await identity.accountStatus(randomUUID())).toBeNull();
+    expect(await identity.accountFlags(randomUUID())).toBeNull();
     expect(await identity.getMe(randomUUID())).toBeNull();
+    expect(await identity.publicProfile("nobody")).toBeNull();
+  });
+
+  it("reports the flags a match gate reads", async () => {
+    const registered = await identity.register(credentials);
+    if (!registered.ok) {
+      throw new Error("expected registration to succeed");
+    }
+
+    expect(await identity.accountFlags(registered.value.account.userId)).toEqual({
+      status: "active",
+      emailVerified: false,
+    });
+    await identity.verifyEmail(registered.value.emailVerification?.token ?? "");
+    expect(await identity.accountFlags(registered.value.account.userId)).toEqual({
+      status: "active",
+      emailVerified: true,
+    });
   });
 });
 

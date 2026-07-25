@@ -400,7 +400,8 @@ export class MatchGateway {
     if (session.actor.actorType !== "user") {
       return false;
     }
-    if ((await this.resolvers.identity.accountStatus(session.actor.actorId)) !== "suspended") {
+    const flags = await this.resolvers.identity.accountFlags(session.actor.actorId);
+    if (flags?.status !== "suspended") {
       return false;
     }
 

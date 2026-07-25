@@ -4,6 +4,7 @@ import type { CreateDevMatchResponse } from "@gobblet/protocol";
 import type { FastifyInstance } from "fastify";
 import { sendError } from "../http/errors";
 import type { IdentityResolvers } from "../identity/resolve";
+import { checkParticipant, ineligibilityMessage } from "../match/eligibility";
 import type { MatchRuntime } from "../match/runtime";
 
 /**
@@ -42,15 +43,16 @@ export function registerDevMatchRoutes(
       return sendError(request, reply, "conflict", "A match needs two distinct actors");
     }
 
-    // Suspension is enforced wherever a match starts (spec section 19.3);
-    // matchmaking queues arrive in Phase 4 and will call the same check.
-    for (const participant of [light, dark]) {
-      if (participant.actorType !== "user") {
-        continue;
-      }
-      if ((await resolvers.identity.accountStatus(participant.actorId)) === "suspended") {
-        return sendError(request, reply, "forbidden", "A suspended account cannot join a match", [
-          { path: "account", issue: "suspended" },
+    // Who may be seated is decided by one function, which the Phase 4 queues will
+    // also call (spec sections 2.3, 5.6 and 19.3).
+    for (const [seat, participant] of [
+      ["light", light],
+      ["dark", dark],
+    ] as const) {
+      const verdict = await checkParticipant(resolvers.identity, participant, mode);
+      if (!verdict.eligible) {
+        return sendError(request, reply, "forbidden", ineligibilityMessage(verdict.reason), [
+          { path: seat, issue: verdict.reason },
         ]);
       }
     }

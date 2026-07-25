@@ -12,6 +12,7 @@ import { registerDevMatchRoutes } from "./routes/dev-matches";
 import { registerGuestRoutes } from "./routes/guests";
 import { registerMatchRoutes } from "./routes/matches";
 import { registerMeRoutes } from "./routes/me";
+import { registerProfileRoutes } from "./routes/profiles";
 import { registerUsernameRoutes } from "./routes/usernames";
 import { TIME_CONTROLS_SECONDS } from "./time-controls";
 
@@ -125,6 +126,7 @@ export async function buildApp({
       resolvers,
     });
     registerUsernameRoutes(app, services.identity);
+    registerProfileRoutes(app, services.identity);
     registerMeRoutes(app, services.identity, resolvers, services.runtime);
     registerMatchRoutes(app, services.runtime, resolvers);
     registerDevMatchRoutes(app, services.runtime, resolvers, config);
