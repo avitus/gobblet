@@ -1,0 +1,43 @@
+name: Nightly
+
+on:
+  schedule:
+    # 03:15 UTC, outside working hours in the launch regions.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      transitions:
+        description: Generated rule engine transitions to check
+        required: false
+        default: "100000"
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+
+jobs:
+  rule-properties:
+    name: Rule engine property run
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deep property run
+        env:
+          GOBBLET_PROPERTY_TRANSITIONS: ${{ inputs.transitions || '100000' }}
+        run: pnpm test:properties:nightly

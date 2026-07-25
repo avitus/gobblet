@@ -1,0 +1,82 @@
+# Architecture decision records
+
+An architecture decision record (ADR) captures a single significant decision: the context that
+forced the choice, the choice itself, the consequences accepted with it, and the alternatives
+rejected. ADRs are written once and then treated as immutable history. When a decision changes,
+a new ADR supersedes the old one; the old file is never rewritten to pretend the earlier
+decision never happened.
+
+The format used here is a MADR-style template: title, status, date, context, decision,
+consequences, alternatives considered, references. Start from
+[`0000-template.md`](0000-template.md).
+
+## When an ADR is required
+
+An ADR is required for any material or architectural change, specifically:
+
+- Adding, replacing or removing a technology, framework, hosting provider or managed service.
+- Changing package boundaries, the dependency direction, or the build and publish strategy for
+  internal packages.
+- Changing the wire protocol: command envelopes, acknowledgement reason codes, event catalogue
+  semantics, versioning policy or authorization rules.
+- Changing the data model in a way that affects match state, ratings, audit records or
+  persistence guarantees.
+- Interpreting or deviating from the printed Gobblet rules, including any digital adaptation.
+- Changing operational posture: regions, scaling model, backup or recovery commitments, release
+  and signing procedure.
+- Changing a testing or quality gate that other decisions depend on, such as the purity or
+  coverage requirements of `@gobblet/game-core`.
+
+An ADR is not required for routine implementation work, refactors that preserve boundaries and
+contracts, dependency version bumps, or copy and asset changes.
+
+## Process
+
+1. Copy [`0000-template.md`](0000-template.md) to `NNNN-short-kebab-title.md` using the next
+   free four-digit number. Numbers are allocated sequentially and never reused.
+2. Open the pull request with the ADR in status `Proposed`.
+3. Discuss in the pull request. Revisions to a `Proposed` ADR are normal.
+4. On approval, set the status to `Accepted` and set the date to the acceptance date.
+5. A pull request that makes a material or architectural change without an accompanying ADR
+   does not pass review. This is a review gate, enforced by reviewers.
+
+Statuses:
+
+| Status     | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| Proposed   | Under discussion, not yet binding                                 |
+| Accepted   | Binding. Implementation must follow it                            |
+| Superseded | Replaced by a later ADR, kept for history                         |
+| Rejected   | Considered and declined, kept so the reasoning is not relitigated |
+
+Superseding a decision:
+
+1. Write the new ADR. Its context must state what changed since the earlier decision.
+2. In the new ADR, reference the ADR it replaces.
+3. In the old ADR, change the status line to `Superseded by ADR-NNNN` and add nothing else.
+4. Update the index table below.
+
+## Index
+
+| Number | Title                                                                                                | Status   | Date       |
+| ------ | ---------------------------------------------------------------------------------------------------- | -------- | ---------- |
+| 0001   | [Record architecture decisions](0001-record-architecture-decisions.md)                               | Accepted | 2026-07-24 |
+| 0002   | [TypeScript monorepo with pnpm workspaces and Turborepo](0002-typescript-monorepo-pnpm-turborepo.md) | Accepted | 2026-07-24 |
+| 0003   | [React and Vite web client](0003-react-vite-web-client.md)                                           | Accepted | 2026-07-24 |
+| 0004   | [Tauri v2 desktop shell](0004-tauri-v2-desktop-shell.md)                                             | Accepted | 2026-07-24 |
+| 0005   | [Three.js via React Three Fiber](0005-threejs-react-three-fiber.md)                                  | Accepted | 2026-07-24 |
+| 0006   | [Fastify HTTP API with Socket.IO real-time transport](0006-fastify-socketio-server.md)               | Accepted | 2026-07-24 |
+| 0007   | [PostgreSQL with Drizzle ORM](0007-postgresql-drizzle.md)                                            | Accepted | 2026-07-24 |
+| 0008   | [Auth0 for identity](0008-auth0-identity.md)                                                         | Accepted | 2026-07-24 |
+| 0009   | [Server-authoritative clocks](0009-server-authoritative-clocks.md)                                   | Accepted | 2026-07-24 |
+| 0010   | [Match event persistence](0010-match-event-persistence.md)                                           | Accepted | 2026-07-24 |
+| 0011   | [Versioned idempotent commands](0011-versioned-idempotent-commands.md)                               | Accepted | 2026-07-24 |
+| 0012   | [Pure shared rules engine](0012-pure-shared-rules-engine.md)                                         | Accepted | 2026-07-24 |
+| 0013   | [CSS Modules with design tokens instead of Tailwind](0013-css-modules-design-tokens.md)              | Accepted | 2026-07-24 |
+| 0014   | [Selection is a preview, not a binding touch-move](0014-selection-is-preview-not-touch-move.md)      | Accepted | 2026-07-24 |
+| 0015   | [Single-region deployment with replaceable scaling interfaces](0015-single-region-deployment.md)     | Accepted | 2026-07-24 |
+| 0016   | [ESM-only internal packages built with tsup](0016-esm-tsup-internal-packages.md)                     | Accepted | 2026-07-24 |
+
+Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
+[`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents
+describe the current state and the phase each part belongs to; the ADRs explain why.

@@ -1,0 +1,24 @@
+name: gobblet-online
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gobblet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gobblet
+      POSTGRES_PASSWORD: gobblet
+      POSTGRES_DB: gobblet
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gobblet -d gobblet"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:

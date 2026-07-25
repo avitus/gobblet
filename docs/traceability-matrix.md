@@ -1,0 +1,261 @@
+# Traceability matrix
+
+Maps every rule identifier in [`rules.md`](rules.md), every acceptance scenario of
+[`product-spec.md` section 27](product-spec.md#27-initial-acceptance-scenarios) and
+every explicit game-core test requirement of specification sections 20.1 and 20.2
+to the automated checks that hold them.
+
+- Test root: `packages/game-core/test`
+- Run everything: `pnpm --filter @gobblet/game-core test`
+- Coverage gate: `pnpm --filter @gobblet/game-core test:coverage` (100% statements, branches, functions and lines)
+- Nightly property depth: `GOBBLET_PROPERTY_TRANSITIONS=100000 pnpm --filter @gobblet/game-core test:properties:nightly`
+
+Status legend: `held` means at least one automated check fails if the rule is
+broken. Every rule row in this document is `held`. Scenarios that depend on the
+match runtime are listed with the phase that will hold them, so nothing in
+specification section 27 is silently dropped.
+
+## 1. Acceptance scenarios (spec 27)
+
+| Scenario | Description                                                       | Where                                                                               |
+| -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| A        | Ordinary placement from an external stack                         | `reserve-moves.test.ts` > `scenario A: ordinary reserve placement`                  |
+| B        | Defensive gobble from an external stack onto a three-piece threat | `reserve-moves.test.ts` > `scenario B: defensive reserve gobble`                    |
+| C        | Gobbling the mover's own smaller piece with a board move          | `board-moves.test.ts` > `scenario C: gobbles the mover's own smaller piece`         |
+| D        | Revealing an opponent line and losing immediately                 | `reveal.test.ts` > `scenario D: revealing an opponent line and failing to block it` |
+| E        | Revealing an opponent line and blocking it with the same move     | `reveal.test.ts` > `scenario E: revealing an opponent line and blocking it`         |
+| F        | Threefold repetition draw                                         | `repetition.test.ts` > `scenario F: threefold repetition`                           |
+
+The Elo half of scenario F (ranked players receive draw updates) belongs to Phase 4.
+
+Scenarios that need the server runtime are not engine scenarios and are held open
+with their owning phase:
+
+| Scenario | Description                     | Planned home                                                   |
+| -------- | ------------------------------- | -------------------------------------------------------------- |
+| G        | Timeout during disconnect       | Phase 2, clock and runtime integration tests (spec 20.4, 20.5) |
+| H        | Retry after lost acknowledgment | Phase 2, protocol idempotency tests (spec 20.3)                |
+| I        | Guest claim                     | Phase 3, integration tests (spec 20.5)                         |
+| J        | Active match deployment         | Phase 7, restart and drain recovery tests (spec 20.5)          |
+
+## 2. Equipment and setup
+
+| Rule | Test file             | Test                                                                                                                                          |
+| ---- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1.1 | `setup.test.ts`       | exposes sixteen unique squares in canonical order                                                                                             |
+| R1.2 | `setup.test.ts`       | defines twenty-four pieces, twelve per player                                                                                                 |
+| R1.3 | `setup.test.ts`       | maps players to codes in both directions                                                                                                      |
+| R1.4 | `setup.test.ts`       | gives every player three external stacks holding one piece of each size; starts with an empty board and three full external stacks per player |
+| R1.5 | `setup.test.ts`       | starts with an empty board and three full external stacks per player                                                                          |
+| R1.6 | `setup.test.ts`       | produces different position keys for each side to move                                                                                        |
+| R1.7 | `board-moves.test.ts` | rejects covering a piece of equal size; rejects covering a larger piece                                                                       |
+
+## 3. Coordinates, identities and notation
+
+| Rule | Test file            | Test                                                                                                             |
+| ---- | -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| R2.1 | `setup.test.ts`      | exposes sixteen unique squares in canonical order; resolves squares from coordinates and validates unknown input |
+| R2.2 | `setup.test.ts`      | exposes the ten winning lines                                                                                    |
+| R2.3 | `setup.test.ts`      | exposes the ten winning lines                                                                                    |
+| R2.4 | `setup.test.ts`      | resolves pieces by identity; validates piece identifiers                                                         |
+| R2.5 | `setup.test.ts`      | reports only the top piece of a stack; gives every player three external stacks holding one piece of each size   |
+| R2.6 | `repetition.test.ts` | treats the three external stacks as interchangeable                                                              |
+
+## 4. Turn order
+
+| Rule | Test file               | Test                                                                                             |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| R3.1 | `reserve-moves.test.ts` | places the exposed piece on an empty square                                                      |
+| R3.2 | `invariants.test.ts`    | rejects a ply that did not advance                                                               |
+| R3.3 | `board-moves.test.ts`   | rejects a move of the opponent's visible piece                                                   |
+| R3.4 | `invariants.test.ts`    | accepts a normal transition; rejects a nonterminal move that did not alternate the active player |
+| R3.5 | `wins.test.ts`          | accepts no further moves once the game is won                                                    |
+
+## 5. Visibility
+
+| Rule | Test file               | Test                                                      |
+| ---- | ----------------------- | --------------------------------------------------------- |
+| R4.1 | `setup.test.ts`         | reports only the top piece of a stack                     |
+| R4.2 | `setup.test.ts`         | exposes board level queries for previews                  |
+| R4.3 | `wins.test.ts`          | ignores covered pieces when evaluating lines              |
+| R4.4 | `reserve-moves.test.ts` | exposes the next smaller piece of the same external stack |
+
+## 6. Entering a piece from an external stack
+
+| Rule | Test file                             | Test                                                                                             |
+| ---- | ------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| R5.1 | `reserve-moves.test.ts`               | places the exposed piece on an empty square; draws from each external stack of both players      |
+| R5.2 | `reserve-moves.test.ts`               | offers every empty square as a destination for a reserve piece                                   |
+| R5.3 | `reserve-moves.test.ts`               | rejects a reserve entry onto an occupied square without the defensive exception                  |
+| R5.4 | `reserve-moves.test.ts`               | rejects entries from an exhausted external stack                                                 |
+| R5.5 | `setup.test.ts`, `properties.test.ts` | reports an empty external stack as having no exposed piece; keeps every generated position sound |
+
+## 7. The defensive exception
+
+| Rule | Test file                                | Test                                                                                                                                   |
+| ---- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| R6.1 | `reserve-moves.test.ts`                  | allows covering any of the three aligned opponent pieces                                                                               |
+| R6.2 | `reserve-moves.test.ts`                  | rejects a reserve entry onto a piece that is not smaller                                                                               |
+| R6.3 | `reserve-moves.test.ts`                  | never lets a reserve piece cover one of the mover's own pieces                                                                         |
+| R6.4 | `reserve-moves.test.ts`, `setup.test.ts` | allows the threatened squares and the empty squares, and nothing else; detects lines where a player already shows three visible pieces |
+| R6.5 | `reserve-moves.test.ts`                  | does not allow covering occupied squares outside a three-piece line                                                                    |
+
+## 8. Moving a piece already on the board
+
+| Rule | Test file             | Test                                                                                                                 |
+| ---- | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| R7.1 | `board-moves.test.ts` | moves a visible piece to an empty square                                                                             |
+| R7.2 | `board-moves.test.ts` | moves only the top piece when the mover covers one of their own pieces                                               |
+| R7.3 | `board-moves.test.ts` | rejects a move onto the same square                                                                                  |
+| R7.4 | `board-moves.test.ts` | offers every empty square and every strictly smaller piece as a destination                                          |
+| R7.5 | `board-moves.test.ts` | scenario C: gobbles the mover's own smaller piece; gobbles a smaller opponent piece                                  |
+| R7.6 | `board-moves.test.ts` | rejects covering a piece of equal size; rejects covering a larger piece                                              |
+| R7.7 | `reveal.test.ts`      | marks every legal destination that fails to block as losing                                                          |
+| R7.8 | `board-moves.test.ts` | rejects moving a covered piece because only the top piece is visible; rejects a move of the opponent's visible piece |
+
+## 9. Winning
+
+| Rule | Test file        | Test                                                                          |
+| ---- | ---------------- | ----------------------------------------------------------------------------- |
+| R8.1 | `wins.test.ts`   | recognises a light win on `row-0` .. `diagonal-1` (all ten lines)             |
+| R8.2 | `wins.test.ts`   | ignores covered pieces when evaluating lines                                  |
+| R8.3 | `reveal.test.ts` | continues the game when the moved piece covers another piece of the same line |
+| R8.4 | `wins.test.ts`   | recognises a dark win and reports the line metadata                           |
+
+## 10. Revealing a line and outcome priority
+
+| Rule | Test file                              | Test                                                                                                                           |
+| ---- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| R9.1 | `reveal.test.ts`                       | loses immediately for the mover                                                                                                |
+| R9.2 | `reveal.test.ts`                       | loses immediately for the mover; loses whenever any revealed line stays unblocked                                              |
+| R9.3 | `reveal.test.ts`                       | continues the game when the moved piece covers another piece of the same line; cannot block by covering an equally sized piece |
+| R9.4 | `reveal.test.ts`                       | does not let the mover's own new line override an unblocked revealed line                                                      |
+| R9.5 | `reveal.test.ts`, `repetition.test.ts` | terminal outcome priority (suite); draws when the same position with the same side to move occurs three times                  |
+| R9.6 | `reveal.test.ts`                       | is reported before the move is applied; marks every legal destination that fails to block as losing                            |
+
+Reserve entries never reveal anything, which is covered by `reveal.test.ts` >
+`never reveals anything when entering a piece from a reserve`.
+
+## 11. Draws
+
+| Rule  | Test file            | Test                                                                                            |
+| ----- | -------------------- | ----------------------------------------------------------------------------------------------- |
+| R10.1 | `repetition.test.ts` | draws when the same position with the same side to move occurs three times                      |
+| R10.2 | `repetition.test.ts` | draws when the same position with the same side to move occurs three times                      |
+| R10.3 | `repetition.test.ts` | counts the opening position as the first occurrence                                             |
+| R10.4 | `reveal.test.ts`     | can win with the blocking move itself                                                           |
+| R10.5 | `properties.test.ts` | keeps every generated position sound (a draw only ever appears with a thrice repeated position) |
+
+## 12. Position identity
+
+| Rule  | Test file            | Test                                                                                                                                  |
+| ----- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| R11.1 | `repetition.test.ts` | distinguishes positions that differ only in remaining reserve pieces                                                                  |
+| R11.2 | `repetition.test.ts` | ignores ply and repetition history when computing a position key                                                                      |
+| R11.3 | `repetition.test.ts` | treats the three external stacks as interchangeable                                                                                   |
+| R11.4 | `repetition.test.ts` | keeps positions with a different side to move separate; does not draw when a repeated position is reached with the other side to move |
+| R11.5 | `setup.test.ts`      | produces different position keys for each side to move                                                                                |
+
+## 13. State invariants
+
+| Rule   | Test file            | Test                                                                                                               |
+| ------ | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| R12.1  | `invariants.test.ts` | rejects duplicated pieces; rejects missing pieces                                                                  |
+| R12.2  | `invariants.test.ts` | rejects missing pieces (piece count per player)                                                                    |
+| R12.3  | `invariants.test.ts` | rejects board stacks that are not strictly ascending                                                               |
+| R12.4  | `invariants.test.ts` | rejects external stacks that are not a 1..k prefix                                                                 |
+| R12.5  | `invariants.test.ts` | rejects an in-progress state that already shows a line of four                                                     |
+| R12.6  | `invariants.test.ts` | rejects a win without a visible line of four                                                                       |
+| R12.7  | `invariants.test.ts` | rejects a draw without a repeated position                                                                         |
+| R12.8  | `invariants.test.ts` | rejects impossible repetition counts                                                                               |
+| R12.9  | `invariants.test.ts` | rejects an invalid ply; rejects a ply that did not advance                                                         |
+| R12.10 | `invariants.test.ts` | accepts a terminal transition that keeps the mover on turn; rejects a terminal move that changed the active player |
+
+## 14. Engine guarantees
+
+| Rule  | Test file                                               | Test                                                                                                        |
+| ----- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| R14.1 | `properties.test.ts`, `eslint.config.mjs`               | applies the same move to the same state deterministically; the `game-core` purity lint boundary             |
+| R14.2 | `setup.test.ts`, `freeze.test.ts`, `properties.test.ts` | returns immutable state; freezes nested objects and arrays; never mutates the state that was passed in      |
+| R14.3 | `board-moves.test.ts`, `reserve-moves.test.ts`          | rejects malformed square references; rejects malformed reserve references                                   |
+| R14.4 | `enumeration.test.ts`, `properties.test.ts`             | agrees with evaluateMove and applyMove for every candidate move; rejects every move that was not enumerated |
+| R14.5 | `serialization.test.ts`                                 | is byte stable and independent of insertion order; round trips the opening position                         |
+| R14.6 | `invariants.test.ts`                                    | throws an error that lists the violated codes; throws an error that lists the violated transition codes     |
+
+## 15. Open questions
+
+| Question                                       | Reading held by         | Test                                                                                   |
+| ---------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| Q1 threat line runs through the covered square | `reserve-moves.test.ts` | does not allow covering occupied squares outside a three-piece line                    |
+| Q2 both players complete a line                | `reveal.test.ts`        | does not let the mover's own new line override an unblocked revealed line              |
+| Q3 position identity for repetition            | `repetition.test.ts`    | treats the three external stacks as interchangeable                                    |
+| Q4 player with no legal move                   | `properties.test.ts`    | keeps every generated position sound (fails if a generated position has no legal move) |
+| Q5 active player in terminal states            | `invariants.test.ts`    | accepts a terminal transition that keeps the mover on turn                             |
+
+## 16. Specification test checklist for game-core (spec 20.1)
+
+| Required test                   | Test file                                  | Test                                                                                                                               |
+| ------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Initial setup                   | `setup.test.ts`                            | starts with an empty board and three full external stacks per player; accounts for all twenty-four pieces                          |
+| External stack order            | `setup.test.ts`, `reserve-moves.test.ts`   | gives every player three external stacks holding one piece of each size; exposes the next smaller piece of the same external stack |
+| Empty-square reserve placement  | `reserve-moves.test.ts`                    | places the exposed piece on an empty square                                                                                        |
+| Illegal ordinary reserve gobble | `reserve-moves.test.ts`                    | rejects a reserve entry onto an occupied square without the defensive exception                                                    |
+| Legal defensive reserve gobble  | `reserve-moves.test.ts`                    | allows covering any of the three aligned opponent pieces                                                                           |
+| Board movement to empty square  | `board-moves.test.ts`                      | moves a visible piece to an empty square                                                                                           |
+| Gobbling own smaller piece      | `board-moves.test.ts`                      | scenario C: gobbles the mover's own smaller piece                                                                                  |
+| Gobbling opponent smaller piece | `board-moves.test.ts`                      | gobbles a smaller opponent piece                                                                                                   |
+| Equal-size rejection            | `board-moves.test.ts`                      | rejects covering a piece of equal size                                                                                             |
+| Larger-piece rejection          | `board-moves.test.ts`                      | rejects covering a larger piece                                                                                                    |
+| Covered-piece rejection         | `board-moves.test.ts`                      | rejects moving a covered piece because only the top piece is visible                                                               |
+| Every row win                   | `wins.test.ts`                             | recognises a light win on `row-0` to `row-3`                                                                                       |
+| Every column win                | `wins.test.ts`                             | recognises a light win on `column-0` to `column-3`                                                                                 |
+| Both diagonal wins              | `wins.test.ts`                             | recognises a light win on `diagonal-0` and `diagonal-1`                                                                            |
+| Reveal loss                     | `reveal.test.ts`                           | scenario D: loses immediately for the mover                                                                                        |
+| Reveal-and-block survival       | `reveal.test.ts`                           | scenario E: continues the game when the moved piece covers another piece of the same line                                          |
+| Multiple revealed lines         | `reveal.test.ts`                           | loses whenever any revealed line stays unblocked; reports the partially blocked line but still loses                               |
+| Threefold repetition            | `repetition.test.ts`                       | scenario F: draws when the same position with the same side to move occurs three times                                             |
+| Piece conservation              | `invariants.test.ts`, `properties.test.ts` | rejects duplicated pieces; rejects missing pieces; keeps every generated position sound                                            |
+| Terminal-state immutability     | `wins.test.ts`, `setup.test.ts`            | accepts no further moves once the game is won; returns immutable state                                                             |
+
+## 17. Specification property checklist for game-core (spec 20.2)
+
+| Required property                                              | Test file                       | Test                                                      |
+| -------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| Applying a legal move preserves all piece invariants           | `properties.test.ts`            | keeps every generated position sound                      |
+| Applying an enumerated legal move never throws                 | `properties.test.ts`            | keeps every generated position sound                      |
+| Every move not enumerated is rejected                          | `properties.test.ts`            | rejects every move that was not enumerated                |
+| Serialization and deserialization preserve canonical state     | `properties.test.ts`            | keeps every generated position sound                      |
+| Position keys are deterministic                                | `properties.test.ts`            | keeps every generated position sound                      |
+| No piece is duplicated, no piece disappears                    | `properties.test.ts`            | keeps every generated position sound                      |
+| Board stacks remain strictly ordered                           | `properties.test.ts`            | keeps every generated position sound                      |
+| Game result is deterministic                                   | `properties.test.ts`            | applies the same move to the same state deterministically |
+| Transition reconstruction from a move log reproduces snapshots | `properties.test.ts`            | keeps every generated position sound (replays every game) |
+| Random reachable states stay valid over long sequences         | `properties.test.ts`            | keeps every generated position sound (up to 250 plies)    |
+| 100,000 generated transitions nightly                          | `.github/workflows/nightly.yml` | `pnpm test:properties:nightly`                            |
+| Smaller deterministic seed set per pull request                | `.github/workflows/ci.yml`      | `pnpm test:coverage` runs the 2000-transition default     |
+| Failing seeds persisted as regression tests                    | `properties.test.ts`            | recorded regression seeds (suite)                         |
+
+## 18. Phase 0 exit criteria (spec 24)
+
+| Criterion                                         | Evidence                                                                                                                                                                                        |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One command starts local web, server and database | `pnpm dev` (`scripts/dev.mjs`): PostgreSQL through Docker Compose when available, then `@gobblet/server` on port 4000 and `@gobblet/web` on port 5173                                           |
+| CI passes                                         | `.github/workflows/ci.yml` runs `format:check`, `lint`, `typecheck`, `test:coverage`, `build`; locally `pnpm verify`                                                                            |
+| Health endpoints                                  | `apps/server/test/health.test.ts` covers `/health/live`, `/health/ready` (ready, unavailable, throwing probe) and `/v1/config`                                                                  |
+| Environment-variable schema                       | `packages/config/src/schema.ts`, `packages/config/test/server-config.test.ts`, documented in `.env.example`                                                                                     |
+| Package boundaries                                | `eslint.config.mjs` purity boundary for `packages/game-core` (`lint` task)                                                                                                                      |
+| ADRs for the required decisions                   | [`docs/adr/`](adr/) 0003 React/Vite, 0004 Tauri, 0005 Three.js, 0006 Fastify/Socket.IO, 0007 PostgreSQL/Drizzle, 0008 Auth0, 0009 clocks, 0010 event persistence                                |
+| Staging health check is reachable                 | **Not met**: no hosting account or secrets exist yet, recorded in [`product-spec.md` appendix P0](product-spec.md#appendix-p0--phase-0-exit-criteria-not-yet-met-recorded-not-silently-skipped) |
+| Empty Tauri shells build on macOS and Windows CI  | **Not met**: deferred to Phase 8 with the reason recorded in [`product-spec.md` appendix P0](product-spec.md#appendix-p0--phase-0-exit-criteria-not-yet-met-recorded-not-silently-skipped)      |
+
+## 19. Phase 1 exit criteria (spec 24)
+
+| Criterion                                       | Evidence                                                                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 100% game-core coverage                         | `pnpm --filter @gobblet/game-core test:coverage`, thresholds in `packages/game-core/vitest.config.ts`                          |
+| All official rule cases pass                    | Sections 1 to 17 of this document                                                                                              |
+| 100,000-transition nightly property test passes | `pnpm test:properties:nightly` (about 30 seconds locally), scheduled in `.github/workflows/nightly.yml`                        |
+| Pure package usable in Node and browser         | No dependencies in `packages/game-core/package.json`; `node:*` imports banned by `eslint.config.mjs`; ESM bundle built by tsup |
+| No UI or server dependency                      | Purity lint boundary in `eslint.config.mjs`                                                                                    |
+| Rules documentation with examples               | [`rules.md`](rules.md), worked edge cases in section 16                                                                        |
+| Ambiguities recorded, not silently decided      | [`rules.md` section 13](rules.md#13-open-questions-and-interpretations), `product-spec.md` appendix P1                         |

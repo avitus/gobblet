@@ -1,0 +1,13 @@
+**/dist/**
+**/coverage/**
+**/node_modules/**
+**/.turbo/**
+**/src-tauri/target/**
+**/src-tauri/gen/**
+pnpm-lock.yaml
+assets/**
+*.png
+*.ico
+*.icns
+*.glb
+*.ktx2
