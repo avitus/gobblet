@@ -50,6 +50,7 @@ import type {
   ClaimGuestResponse,
   IssuedSession,
   MeResponse,
+  MuteState,
   ProfileSettings,
   PublicProfile,
   RankedRecord,
@@ -431,6 +432,21 @@ export class IdentityService {
   /** The whole catalogue with this account's progress against it (spec section 11.4). */
   async achievements(userId: string): Promise<AchievementProgress[]> {
     return readAchievementProgress(this.db, userId);
+  }
+
+  /**
+   * The mute settings a new connection starts from (spec section 12.3), or `null`
+   * when there is no profile to read, which leaves the connection hearing everything.
+   */
+  async communicationMutes(userId: string): Promise<MuteState | null> {
+    const profile = await findProfileByUserId(this.db, userId);
+    if (!profile) {
+      return null;
+    }
+    return {
+      presetMessagesMuted: profile.presetMessagesMuted,
+      reactionsMuted: profile.reactionsMuted,
+    };
   }
 
   /** `null` until a ranked match has finished, so an unrated account shows no rating. */

@@ -154,11 +154,12 @@ export const REACTION_KEYS = Object.freeze([
 ] as const);
 
 /**
- * Why communication was refused. An unknown key is not here: it fails validation
- * and is reported on `error:recoverable`
- * (docs/adr/0026-communication-is-relayed-never-stored.md).
+ * Why a message, a reaction or a mute change was refused. An unknown key is a
+ * validation failure, which is also reported on `error:recoverable`
+ * (docs/adr/0026-communication-is-relayed-never-stored.md, appendix P6.4).
  */
 export const COMMUNICATION_REJECTION_REASONS = Object.freeze([
+  "invalid-payload",
   "not-authorized",
   "not-participant",
 ] as const);

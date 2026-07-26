@@ -1,5 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import type { ServerConfig } from "@gobblet/config";
+import type { Player } from "@gobblet/game-core";
 import {
   CLIENT_TO_SERVER_EVENTS,
   SERVER_TO_CLIENT_EVENTS,
@@ -8,14 +9,18 @@ import {
   matchMoveCommandSchema,
   matchResignCommandSchema,
   matchSyncRequestSchema,
+  muteStateRequestSchema,
+  presetMessageRequestSchema,
   queueJoinRequestSchema,
   queueLeaveRequestSchema,
+  reactionRequestSchema,
   rematchRequestSchema,
   rematchRespondSchema,
   sessionAuthenticateSchema,
 } from "@gobblet/protocol";
 import type {
   CommandAck,
+  CommunicationAck,
   FatalError,
   MatchSnapshot,
   MatchSyncAck,
@@ -35,6 +40,8 @@ import type { MatchmakingQueue, SeatedMatch } from "../matchmaking/service";
 import type { CommandResult, MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
 import { ClockBroadcaster, TICK_INTERVAL_MS } from "./clock-broadcaster";
+import { ChannelMutes } from "./communication";
+import type { CommunicationChannel } from "./communication";
 
 export type GatewayLogger = Readonly<{
   info: (context: Readonly<Record<string, unknown>>, message: string) => void;
@@ -58,6 +65,19 @@ export type GatewayOptions = Readonly<{
 type SocketSession = Readonly<{
   actor: Actor;
   displayName: string;
+}>;
+
+/** Where a piece of communication came from, and who it is delivered to. */
+type ParticipantSeat = Readonly<{
+  side: Player;
+  actorIds: readonly [string, string];
+}>;
+
+type CommunicationOrigin = Readonly<{
+  matchId: string;
+  from: Player;
+  actorId: string;
+  sentAt: number;
 }>;
 
 /**
@@ -144,6 +164,9 @@ export class MatchGateway {
   private readonly clock: () => number;
 
   private readonly sessions = new WeakMap<Socket, SocketSession>();
+
+  /** Per connection, seeded from the profile and changed by `match:mute-state`. */
+  private readonly mutes = new ChannelMutes<Socket>();
 
   /** Sockets by actor, so a pairing can be published to the two players it seated. */
   private readonly socketsByActor = new Map<string, Set<Socket>>();
@@ -280,6 +303,18 @@ export class MatchGateway {
     socket.on(IN.matchRematchRespond, (payload: unknown, ack: Acknowledge<RematchAck>) => {
       void this.handleRematchRespond(socket, payload, ack);
     });
+
+    socket.on(IN.matchPresetMessage, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
+      void this.handlePresetMessage(socket, payload, ack);
+    });
+
+    socket.on(IN.matchReaction, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
+      void this.handleReaction(socket, payload, ack);
+    });
+
+    socket.on(IN.matchMuteState, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
+      void this.handleMuteState(socket, payload, ack);
+    });
   }
 
   private async handleAuthenticate(
@@ -336,6 +371,13 @@ export class MatchGateway {
 
     const actor = toActor(identity);
     this.sessions.set(socket, { actor, displayName: identity.displayName });
+    const seeded =
+      actor.actorType === "user"
+        ? await this.resolvers.identity.communicationMutes(actor.actorId)
+        : null;
+    if (seeded) {
+      this.mutes.set(socket, seeded);
+    }
     this.rememberSocket(actor.actorId, socket);
 
     const ready: SessionReady = {
@@ -459,6 +501,131 @@ export class MatchGateway {
       parsed.data.accept,
     );
     this.answerRematch(result, ack);
+  }
+
+  private async handlePresetMessage(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<CommunicationAck>,
+  ): Promise<void> {
+    const parsed = presetMessageRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The message payload is not valid", parsed.error);
+      ack?.({ ok: false, reason: "invalid-payload" });
+      return;
+    }
+
+    const relayed = await this.relay(socket, "preset-messages", parsed.data.matchId, (origin) => ({
+      event: OUT.matchPresetMessage,
+      payload: { ...origin, messageKey: parsed.data.messageKey },
+    }));
+    ack?.(relayed);
+  }
+
+  private async handleReaction(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<CommunicationAck>,
+  ): Promise<void> {
+    const parsed = reactionRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The reaction payload is not valid", parsed.error);
+      ack?.({ ok: false, reason: "invalid-payload" });
+      return;
+    }
+
+    const relayed = await this.relay(socket, "reactions", parsed.data.matchId, (origin) => ({
+      event: OUT.matchReaction,
+      payload: { ...origin, reactionKey: parsed.data.reactionKey },
+    }));
+    ack?.(relayed);
+  }
+
+  /**
+   * Mute lives on the connection for as long as it lasts (appendix P6.2). It is not
+   * written to the profile: a change made during a match is a choice about this
+   * match, and the profile default is set on the account page.
+   */
+  private async handleMuteState(
+    socket: Socket,
+    payload: unknown,
+    ack: Acknowledge<CommunicationAck>,
+  ): Promise<void> {
+    const parsed = muteStateRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.emitRecoverable(socket, "The mute payload is not valid", parsed.error);
+      ack?.({ ok: false, reason: "invalid-payload" });
+      return;
+    }
+
+    const session = this.sessions.get(socket);
+    if (!session) {
+      ack?.({ ok: false, reason: "not-authorized" });
+      return;
+    }
+    if (!(await this.participantSeat(session.actor, parsed.data.matchId))) {
+      ack?.({ ok: false, reason: "not-participant" });
+      return;
+    }
+
+    this.mutes.set(socket, {
+      presetMessagesMuted: parsed.data.presetMessagesMuted,
+      reactionsMuted: parsed.data.reactionsMuted,
+    });
+    ack?.({ ok: true });
+  }
+
+  /**
+   * Relays one piece of communication to the two seats of the match and to nobody
+   * else. Nothing is written: the event is the whole of it (ADR-0026). A recipient
+   * who has muted the channel is not sent the event at all, while the sender always
+   * hears their own, which is how their client shows what it sent.
+   */
+  private async relay(
+    socket: Socket,
+    channel: CommunicationChannel,
+    matchId: string,
+    build: (origin: CommunicationOrigin) => Readonly<{ event: string; payload: unknown }>,
+  ): Promise<CommunicationAck> {
+    const session = this.sessions.get(socket);
+    if (!session) {
+      return { ok: false, reason: "not-authorized" };
+    }
+
+    const seat = await this.participantSeat(session.actor, matchId);
+    if (!seat) {
+      return { ok: false, reason: "not-participant" };
+    }
+
+    const { event, payload } = build({
+      matchId,
+      from: seat.side,
+      actorId: session.actor.actorId,
+      sentAt: this.clock(),
+    });
+
+    for (const actorId of seat.actorIds) {
+      const isSender = actorId === session.actor.actorId;
+      for (const recipient of this.socketsByActor.get(actorId) ?? []) {
+        if (isSender || !this.mutes.withholds(recipient, channel)) {
+          recipient.emit(event, payload);
+        }
+      }
+    }
+
+    return { ok: true };
+  }
+
+  /** The seat the actor holds in the match, and both seats to deliver to. */
+  private async participantSeat(actor: Actor, matchId: string): Promise<ParticipantSeat | null> {
+    const snapshot = await this.runtime.getSnapshotForActor(matchId, actor);
+    if (!snapshot) {
+      return null;
+    }
+    return {
+      side: snapshot.players.light.actorId === actor.actorId ? "light" : "dark",
+      actorIds: [snapshot.players.light.actorId, snapshot.players.dark.actorId],
+    };
   }
 
   /**
