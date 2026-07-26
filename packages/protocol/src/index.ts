@@ -7,17 +7,23 @@
  */
 
 export {
+  ACHIEVEMENT_BADGE_TIERS,
+  ACHIEVEMENT_CODES,
+  ACHIEVEMENT_RULE_VERSION,
   ACTOR_TYPES,
   APP_ENVIRONMENTS,
   CLIENT_TO_SERVER_EVENTS,
   COLOR_ASSIGNMENTS,
   COMMAND_REJECTION_REASONS,
+  COMMUNICATION_REJECTION_REASONS,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
   ELO_K_FACTOR,
   EMAIL_MAX_LENGTH,
   FATAL_ERROR_ACTIONS,
   HTTP_ERROR_CODES,
+  LEADERBOARD_PAGE_SIZE,
+  LEADERBOARD_PERIODS,
   MATCH_END_REASONS,
   MATCH_MODES,
   MATCH_RESULTS,
@@ -25,8 +31,11 @@ export {
   MINIMUM_RATING,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  PRESET_MESSAGE_KEYS,
+  PROFILE_RECENT_MATCH_COUNT,
   PROTOCOL_VERSION,
   QUEUE_REJECTION_REASONS,
+  REACTION_KEYS,
   RATING_FORMULA_VERSION,
   RATING_OUTCOMES,
   REMATCH_OFFER_MS,
@@ -40,33 +49,43 @@ export {
   USERNAME_MIN_LENGTH,
   USERNAME_UNAVAILABLE_REASONS,
   USER_STATUSES,
+  isAchievementCode,
   isActorType,
   isColorAssignment,
   isCommandRejectionReason,
+  isLeaderboardPeriod,
   isMatchEndReason,
   isMatchMode,
   isMatchResultOutcome,
   isMatchStatus,
+  isPresetMessageKey,
+  isReactionKey,
   isRematchState,
   isTimeControlSeconds,
   isUserStatus,
 } from "./constants";
 
 export type {
+  AchievementBadgeTier,
+  AchievementCode,
   ActorType,
   AppEnvironment,
   ClientToServerEventKey,
   ClientToServerEventName,
   ColorAssignment,
   CommandRejectionReason,
+  CommunicationRejectionReason,
   FatalErrorAction,
   HttpErrorCode,
+  LeaderboardPeriod,
   MatchEndReason,
   MatchMode,
   MatchResultOutcome,
   MatchStatus,
+  PresetMessageKey,
   QueueRejectionReason,
   RatingOutcome,
+  ReactionKey,
   RematchRejectionReason,
   RematchState,
   ServerToClientEventKey,
@@ -75,6 +94,61 @@ export type {
   UserStatus,
   UsernameUnavailableReason,
 } from "./constants";
+
+export {
+  ACHIEVEMENT_CATALOGUE,
+  achievementByCode,
+  achievementProgressSchema,
+  achievementSchema,
+  achievementsResponseSchema,
+  profileBadgeSchema,
+} from "./achievements";
+
+export type {
+  Achievement,
+  AchievementProgress,
+  AchievementsResponse,
+  ProfileBadge,
+} from "./achievements";
+
+export {
+  communicationAckSchema,
+  muteStateRequestSchema,
+  muteStateSchema,
+  presetMessageEventSchema,
+  presetMessageKeySchema,
+  presetMessageRequestSchema,
+  reactionEventSchema,
+  reactionKeySchema,
+  reactionRequestSchema,
+} from "./communication";
+
+export type {
+  CommunicationAck,
+  MuteState,
+  MuteStateRequest,
+  PresetMessageEvent,
+  PresetMessageRequest,
+  ReactionEvent,
+  ReactionRequest,
+} from "./communication";
+
+export {
+  decodeLeaderboardCursor,
+  encodeLeaderboardCursor,
+  leaderboardCursorSchema,
+  leaderboardEntrySchema,
+  leaderboardPeriodSchema,
+  leaderboardQuerySchema,
+  leaderboardResponseSchema,
+} from "./leaderboard";
+
+export type {
+  LeaderboardCursor,
+  LeaderboardEntry,
+  LeaderboardQuery,
+  LeaderboardResponse,
+} from "./leaderboard";
 
 export {
   avatarUrlSchema,

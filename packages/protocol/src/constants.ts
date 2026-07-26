@@ -128,6 +128,79 @@ export const REMATCH_REJECTION_REASONS = Object.freeze([
   "ineligible",
 ] as const);
 
+/**
+ * The eight phrases of docs/product-spec.md section 12.1. The wire carries the key
+ * and the client owns the words, so a phrase can be translated without a server
+ * change and nothing a player types can ever reach an opponent.
+ */
+export const PRESET_MESSAGE_KEYS = Object.freeze([
+  "good-luck",
+  "good-game",
+  "nice-move",
+  "well-played",
+  "one-moment",
+  "thanks",
+  "oops",
+  "rematch",
+] as const);
+
+/** The five reactions of section 12.2; `tap` is the wooden-piece tap. */
+export const REACTION_KEYS = Object.freeze([
+  "applause",
+  "surprise",
+  "thinking",
+  "smile",
+  "tap",
+] as const);
+
+/**
+ * Why communication was refused. An unknown key is not here: it fails validation
+ * and is reported on `error:recoverable`
+ * (docs/adr/0026-communication-is-relayed-never-stored.md).
+ */
+export const COMMUNICATION_REJECTION_REASONS = Object.freeze([
+  "not-authorized",
+  "not-participant",
+] as const);
+
+/** The achievements of section 11.4, in the order a profile lists them. */
+export const ACHIEVEMENT_CODES = Object.freeze([
+  "first-victory",
+  "getting-started",
+  "contender",
+  "on-a-roll",
+  "century-club",
+  "time-keeper",
+  "uncovered",
+  "four-ways",
+] as const);
+
+/**
+ * A badge is a tier the client renders from design tokens rather than an image
+ * (appendix P6.8), and it is what section 15.7's `badge_asset` column holds.
+ */
+export const ACHIEVEMENT_BADGE_TIERS = Object.freeze(["bronze", "silver", "gold"] as const);
+
+/**
+ * Stored with every award so a later rule change can be told from the original
+ * evaluation (section 15.7).
+ */
+export const ACHIEVEMENT_RULE_VERSION = 1;
+
+/** The four boards of section 11.3. */
+export const LEADERBOARD_PERIODS = Object.freeze([
+  "daily",
+  "weekly",
+  "monthly",
+  "all-time",
+] as const);
+
+/** Section 11.3: the first page is the top hundred, and no page may exceed it. */
+export const LEADERBOARD_PAGE_SIZE = 100;
+
+/** How many recent matches a public profile shows (appendix P6.12). */
+export const PROFILE_RECENT_MATCH_COUNT = 5;
+
 /** How the colours of a match were decided (docs/product-spec.md section 9.4). */
 export const COLOR_ASSIGNMENTS = Object.freeze(["random", "alternated"] as const);
 
@@ -188,6 +261,12 @@ export type UsernameUnavailableReason = (typeof USERNAME_UNAVAILABLE_REASONS)[nu
 export type QueueRejectionReason = (typeof QUEUE_REJECTION_REASONS)[number];
 export type RematchState = (typeof REMATCH_STATES)[number];
 export type RematchRejectionReason = (typeof REMATCH_REJECTION_REASONS)[number];
+export type PresetMessageKey = (typeof PRESET_MESSAGE_KEYS)[number];
+export type ReactionKey = (typeof REACTION_KEYS)[number];
+export type CommunicationRejectionReason = (typeof COMMUNICATION_REJECTION_REASONS)[number];
+export type AchievementCode = (typeof ACHIEVEMENT_CODES)[number];
+export type AchievementBadgeTier = (typeof ACHIEVEMENT_BADGE_TIERS)[number];
+export type LeaderboardPeriod = (typeof LEADERBOARD_PERIODS)[number];
 export type ColorAssignment = (typeof COLOR_ASSIGNMENTS)[number];
 export type RatingOutcome = (typeof RATING_OUTCOMES)[number];
 export type CommandRejectionReason = (typeof COMMAND_REJECTION_REASONS)[number];
@@ -242,4 +321,20 @@ export function isRematchState(value: unknown): value is RematchState {
 
 export function isColorAssignment(value: unknown): value is ColorAssignment {
   return isMemberOf(COLOR_ASSIGNMENTS, value);
+}
+
+export function isPresetMessageKey(value: unknown): value is PresetMessageKey {
+  return isMemberOf(PRESET_MESSAGE_KEYS, value);
+}
+
+export function isReactionKey(value: unknown): value is ReactionKey {
+  return isMemberOf(REACTION_KEYS, value);
+}
+
+export function isAchievementCode(value: unknown): value is AchievementCode {
+  return isMemberOf(ACHIEVEMENT_CODES, value);
+}
+
+export function isLeaderboardPeriod(value: unknown): value is LeaderboardPeriod {
+  return isMemberOf(LEADERBOARD_PERIODS, value);
 }
