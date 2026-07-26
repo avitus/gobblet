@@ -92,6 +92,10 @@ Superseding a decision:
 | 0030   | [Telemetry sits behind ports and is relayed through the server](0030-telemetry-behind-ports-relayed-through-the-server.md) | Accepted               | 2026-07-26 |
 | 0031   | [Metrics are a Prometheus exposition from prom-client](0031-metrics-are-a-prometheus-exposition.md)                        | Accepted               | 2026-07-26 |
 | 0032   | [Backups are scripts proved by a restore round trip](0032-backups-are-scripts-proved-by-a-restore.md)                      | Accepted               | 2026-07-26 |
+| 0033   | [The desktop application is the web build in a window](0033-the-desktop-application-is-the-web-build-in-a-window.md)       | Accepted               | 2026-07-26 |
+| 0034   | [Updates are asked of our own server](0034-updates-are-asked-of-our-own-server.md)                                         | Accepted               | 2026-07-26 |
+| 0035   | [Installers live in GitHub Releases](0035-artifacts-live-in-github-releases.md)                                            | Accepted               | 2026-07-26 |
+| 0036   | [Signing is a workflow step that fails loudly](0036-signing-is-a-workflow-step-that-fails-loudly.md)                       | Accepted               | 2026-07-26 |
 
 Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
 [`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents
