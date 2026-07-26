@@ -25,6 +25,7 @@ with the phase that delivers it. Do not attempt a runbook marked planned.
 | Secret and key rotation        | Planned (Phase 3 onwards)                                                                      |
 | Account moderation             | Executable through the database and `IdentityService` only (Phase 3); the admin API is Phase 7 |
 | Matchmaking observation        | Readable from the server log today (Phase 4); dashboards and alerts are Phase 7                |
+| Browser end-to-end suite       | Executable locally and in CI (Phase 5); the packaged shells are Phase 8                        |
 
 ## 2. Environments
 
