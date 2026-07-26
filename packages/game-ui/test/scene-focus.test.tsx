@@ -8,6 +8,8 @@ vi.mock("@react-three/fiber", () => ({
 }));
 
 const { BoardScene } = await import("../src/scene/BoardScene");
+const { placeCamera } = await import("../src/scene/camera");
+const { projectStops } = await import("../src/scene/projection");
 const { useBoardInteraction } = await import("../src/interaction/use-board-interaction");
 const { tierSettings } = await import("../src/tier");
 const { OPENING_STATE, serializedAfter } = await import("./helpers/state");
@@ -48,8 +50,40 @@ describe("the scene's keyboard surface", () => {
     render(<Harness />);
 
     expect(screen.getAllByRole("gridcell")).toHaveLength(16);
+    expect(screen.getAllByRole("row")).toHaveLength(4);
     expect(screen.getByTestId("scene-reserve-light-0")).toBeEnabled();
     expect(screen.getByTestId("scene-reserve-dark-0")).toBeDisabled();
+  });
+
+  it("lays every stop over the square the camera draws", () => {
+    render(<Harness />);
+    const stops = projectStops(placeCamera("light"));
+
+    for (const { square, box } of stops.squares) {
+      const element = screen.getByTestId(`scene-square-${square}`);
+      expect(element.style.left).toBe(`${String(box.left)}%`);
+      expect(element.style.top).toBe(`${String(box.top)}%`);
+      expect(element.style.width).toBe(`${String(box.width)}%`);
+      expect(element.style.height).toBe(`${String(box.height)}%`);
+    }
+
+    for (const { owner, reserveStack, box } of stops.reserves) {
+      const element = screen.getByTestId(`scene-reserve-${owner}-${String(reserveStack)}`);
+      expect(element.style.left).toBe(`${String(box.left)}%`);
+      expect(element.style.top).toBe(`${String(box.top)}%`);
+    }
+  });
+
+  it("follows the seat, because the rig turns for a player seated as dark", () => {
+    render(<Harness seat="dark" />);
+    const expected = projectStops(placeCamera("dark")).squares.find(
+      (stop) => stop.square === "r0c0",
+    );
+
+    expect(expected).toBeDefined();
+    expect(screen.getByTestId("scene-square-r0c0").style.top).toBe(
+      `${String(expected?.box.top ?? 0)}%`,
+    );
   });
 
   it("names a square exactly as the flat tier names it", () => {

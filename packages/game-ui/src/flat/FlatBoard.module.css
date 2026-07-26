@@ -45,33 +45,69 @@
   cursor: default;
 }
 
-.square[data-hovered="true"]:not(:disabled) {
-  transform: translateY(-2px);
+/* Hover highlights and only selection lifts, as section 13.3 asks. */
+.square[data-hovered="true"]:not(:disabled) span,
+.reserveStack[data-hovered="true"]:not(:disabled) span {
+  filter: brightness(1.18);
+  box-shadow:
+    inset 0 0 0 2px var(--color-accent-strong),
+    0 1px 2px rgb(0 0 0 / 35%);
 }
 
-.square[data-owner="light"] {
+/*
+ * A piece is a disc whose diameter is its size, so the four sizes are told apart by
+ * width first and by the numeral second (appendix P5.18).
+ */
+.square[data-size] span,
+.reserveStack[data-size] span {
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  box-shadow:
+    inset 0 0 0 2px rgb(0 0 0 / 22%),
+    0 1px 2px rgb(0 0 0 / 35%);
+  transition:
+    width var(--duration-instant) ease,
+    height var(--duration-instant) ease;
+}
+
+.square[data-owner="light"] span,
+.reserveStack[data-owner="light"] span {
   background: var(--color-piece-light);
   color: var(--color-text-inverse);
 }
 
-.square[data-owner="dark"] {
+.square[data-owner="dark"] span,
+.reserveStack[data-owner="dark"] span {
   background: var(--color-piece-dark);
   color: var(--color-text-primary);
 }
 
-.square[data-size="1"] span {
+.square[data-size="1"] span,
+.reserveStack[data-size="1"] span {
+  width: 42%;
+  height: 42%;
   font-size: var(--font-size-xs);
 }
 
-.square[data-size="2"] span {
+.square[data-size="2"] span,
+.reserveStack[data-size="2"] span {
+  width: 60%;
+  height: 60%;
   font-size: var(--font-size-sm);
 }
 
-.square[data-size="3"] span {
+.square[data-size="3"] span,
+.reserveStack[data-size="3"] span {
+  width: 78%;
+  height: 78%;
   font-size: var(--font-size-md);
 }
 
-.square[data-size="4"] span {
+.square[data-size="4"] span,
+.reserveStack[data-size="4"] span {
+  width: 94%;
+  height: 94%;
   font-size: var(--font-size-lg);
 }
 
@@ -120,20 +156,6 @@
   opacity: 0.55;
 }
 
-.reserveStack[data-owner="light"] {
-  background: var(--color-piece-light);
-  color: var(--color-text-inverse);
-}
-
-.reserveStack[data-owner="dark"] {
-  background: var(--color-piece-dark);
-  color: var(--color-text-primary);
-}
-
-.reserveStack[data-hovered="true"]:not(:disabled) {
-  transform: translateY(-2px);
-}
-
 .reserveStack[data-selected="true"] {
   border-color: var(--color-accent);
   transform: translateY(-4px);
@@ -145,9 +167,7 @@
     transition-duration: var(--duration-crossfade);
   }
 
-  .square[data-hovered="true"]:not(:disabled),
   .square[data-selected="true"],
-  .reserveStack[data-hovered="true"]:not(:disabled),
   .reserveStack[data-selected="true"] {
     transform: none;
   }

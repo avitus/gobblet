@@ -118,7 +118,7 @@ function ReserveRow({ label, stacks, interaction }: ReserveRowProps): React.JSX.
               interaction.choose(origin);
             }}
           >
-            {stack.piece === null ? "" : String(stack.piece.size)}
+            <span aria-hidden="true">{stack.piece === null ? "" : String(stack.piece.size)}</span>
           </button>
         );
       })}

@@ -160,6 +160,19 @@ export function useBoardInteraction(options: BoardInteractionOptions): BoardInte
   };
 }
 
+/**
+ * What a click or a ray hit on a drawn piece means. A piece already on the board is
+ * chosen through its square, so pressing a piece that a lifted one may cover
+ * completes that move instead of trying to select the opponent's piece.
+ */
+export function choosePiece(interaction: BoardInteraction, origin: Origin): void {
+  if (origin.kind === "board") {
+    interaction.chooseSquare(origin.square);
+    return;
+  }
+  interaction.choose(origin);
+}
+
 export type BoardKeyboardEvent = Readonly<{
   key: string;
   shiftKey?: boolean;

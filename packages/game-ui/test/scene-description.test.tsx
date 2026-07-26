@@ -82,7 +82,7 @@ describe("the scene description", () => {
     expect(onSquare.find((piece) => piece.key === "board-r0c0")?.owner).toBe("light");
   });
 
-  it("lifts the selected and the hovered piece", () => {
+  it("lifts the selected piece and only highlights the hovered one", () => {
     const interaction = mountInteraction();
 
     act(() => {
@@ -99,8 +99,25 @@ describe("the scene description", () => {
 
     expect(selected?.raised).toBe(true);
     expect(selected?.position[1]).toBeCloseTo(reservePosition("light", 0)[1] + SELECTION_LIFT, 6);
-    expect(hovered?.raised).toBe(true);
+    expect(hovered?.raised).toBe(false);
+    expect(hovered?.highlighted).toBe(true);
+    expect(hovered?.position).toEqual(reservePosition("light", 2));
     expect(untouched?.raised).toBe(false);
+    expect(untouched?.highlighted).toBe(false);
+  });
+
+  it("leaves a hovered piece on the board where it stands", () => {
+    const interaction = mountInteraction(COVERED_STATE, "dark");
+
+    act(() => {
+      interaction().hover({ kind: "board", square: "r2c0" });
+    });
+
+    const hovered = describeScene(interaction()).pieces.find((piece) => piece.key === "board-r2c0");
+
+    expect(hovered?.highlighted).toBe(true);
+    expect(hovered?.raised).toBe(false);
+    expect(hovered?.position).toEqual(squarePosition("r2c0"));
   });
 
   it("marks legal destinations, a reveal loss and the keyboard cursor", () => {

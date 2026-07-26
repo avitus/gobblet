@@ -9,6 +9,10 @@ import type { PieceSizeKey, Vector3 } from "./layout";
  * What the WebGL tiers draw, as data. Keeping the decision here means the scene
  * component is a mapping with nothing to test in a browser, and the rule that only
  * the top piece of a stack is ever drawn is enforced in one place (appendix P5.5).
+ *
+ * Hover highlights and selection lifts, in that order of strength, which is what
+ * section 13.3 asks for. Lifting on hover would also move a piece out from under
+ * the pointer that is about to press it (appendix P5.19).
  */
 export type SquareNode = Readonly<{
   square: Square;
@@ -25,7 +29,10 @@ export type PieceNode = Readonly<{
   radius: number;
   height: number;
   position: Vector3;
+  /** Only a selected piece is lifted, so hovering never moves it (section 13.3). */
   raised: boolean;
+  /** Hover treatment: the piece is brightened where it stands. */
+  highlighted: boolean;
   origin: Origin;
 }>;
 
@@ -68,7 +75,7 @@ export function describeScene(interaction: BoardInteraction): SceneDescription {
     const origin: Origin = { kind: "board", square: visible.square };
     const dimensions = PIECE_DIMENSIONS[visible.piece.size];
     const base = squarePosition(visible.square);
-    const raised = isSelected(interaction, origin) || interaction.isHovered(origin);
+    const raised = isSelected(interaction, origin);
 
     return [
       {
@@ -79,6 +86,7 @@ export function describeScene(interaction: BoardInteraction): SceneDescription {
         height: dimensions.height,
         position: raised ? lift(base) : base,
         raised,
+        highlighted: interaction.isHovered(origin),
         origin,
       },
     ];
@@ -95,7 +103,7 @@ export function describeScene(interaction: BoardInteraction): SceneDescription {
     };
     const dimensions = PIECE_DIMENSIONS[stack.piece.size];
     const base = reservePosition(stack.owner, stack.reserveStack);
-    const raised = isSelected(interaction, origin) || interaction.isHovered(origin);
+    const raised = isSelected(interaction, origin);
 
     return [
       {
@@ -106,6 +114,7 @@ export function describeScene(interaction: BoardInteraction): SceneDescription {
         height: dimensions.height,
         position: raised ? lift(base) : base,
         raised,
+        highlighted: interaction.isHovered(origin),
         origin,
       },
     ];

@@ -1,12 +1,25 @@
 import { act, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Move, Player } from "@gobblet/game-core";
-import { handleBoardKey, useBoardInteraction } from "../src/interaction/use-board-interaction";
+import type { Move, Player, SerializedGameState } from "@gobblet/game-core";
+import {
+  choosePiece,
+  handleBoardKey,
+  useBoardInteraction,
+} from "../src/interaction/use-board-interaction";
 import type { BoardInteraction } from "../src/interaction/use-board-interaction";
-import { OPENING_STATE } from "./helpers/state";
+import { OPENING_STATE, serializedAfter } from "./helpers/state";
+
+/** Light holds size four on two stacks; dark's size three stands on `r0c1`. */
+const COVERABLE_STATE = serializedAfter(
+  { kind: "reserve", reserveStack: 0, to: "r3c3" },
+  { kind: "reserve", reserveStack: 0, to: "r0c0" },
+  { kind: "reserve", reserveStack: 0, to: "r3c2" },
+  { kind: "reserve", reserveStack: 0, to: "r0c1" },
+);
 
 function mountInteraction(
   options: Readonly<{
+    state?: SerializedGameState;
     seat?: Player | null;
     locked?: boolean;
     onSubmit?: (move: Move) => void;
@@ -16,7 +29,7 @@ function mountInteraction(
 
   function Probe(): null {
     latest = useBoardInteraction({
-      state: OPENING_STATE,
+      state: options.state ?? OPENING_STATE,
       seat: options.seat ?? "light",
       locked: options.locked ?? false,
       onSubmit: options.onSubmit ?? (() => undefined),
@@ -91,6 +104,50 @@ describe("the interaction layer", () => {
 
     expect(onSubmit).toHaveBeenCalledWith({ kind: "reserve", reserveStack: 2, to: "r3c3" });
     expect(interaction().selected).toBeNull();
+  });
+
+  it("completes a move when the piece pressed is the one being covered", () => {
+    const onSubmit = vi.fn();
+    const interaction = mountInteraction({ state: COVERABLE_STATE, onSubmit });
+
+    act(() => {
+      choosePiece(interaction(), { kind: "board", square: "r3c3" });
+    });
+    act(() => {
+      choosePiece(interaction(), { kind: "board", square: "r0c1" });
+    });
+
+    expect(onSubmit).toHaveBeenCalledWith({ kind: "board", from: "r3c3", to: "r0c1" });
+  });
+
+  it("ignores a press on an opponent's piece that nothing is aimed at", () => {
+    const onSubmit = vi.fn();
+    const interaction = mountInteraction({ state: COVERABLE_STATE, onSubmit });
+
+    act(() => {
+      choosePiece(interaction(), { kind: "board", square: "r0c1" });
+    });
+
+    expect(interaction().selected).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("selects a piece of its own that is pressed, on the board or in the reserve", () => {
+    const interaction = mountInteraction({ state: COVERABLE_STATE });
+
+    act(() => {
+      choosePiece(interaction(), { kind: "board", square: "r3c3" });
+    });
+    expect(interaction().selected).toEqual({ kind: "board", square: "r3c3" });
+
+    act(() => {
+      choosePiece(interaction(), { kind: "reserve", owner: "light", reserveStack: 2 });
+    });
+    expect(interaction().selected).toEqual({
+      kind: "reserve",
+      owner: "light",
+      reserveStack: 2,
+    });
   });
 
   it("keeps the cursor inside the board", () => {

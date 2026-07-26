@@ -28,6 +28,7 @@ export type {
 
 export {
   activatesItself,
+  choosePiece,
   handleBoardKey,
   useBoardInteraction,
 } from "./interaction/use-board-interaction";
@@ -52,6 +53,7 @@ export {
   CAMERA_MAX_ZOOM,
   CAMERA_MIN_ZOOM,
   CAMERA_POLAR_DEGREES,
+  CAMERA_TARGET_PULL,
   DEFAULT_ORBIT,
   clampOrbit,
   nudgeOrbit,
@@ -65,13 +67,26 @@ export type { PieceNode, SceneDescription, SquareNode } from "./scene/descriptio
 export {
   BOARD_THICKNESS,
   PIECE_DIMENSIONS,
+  PIECE_TAPER,
   SELECTION_LIFT,
   SQUARE_PITCH,
+  grooveHeights,
+  inlayRadius,
   lift,
+  pieceProfile,
   reservePosition,
   squarePosition,
 } from "./scene/layout";
-export type { Vector3 } from "./scene/layout";
+export type { PieceSizeKey, ProfilePoint, Vector3 } from "./scene/layout";
+
+export { SCENE_ASPECT, projectPoint, projectStops } from "./scene/projection";
+export type {
+  ProjectedStops,
+  ReserveStop,
+  ScreenBox,
+  ScreenPoint,
+  SquareStop,
+} from "./scene/projection";
 
 export { LOW_TIME_THRESHOLD_MS, displayedClocks, formatClock, isLowTime } from "./clock";
 export type { ClockReading, DisplayedClocks } from "./clock";
