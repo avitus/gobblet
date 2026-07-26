@@ -63,6 +63,7 @@ export function matchRowFixture(overrides: Partial<MatchRow> = {}): MatchRow {
     status: "active",
     result: null,
     endReason: null,
+    pairingWaitMs: null,
     lightPlayerType: LIGHT_ACTOR.actorType,
     lightPlayerId: LIGHT_ACTOR.actorId,
     lightDisplayName: LIGHT_ACTOR.displayName,

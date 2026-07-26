@@ -17,6 +17,8 @@ import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
 import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
+import { createSilentTelemetry } from "../src/observability/telemetry";
+import { adminServiceFixture } from "./helpers/admin-service";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -61,7 +63,15 @@ afterEach(async () => {
 async function start(config: ServerConfig = localConfig): Promise<FastifyInstance> {
   app = await buildApp({
     config,
-    services: { runtime, guests, identity, leaderboards },
+    services: {
+      runtime,
+      guests,
+      identity,
+      leaderboards,
+      admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      db: handle.db,
+    },
+    telemetry: createSilentTelemetry(),
     now: clock.now,
   });
   return app;

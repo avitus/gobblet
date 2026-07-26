@@ -23,6 +23,13 @@ describe("loadServerConfig", () => {
       guestSessionTtlDays: 30,
       userSessionTtlDays: 30,
       credentialAttemptLimit: 10,
+      metricsEnabled: false,
+      metricsToken: null,
+      sentryDsn: null,
+      posthogApiKey: null,
+      posthogHost: "https://eu.i.posthog.com",
+      telemetryPseudonymSecret: null,
+      telemetryAttemptLimit: 60,
     });
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.corsOrigins)).toBe(true);
@@ -45,6 +52,13 @@ describe("loadServerConfig", () => {
       GUEST_SESSION_TTL_DAYS: "7",
       USER_SESSION_TTL_DAYS: "90",
       CREDENTIAL_ATTEMPT_LIMIT: "500",
+      METRICS_ENABLED: "true",
+      METRICS_TOKEN: "a-metrics-token-long-enough",
+      SENTRY_DSN: "https://key@sentry.example.com/1",
+      POSTHOG_API_KEY: "phc_example",
+      POSTHOG_HOST: "https://posthog.example.com",
+      TELEMETRY_PSEUDONYM_SECRET: "a-pseudonym-secret-value",
+      TELEMETRY_ATTEMPT_LIMIT: "120",
     });
 
     expect(config.nodeEnv).toBe("production");
@@ -56,6 +70,25 @@ describe("loadServerConfig", () => {
     expect(config.guestSessionTtlDays).toBe(7);
     expect(config.userSessionTtlDays).toBe(90);
     expect(config.credentialAttemptLimit).toBe(500);
+    expect(config.metricsEnabled).toBe(true);
+    expect(config.metricsToken).toBe("a-metrics-token-long-enough");
+    expect(config.sentryDsn).toBe("https://key@sentry.example.com/1");
+    expect(config.posthogApiKey).toBe("phc_example");
+    expect(config.posthogHost).toBe("https://posthog.example.com");
+    expect(config.telemetryPseudonymSecret).toBe("a-pseudonym-secret-value");
+    expect(config.telemetryAttemptLimit).toBe(120);
+  });
+
+  it("refuses a metrics token or a pseudonym key short enough to guess", () => {
+    expect(() => loadServerConfig({ METRICS_TOKEN: "short" })).toThrow(ConfigValidationError);
+    expect(() => loadServerConfig({ TELEMETRY_PSEUDONYM_SECRET: "short" })).toThrow(
+      ConfigValidationError,
+    );
+  });
+
+  it("reads the metrics switch as a word rather than a number", () => {
+    expect(loadServerConfig({ METRICS_ENABLED: "false" }).metricsEnabled).toBe(false);
+    expect(() => loadServerConfig({ METRICS_ENABLED: "1" })).toThrow(ConfigValidationError);
   });
 
   it("rejects a session lifetime outside the supported range", () => {

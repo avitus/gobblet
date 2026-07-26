@@ -29,6 +29,7 @@
     "db:reset": "docker compose down -v && docker compose up -d postgres",
     "db:generate": "pnpm --filter @gobblet/db db:generate",
     "db:migrate": "pnpm --filter @gobblet/db db:migrate",
+    "admin:grant": "pnpm --filter @gobblet/server admin:grant",
     "verify": "turbo run typecheck lint test:coverage build"
   },
   "devDependencies": {

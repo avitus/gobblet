@@ -10,7 +10,7 @@ import {
   USER_ROLES,
   USER_STATUSES,
 } from "./constants";
-import { matchSummarySchema } from "./http";
+import { matchSummarySchema, playerMatchSummarySchema } from "./http";
 import { emailSchema } from "./identity";
 import { matchClocksSchema, timeControlSecondsSchema } from "./match";
 import { isoTimestampSchema, matchVersionSchema, uuidSchema } from "./primitives";
@@ -86,7 +86,8 @@ export const adminUserDetailSchema = z.strictObject({
       ratedAt: isoTimestampSchema,
     })
     .nullable(),
-  recentMatches: z.array(matchSummarySchema),
+  /** Read from this account's seat, so the outcome is the one it experienced. */
+  recentMatches: z.array(playerMatchSummarySchema),
   moderation: z.array(adminModerationEntrySchema),
   activeSessions: z.int().nonnegative(),
 });

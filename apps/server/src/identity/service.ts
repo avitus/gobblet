@@ -60,6 +60,8 @@ import type {
   UserStatus,
 } from "@gobblet/protocol";
 import { readAchievementProgress, readProfileBadges } from "../achievements/read";
+import { createSilentTelemetry } from "../observability/telemetry";
+import type { TelemetryService } from "../observability/telemetry";
 import { readAllTimeRank } from "../leaderboard/rank";
 import { listCompletedPlayerHistory } from "../match/history";
 
@@ -94,6 +96,8 @@ export type IdentityServiceOptions = Readonly<{
   db: Database;
   config: ServerConfig;
   now?: () => number;
+  /** Absent in a unit test, which then reports nothing anywhere (ADR-0030). */
+  telemetry?: TelemetryService;
 }>;
 
 export type RegisterFailure = "email-taken" | "username-taken";
@@ -125,6 +129,8 @@ export function toAccount(user: UserRow): Account {
     email: user.email,
     emailVerified: user.emailVerifiedAt !== null,
     status: user.status,
+    /** Read by a client to decide whether to offer the dashboard (appendix P7.1). */
+    role: user.role,
     createdAt: user.createdAt.toISOString(),
   };
 }
@@ -147,10 +153,13 @@ export class IdentityService {
 
   private readonly clock: () => number;
 
+  private readonly telemetry: TelemetryService;
+
   constructor(options: IdentityServiceOptions) {
     this.db = options.db;
     this.config = options.config;
     this.clock = options.now ?? ((): number => Date.now());
+    this.telemetry = options.telemetry ?? createSilentTelemetry();
   }
 
   /**
@@ -184,6 +193,7 @@ export class IdentityService {
         return { user, session, verification };
       });
 
+      this.announceSignUp(created.user.id, false);
       return ok({
         account: toAccount(created.user),
         session: created.session,
@@ -225,6 +235,10 @@ export class IdentityService {
       return this.openSession(tx, user.id, now);
     });
 
+    this.telemetry.capture(
+      { actorType: "user", actorId: user.id },
+      { name: "signed-in", method: "password" },
+    );
     return ok({ account: toAccount(user), session });
   }
 
@@ -345,6 +359,7 @@ export class IdentityService {
         return { user, session, verification, claimedMatches };
       });
 
+      this.announceSignUp(claimed.user.id, true);
       return ok({
         account: toAccount(claimed.user),
         session: claimed.session,
@@ -516,6 +531,14 @@ export class IdentityService {
       suspendedAt: null,
       suspendedReason: null,
     });
+  }
+
+  /** Sign-up conversion of section 17.1, which is why the guest origin is on it. */
+  private announceSignUp(userId: string, fromGuest: boolean): void {
+    this.telemetry.capture(
+      { actorType: "user", actorId: userId },
+      { name: "sign-up-completed", fromGuest },
+    );
   }
 
   private async openSession(

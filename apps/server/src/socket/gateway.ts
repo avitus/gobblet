@@ -39,6 +39,10 @@ import type { RematchBroadcast, RematchResult, RematchService } from "../matchma
 import type { MatchmakingQueue, SeatedMatch } from "../matchmaking/service";
 import type { CommandResult, MatchRuntime } from "../match/runtime";
 import type { Actor } from "../match/snapshot";
+import type { MatchConnectionEventInput } from "../match/runtime";
+import type { CommandKind } from "../observability/metrics";
+import { createSilentTelemetry } from "../observability/telemetry";
+import type { TelemetryService } from "../observability/telemetry";
 import { ClockBroadcaster, TICK_INTERVAL_MS } from "./clock-broadcaster";
 import { ChannelMutes } from "./communication";
 import type { CommunicationChannel } from "./communication";
@@ -56,6 +60,8 @@ export type GatewayOptions = Readonly<{
   matchmaking: MatchmakingQueue;
   rematch: RematchService;
   log: GatewayLogger;
+  /** Absent in a unit test, which then reports nothing anywhere (ADR-0030). */
+  telemetry?: TelemetryService;
   /** Required, not defaulted: every caller of the gateway already has a clock. */
   now: () => number;
   /** Left off in tests so the cadence can be driven by hand. */
@@ -65,6 +71,8 @@ export type GatewayOptions = Readonly<{
 type SocketSession = Readonly<{
   actor: Actor;
   displayName: string;
+  /** The matches this socket has attached to, so a disconnection can be recorded. */
+  attached: Set<string>;
 }>;
 
 /** Where a piece of communication came from, and who it is delivered to. */
@@ -103,6 +111,28 @@ const OUT = SERVER_TO_CLIENT_EVENTS;
 
 export function matchRoom(matchId: string): string {
   return `match:${matchId}`;
+}
+
+/** The seat an actor holds in a snapshot, which is where its actor type comes from. */
+function seatActor(snapshot: MatchSnapshot, actorId: string): Actor {
+  const seat =
+    snapshot.players.light.actorId === actorId ? snapshot.players.light : snapshot.players.dark;
+  return { actorType: seat.actorType, actorId: seat.actorId };
+}
+
+function detachmentKey(actorId: string, matchId: string): string {
+  return `${actorId}:${matchId}`;
+}
+
+function toReportable(error: unknown): Readonly<{ name: string; message: string; stack?: string }> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      ...(error.stack === undefined ? {} : { stack: error.stack }),
+    };
+  }
+  return { name: "Error", message: String(error) };
 }
 
 type Version = Readonly<{ major: number; minor: number; patch: number }>;
@@ -161,6 +191,8 @@ export class MatchGateway {
 
   private readonly log: GatewayLogger;
 
+  private readonly telemetry: TelemetryService;
+
   private readonly clock: () => number;
 
   private readonly sessions = new WeakMap<Socket, SocketSession>();
@@ -173,6 +205,12 @@ export class MatchGateway {
 
   private readonly clocks = new ClockBroadcaster();
 
+  /** Actors that left a match, so their return can be counted as a reconnection. */
+  private readonly detached = new Set<string>();
+
+  /** Connection history still being written, which a shutdown waits for. */
+  private readonly pendingWrites = new Set<Promise<void>>();
+
   private ticker: NodeJS.Timeout | undefined;
 
   constructor(options: GatewayOptions) {
@@ -182,6 +220,7 @@ export class MatchGateway {
     this.matchmaking = options.matchmaking;
     this.rematch = options.rematch;
     this.log = options.log;
+    this.telemetry = options.telemetry ?? createSilentTelemetry();
     this.clock = options.now;
 
     this.io = new Server(options.httpServer, {
@@ -190,6 +229,7 @@ export class MatchGateway {
     });
 
     this.io.on("connection", (socket) => {
+      this.telemetry.metrics.recordSocketConnection();
       this.registerHandlers(socket);
     });
 
@@ -210,6 +250,17 @@ export class MatchGateway {
       this.ticker = undefined;
     }
     await this.io.close();
+    await this.settleConnectionHistory();
+  }
+
+  /**
+   * Waits for the connection history a closing socket started to be written. Without
+   * it a shutdown would race its own writes, and a test would race the next one.
+   */
+  async settleConnectionHistory(): Promise<void> {
+    while (this.pendingWrites.size > 0) {
+      await Promise.allSettled([...this.pendingWrites]);
+    }
   }
 
   /**
@@ -280,8 +331,8 @@ export class MatchGateway {
       this.handleQueueLeave(socket, payload, ack);
     });
 
-    socket.on("disconnect", () => {
-      this.forgetSocket(socket);
+    socket.on("disconnect", (reason: string) => {
+      this.forgetSocket(socket, reason);
     });
 
     socket.on(IN.matchSync, (payload: unknown, ack: Acknowledge<MatchSyncAck>) => {
@@ -370,7 +421,12 @@ export class MatchGateway {
     }
 
     const actor = toActor(identity);
-    this.sessions.set(socket, { actor, displayName: identity.displayName });
+    this.sessions.set(socket, {
+      actor,
+      displayName: identity.displayName,
+      attached: new Set<string>(),
+    });
+    this.telemetry.metrics.recordClientSession(parsed.data.platform ?? "web", clientVersion);
     const seeded =
       actor.actorType === "user"
         ? await this.resolvers.identity.communicationMutes(actor.actorId)
@@ -417,9 +473,16 @@ export class MatchGateway {
 
     const result = await this.matchmaking.join(session, parsed.data);
     if (result.outcome === "refused") {
+      this.telemetry.metrics.recordCommandRejection("queue", result.reason);
       ack?.({ state: "refused", reason: result.reason });
       return;
     }
+
+    this.telemetry.capture(session.actor, {
+      name: "queue-joined",
+      mode: parsed.data.mode,
+      timeControlSeconds: parsed.data.timeControlSeconds,
+    });
 
     if (result.outcome === "seated") {
       this.publishPairing(result.seated);
@@ -474,6 +537,12 @@ export class MatchGateway {
     }
 
     const result = await this.rematch.request(session.actor, parsed.data.matchId);
+    if (result.ok) {
+      this.telemetry.capture(session.actor, {
+        name: "rematch-requested",
+        mode: result.broadcast.mode,
+      });
+    }
     this.answerRematch(result, ack);
   }
 
@@ -500,6 +569,12 @@ export class MatchGateway {
       parsed.data.matchId,
       parsed.data.accept,
     );
+    if (result.ok && parsed.data.accept) {
+      this.telemetry.capture(session.actor, {
+        name: "rematch-accepted",
+        mode: result.broadcast.mode,
+      });
+    }
     this.answerRematch(result, ack);
   }
 
@@ -686,6 +761,7 @@ export class MatchGateway {
 
     await socket.join(matchRoom(snapshot.matchId));
     this.clocks.track(snapshot, this.clock());
+    await this.recordAttachment(session, snapshot.matchId, socket.id);
     socket.emit(OUT.matchSnapshot, snapshot);
     ack?.({ ok: true, snapshot });
   }
@@ -711,7 +787,7 @@ export class MatchGateway {
       return;
     }
 
-    this.settle(await this.runtime.applyMoveCommand(session.actor, command.data), ack);
+    this.settle(await this.runtime.applyMoveCommand(session.actor, command.data), ack, "move");
   }
 
   private async handleResign(
@@ -735,7 +811,7 @@ export class MatchGateway {
       return;
     }
 
-    this.settle(await this.runtime.applyResignCommand(session.actor, command.data), ack);
+    this.settle(await this.runtime.applyResignCommand(session.actor, command.data), ack, "resign");
   }
 
   /**
@@ -787,8 +863,12 @@ export class MatchGateway {
     return true;
   }
 
-  private settle(result: CommandResult, ack: Acknowledge<CommandAck>): void {
+  private settle(result: CommandResult, ack: Acknowledge<CommandAck>, command: CommandKind): void {
     const now = this.clock();
+
+    if (!result.ack.ok) {
+      this.telemetry.metrics.recordCommandRejection(command, result.ack.reason);
+    }
 
     if (result.snapshot) {
       this.clocks.track(result.snapshot, now);
@@ -847,6 +927,7 @@ export class MatchGateway {
       },
       "paired two waiting players",
     );
+    this.telemetry.metrics.observeMatchmakingWait(match.snapshot.mode, match.waitedMs / 1000);
     this.publishSeatedMatch(match);
   }
 
@@ -856,8 +937,79 @@ export class MatchGateway {
         void socket.join(matchRoom(event.matchId));
         socket.emit(OUT.matchFound, event);
       }
+      const actor = seatActor(match.snapshot, actorId);
+      this.telemetry.capture(actor, {
+        name: "match-found",
+        mode: event.mode,
+        timeControlSeconds: event.timeControlSeconds,
+        waitMs: event.waitedMs,
+      });
+      this.telemetry.capture(actor, {
+        name: "match-started",
+        mode: event.mode,
+        timeControlSeconds: event.timeControlSeconds,
+      });
     }
     this.clocks.track(match.snapshot, this.clock());
+  }
+
+  /** How many matches this instance is serving, which the gauge reads at scrape time. */
+  activeMatchCount(): number {
+    return this.clocks.size;
+  }
+
+  connectionCount(): number {
+    return this.io.sockets.sockets.size;
+  }
+
+  /**
+   * A socket joining a match it is playing, and whether that was a reconnection: it
+   * is one when this process already saw the same actor leave the same match
+   * (spec section 17.3, "socket reconnect count").
+   */
+  private async recordAttachment(
+    session: SocketSession,
+    matchId: string,
+    socketId: string,
+  ): Promise<void> {
+    if (session.attached.has(matchId)) {
+      return;
+    }
+    session.attached.add(matchId);
+
+    const key = detachmentKey(session.actor.actorId, matchId);
+    if (this.detached.delete(key)) {
+      this.telemetry.metrics.recordSocketReconnect();
+    }
+
+    await this.recordConnection({
+      matchId,
+      kind: "attached",
+      actor: session.actor,
+      socketId,
+    });
+  }
+
+  /**
+   * Connection history is written outside the match transaction: a failure to record
+   * who was connected must not end a match. A disconnection does not wait for it,
+   * which is why the promise is kept until a shutdown can settle it.
+   */
+  private recordConnection(input: MatchConnectionEventInput): Promise<void> {
+    const write = this.runtime
+      .recordConnectionEvent(input)
+      .catch((error: unknown) => {
+        this.telemetry.reportServerError(toReportable(error), {
+          route: "socket:connection-history",
+          actor: input.actor,
+          matchId: input.matchId,
+        });
+      })
+      .finally(() => {
+        this.pendingWrites.delete(write);
+      });
+    this.pendingWrites.add(write);
+    return write;
   }
 
   private rememberSocket(actorId: string, socket: Socket): void {
@@ -870,11 +1022,23 @@ export class MatchGateway {
    * A disconnected player must not be paired: the opponent would meet an empty seat
    * on a running clock (ADR-0018).
    */
-  private forgetSocket(socket: Socket): void {
+  private forgetSocket(socket: Socket, reason: string): void {
     const session = this.sessions.get(socket);
     if (!session) {
       return;
     }
+
+    for (const matchId of session.attached) {
+      this.detached.add(detachmentKey(session.actor.actorId, matchId));
+      void this.recordConnection({
+        matchId,
+        kind: "detached",
+        actor: session.actor,
+        socketId: socket.id,
+        reason,
+      });
+    }
+
     const sockets = this.socketsByActor.get(session.actor.actorId);
     sockets?.delete(socket);
     if (sockets && sockets.size === 0) {

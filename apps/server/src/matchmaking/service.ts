@@ -230,6 +230,7 @@ export class MatchmakingService implements MatchmakingQueue {
       light: { ...seats.light.actor, displayName: seats.light.displayName },
       dark: { ...seats.dark.actor, displayName: seats.dark.displayName },
       colorAssignment: "random",
+      pairingWaitMs: pairing.waitedMs,
     });
 
     return seatedMatchOf(snapshot, pairing.waitedMs);

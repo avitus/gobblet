@@ -1,4 +1,9 @@
-import type { MatchSnapshot, RematchRejectionReason, RematchStatusEvent } from "@gobblet/protocol";
+import type {
+  MatchMode,
+  MatchSnapshot,
+  RematchRejectionReason,
+  RematchStatusEvent,
+} from "@gobblet/protocol";
 import { REMATCH_OFFER_MS } from "@gobblet/protocol";
 import { checkParticipant } from "../match/eligibility";
 import type { Ineligibility } from "../match/eligibility";
@@ -18,6 +23,8 @@ export type RematchOptions = Readonly<{
 export type RematchBroadcast = Readonly<{
   actorIds: readonly string[];
   status: RematchStatusEvent;
+  /** The mode the offer is about, which is what an analytics event records. */
+  mode: MatchMode;
   /** Present only when the answer created the next match. */
   next?: SeatedMatch;
 }>;
@@ -28,6 +35,7 @@ export type RematchResult =
 
 type Offer = {
   readonly matchId: string;
+  readonly mode: MatchMode;
   readonly requestedBy: Actor;
   readonly opponent: Actor;
   readonly expiresAt: number;
@@ -84,6 +92,7 @@ export class RematchService {
 
     const offer: Offer = {
       matchId,
+      mode: finished.snapshot.mode,
       requestedBy: actor,
       opponent: opponentOf(finished.snapshot, actor),
       expiresAt: this.clock() + REMATCH_OFFER_MS,
@@ -228,6 +237,7 @@ export class RematchService {
   ): RematchBroadcast {
     return {
       actorIds: [offer.requestedBy.actorId, offer.opponent.actorId],
+      mode: offer.mode,
       status: {
         matchId: offer.matchId,
         state,

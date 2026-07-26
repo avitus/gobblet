@@ -40,6 +40,8 @@ import type { MatchmakingQueue } from "../src/matchmaking/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { MatchGateway, isClientVersionSupported } from "../src/socket/gateway";
 import type { GatewayLogger } from "../src/socket/gateway";
+import { createSilentTelemetry } from "../src/observability/telemetry";
+import { adminServiceFixture } from "./helpers/admin-service";
 import { TestClock, WINNING_SCRIPT, envelope } from "./helpers/match-fixtures";
 import { TestClient } from "./helpers/socket-client";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -88,7 +90,15 @@ beforeEach(async () => {
   rematch = new RematchService({ runtime, identity, now: clock.now });
   app = await buildApp({
     config,
-    services: { runtime, guests, identity, leaderboards },
+    services: {
+      runtime,
+      guests,
+      identity,
+      leaderboards,
+      admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      db: handle.db,
+    },
+    telemetry: createSilentTelemetry(),
     now: clock.now,
   });
   await app.listen({ host: "127.0.0.1", port: 0 });
@@ -153,7 +163,21 @@ async function spawnGateway(
 ): Promise<{ gateway: MatchGateway; url: string }> {
   const localApp = await buildApp({
     config,
-    services: { runtime: gatewayRuntime, guests, identity, leaderboards },
+    services: {
+      runtime: gatewayRuntime,
+      guests,
+      identity,
+      leaderboards,
+      admin: adminServiceFixture({
+        db: handle.db,
+        config,
+        runtime: gatewayRuntime,
+        identity,
+        now: clock.now,
+      }),
+      db: handle.db,
+    },
+    telemetry: createSilentTelemetry(),
     now: clock.now,
   });
   await localApp.listen({ host: "127.0.0.1", port: 0 });

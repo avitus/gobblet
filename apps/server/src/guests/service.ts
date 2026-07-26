@@ -4,6 +4,8 @@ import type { ServerConfig } from "@gobblet/config";
 import { findGuestSessionByTokenHash, insertGuestSession, touchGuestSession } from "@gobblet/db";
 import type { Database } from "@gobblet/db";
 import type { CreateGuestResponse } from "@gobblet/protocol";
+import { createSilentTelemetry } from "../observability/telemetry";
+import type { TelemetryService } from "../observability/telemetry";
 
 /**
  * A guest session is an identity without an account: the bearer token issued here
@@ -21,6 +23,8 @@ export type GuestServiceOptions = Readonly<{
   db: Database;
   config: ServerConfig;
   now?: () => number;
+  /** Absent in a unit test, which then reports nothing anywhere (ADR-0030). */
+  telemetry?: TelemetryService;
 }>;
 
 export function generateGuestDisplayName(): string {
@@ -34,10 +38,13 @@ export class GuestService {
 
   private readonly clock: () => number;
 
+  private readonly telemetry: TelemetryService;
+
   constructor(options: GuestServiceOptions) {
     this.db = options.db;
     this.ttlMs = options.config.guestSessionTtlDays * DAY_MS;
     this.clock = options.now ?? ((): number => Date.now());
+    this.telemetry = options.telemetry ?? createSilentTelemetry();
   }
 
   async createGuest(displayName?: string): Promise<CreateGuestResponse> {
@@ -52,6 +59,8 @@ export class GuestService {
       lastSeenAt: new Date(now),
       expiresAt: expires,
     });
+
+    this.telemetry.capture({ actorType: "guest", actorId: row.id }, { name: "guest-created" });
 
     return {
       guestId: row.id,

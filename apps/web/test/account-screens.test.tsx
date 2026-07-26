@@ -19,6 +19,7 @@ const ME = {
     email: "ada@example.com",
     emailVerified: true,
     status: "active",
+    role: "player",
     createdAt: "2026-01-05T10:00:00.000Z",
   },
   profile: {

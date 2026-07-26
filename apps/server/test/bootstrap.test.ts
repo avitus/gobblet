@@ -84,6 +84,29 @@ describe("bootstrapServer", () => {
     expect(settled?.result).toEqual({ outcome: "dark", reason: "timeout" });
   });
 
+  it("gives the dashboard the readiness and the sockets of the running process", async () => {
+    server = await bootstrapServer({ config: loadServerConfig(env) });
+
+    const summary = await server.admin.metricsSummary();
+
+    expect(summary.health).toEqual({ ready: true, checks: [{ name: "database", ok: true }] });
+    expect(summary.sockets).toEqual({ connected: 0 });
+    expect(summary.deployment).toMatchObject({ appVersion: "9.9.9", gitSha: "testsha" });
+  });
+
+  it("exposes the gauges of the running process when metrics are published", async () => {
+    server = await bootstrapServer({
+      config: loadServerConfig({ ...env, METRICS_ENABLED: "true" }),
+    });
+
+    const response = await server.app.inject({ method: "GET", url: "/metrics" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("gobblet_active_matches 0");
+    expect(response.body).toContain("gobblet_socket_connections 0");
+    expect(response.body).toContain("gobblet_queue_depth");
+  });
+
   it("refuses to start when the database is unreachable", async () => {
     await expect(
       bootstrapServer({

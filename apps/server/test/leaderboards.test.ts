@@ -22,6 +22,8 @@ import { leaderboardWindow } from "../src/leaderboard/periods";
 import { readAllTimeRank } from "../src/leaderboard/rank";
 import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
+import { createSilentTelemetry } from "../src/observability/telemetry";
+import { adminServiceFixture } from "./helpers/admin-service";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -53,14 +55,19 @@ beforeEach(async () => {
   await truncateAll(handle);
   clock = new TestClock(WEDNESDAY);
   leaderboards = new LeaderboardService({ db: handle.db, now: clock.now });
+  const runtime = new MatchRuntime({ db: handle.db, now: clock.now });
+  const identity = new IdentityService({ db: handle.db, config, now: clock.now });
   app = await buildApp({
     config,
     services: {
-      runtime: new MatchRuntime({ db: handle.db, now: clock.now }),
+      runtime,
       guests: new GuestService({ db: handle.db, config, now: clock.now }),
-      identity: new IdentityService({ db: handle.db, config, now: clock.now }),
+      identity,
       leaderboards,
+      admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      db: handle.db,
     },
+    telemetry: createSilentTelemetry(),
     now: clock.now,
   });
 });

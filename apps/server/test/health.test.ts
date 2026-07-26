@@ -3,6 +3,7 @@ import { httpErrorBodySchema } from "@gobblet/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
+import { createSilentTelemetry } from "../src/observability/telemetry";
 import { TIME_CONTROLS_SECONDS, isTimeControlSeconds } from "../src/time-controls";
 
 const config = loadServerConfig({
@@ -17,7 +18,7 @@ let app: FastifyInstance | undefined;
 async function start(
   options: Partial<Parameters<typeof buildApp>[0]> = {},
 ): Promise<FastifyInstance> {
-  app = await buildApp({ config, ...options });
+  app = await buildApp({ config, telemetry: createSilentTelemetry(), ...options });
   return app;
 }
 

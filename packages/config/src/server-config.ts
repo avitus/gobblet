@@ -21,6 +21,13 @@ export type ServerConfig = Readonly<{
   guestSessionTtlDays: number;
   userSessionTtlDays: number;
   credentialAttemptLimit: number;
+  metricsEnabled: boolean;
+  metricsToken: string | null;
+  sentryDsn: string | null;
+  posthogApiKey: string | null;
+  posthogHost: string;
+  telemetryPseudonymSecret: string | null;
+  telemetryAttemptLimit: number;
 }>;
 
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -72,5 +79,12 @@ export function loadServerConfig(env: EnvSource = process.env): ServerConfig {
     guestSessionTtlDays: values.GUEST_SESSION_TTL_DAYS,
     userSessionTtlDays: values.USER_SESSION_TTL_DAYS,
     credentialAttemptLimit: values.CREDENTIAL_ATTEMPT_LIMIT,
+    metricsEnabled: values.METRICS_ENABLED,
+    metricsToken: values.METRICS_TOKEN ?? null,
+    sentryDsn: values.SENTRY_DSN ?? null,
+    posthogApiKey: values.POSTHOG_API_KEY ?? null,
+    posthogHost: values.POSTHOG_HOST,
+    telemetryPseudonymSecret: values.TELEMETRY_PSEUDONYM_SECRET ?? null,
+    telemetryAttemptLimit: values.TELEMETRY_ATTEMPT_LIMIT,
   });
 }

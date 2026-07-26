@@ -50,6 +50,27 @@ export const serverEnvSchema = z.object({
   // One address is one player in a deployment and every player in a test suite,
   // so the throttle ADR-0017 accepts is a number the environment can raise.
   CREDENTIAL_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(100_000).default(10),
+
+  // Phase 7: observability. Every one of these is optional, and each transport is
+  // inert without it, so a developer machine and the suites run with none set
+  // (docs/adr/0030-telemetry-behind-ports-relayed-through-the-server.md).
+  METRICS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  /** When set, `GET /metrics` requires it as a bearer token (ADR-0031). */
+  METRICS_TOKEN: z.string().min(16).optional(),
+  SENTRY_DSN: absoluteUrl.optional(),
+  POSTHOG_API_KEY: z.string().min(1).optional(),
+  POSTHOG_HOST: absoluteUrl.default("https://eu.i.posthog.com"),
+  /**
+   * The key that turns an account or guest id into the pseudonym logs and analytics
+   * share. Rotating it detaches new records from old ones, which is the point of a
+   * pseudonym (appendix P7.12).
+   */
+  TELEMETRY_PSEUDONYM_SECRET: z.string().min(16).optional(),
+  /** How many telemetry reports one address may send in a minute (appendix P7.11). */
+  TELEMETRY_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(100_000).default(60),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

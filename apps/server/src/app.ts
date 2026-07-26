@@ -2,21 +2,28 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "@gobblet/config";
+import type { Database } from "@gobblet/db";
 import { MATCH_MODES } from "@gobblet/protocol";
 import type { PublicServerConfig } from "@gobblet/protocol";
+import type { AdminService } from "./admin/service";
 import type { GuestService } from "./guests/service";
 import { sendError } from "./http/errors";
 import { AttemptLimiter } from "./identity/rate-limit";
 import type { IdentityService } from "./identity/service";
 import type { LeaderboardService } from "./leaderboard/service";
 import type { MatchRuntime } from "./match/runtime";
+import { registerRequestObservability } from "./observability/http";
+import type { TelemetryService } from "./observability/telemetry";
+import { registerAdminRoutes } from "./routes/admin";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerDevMatchRoutes } from "./routes/dev-matches";
 import { registerGuestRoutes } from "./routes/guests";
 import { registerLeaderboardRoutes } from "./routes/leaderboards";
 import { registerMatchRoutes } from "./routes/matches";
 import { registerMeRoutes } from "./routes/me";
+import { registerMetricsRoute } from "./routes/metrics";
 import { registerProfileRoutes } from "./routes/profiles";
+import { registerTelemetryRoutes } from "./routes/telemetry";
 import { registerUsernameRoutes } from "./routes/usernames";
 import { TIME_CONTROLS_SECONDS } from "./time-controls";
 
@@ -40,12 +47,20 @@ export type AppServices = Readonly<{
   guests: GuestService;
   identity: IdentityService;
   leaderboards: LeaderboardService;
+  admin: AdminService;
+  db: Database;
 }>;
 
 export type BuildAppOptions = Readonly<{
   config: ServerConfig;
   readiness?: readonly ReadinessProbe[];
   services?: AppServices;
+  /**
+   * Where requests, failures and analytics go. It is required so that no process can
+   * run without one, and inert without provider keys
+   * (docs/adr/0030-telemetry-behind-ports-relayed-through-the-server.md).
+   */
+  telemetry: TelemetryService;
   now?: () => number;
 }>;
 
@@ -60,10 +75,14 @@ const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
  */
 const CREDENTIAL_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
+/** A minute is long enough for a page to report a launch and short enough to bound a flood. */
+const TELEMETRY_ATTEMPT_WINDOW_MS = 60 * 1000;
+
 export async function buildApp({
   config,
   readiness = [],
   services,
+  telemetry,
   now = Date.now,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const startedAt = now();
@@ -79,6 +98,8 @@ export async function buildApp({
   });
 
   await app.register(cors, { origin: [...config.corsOrigins], credentials: true });
+
+  registerRequestObservability(app, telemetry, now);
 
   app.setNotFoundHandler((request, reply) => {
     void sendError(request, reply, "not_found", "Unknown endpoint");
@@ -117,11 +138,20 @@ export async function buildApp({
     timeControlsSeconds: [...TIME_CONTROLS_SECONDS],
   }));
 
+  if (config.metricsEnabled) {
+    registerMetricsRoute(app, telemetry.metrics, config.metricsToken);
+  }
+
   if (services) {
     const resolvers = { identity: services.identity, guests: services.guests };
     const limiter = new AttemptLimiter({
       limit: config.credentialAttemptLimit,
       windowMs: CREDENTIAL_ATTEMPT_WINDOW_MS,
+      now,
+    });
+    const telemetryLimiter = new AttemptLimiter({
+      limit: config.telemetryAttemptLimit,
+      windowMs: TELEMETRY_ATTEMPT_WINDOW_MS,
       now,
     });
 
@@ -137,6 +167,8 @@ export async function buildApp({
     registerMeRoutes(app, services.identity, resolvers, services.runtime);
     registerMatchRoutes(app, services.runtime, resolvers);
     registerDevMatchRoutes(app, services.runtime, resolvers, config);
+    registerTelemetryRoutes(app, telemetry, resolvers, telemetryLimiter);
+    registerAdminRoutes(app, services.admin, { db: services.db, resolvers });
   }
 
   return app;

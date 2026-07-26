@@ -4,6 +4,7 @@ import {
   findMatchById,
   findUnfinishedMatchForActor,
   insertMatch,
+  insertMatchConnectionEvent,
   insertMatchEvent,
   listUnfinishedMatches,
   lockMatchForUpdate,
@@ -27,6 +28,8 @@ import type {
 } from "@gobblet/protocol";
 import { awardAchievementsForCompletion } from "../achievements/service";
 import { winningLineIds } from "../achievements/lines";
+import { createSilentTelemetry } from "../observability/telemetry";
+import type { TelemetryService } from "../observability/telemetry";
 import { applyRatingsForCompletion, readSeatRatings } from "../rating/service";
 import { chargeActiveSide, readClocks, zeroActiveSide } from "./clock";
 import type { CommittedClocks } from "./clock";
@@ -47,6 +50,20 @@ export type CreateMatchInput = Readonly<{
   colorAssignment?: ColorAssignment;
   /** The match a rematch alternates colours from (spec section 4.5). */
   rematchOfMatchId?: string;
+  /**
+   * How long the pairing waited, when a queue made it. Persisted so the average of
+   * section 16 is a fact about a window rather than about this process (P7.6).
+   */
+  pairingWaitMs?: number;
+}>;
+
+/** One socket arriving at or leaving a match, as recorded for section 16. */
+export type MatchConnectionEventInput = Readonly<{
+  matchId: string;
+  kind: "attached" | "detached";
+  actor: Actor;
+  socketId: string;
+  reason?: string | undefined;
 }>;
 
 /**
@@ -78,6 +95,8 @@ export type MatchRuntimeOptions = Readonly<{
   db: Database;
   /** Injected so tests can drive time without sleeping (docs/adr/0009). */
   now?: () => number;
+  /** Absent in a unit test, which then records nothing anywhere (ADR-0030). */
+  telemetry?: TelemetryService;
 }>;
 
 type CommandContext = Readonly<{
@@ -94,9 +113,12 @@ export class MatchRuntime {
 
   private readonly clock: () => number;
 
+  private readonly telemetry: TelemetryService;
+
   constructor(options: MatchRuntimeOptions) {
     this.db = options.db;
     this.clock = options.now ?? ((): number => Date.now());
+    this.telemetry = options.telemetry ?? createSilentTelemetry();
   }
 
   now(): number {
@@ -123,6 +145,7 @@ export class MatchRuntime {
         darkDisplayName: input.dark.displayName,
         colorAssignment: input.colorAssignment ?? "random",
         ...(input.rematchOfMatchId ? { rematchOfMatchId: input.rematchOfMatchId } : {}),
+        ...(input.pairingWaitMs === undefined ? {} : { pairingWaitMs: input.pairingWaitMs }),
         gameState: writeGameState(state),
         stateVersion: 0,
         lightRemainingMs: remainingMs,
@@ -205,9 +228,29 @@ export class MatchRuntime {
     actor: Actor,
     envelope: CommandEnvelopeMetadata & Readonly<{ payload: MovePayload }>,
   ): Promise<CommandResult> {
-    return this.runCommand(actor, envelope, { requireTurn: true }, async (context) =>
+    const startedAt = this.clock();
+    const result = await this.runCommand(actor, envelope, { requireTurn: true }, async (context) =>
       this.commitMove(context, actor, envelope.payload.move),
     );
+    this.telemetry.metrics.observeMoveLatency((this.clock() - startedAt) / 1000);
+    return result;
+  }
+
+  /**
+   * A socket attaching to or leaving a match (section 16). It is not a match event:
+   * an event consumes the sequence number that is the match version, and a socket
+   * changes no game state (appendix P7.5).
+   */
+  async recordConnectionEvent(input: MatchConnectionEventInput): Promise<void> {
+    await insertMatchConnectionEvent(this.db, {
+      matchId: input.matchId,
+      kind: input.kind,
+      actorType: input.actor.actorType,
+      actorId: input.actor.actorId,
+      socketId: input.socketId,
+      reason: input.reason ?? null,
+      createdAt: new Date(this.now()),
+    });
   }
 
   /** Resigning is legal off turn, so the turn check is skipped (spec section 7.6). */
@@ -476,6 +519,11 @@ export class MatchRuntime {
     // After the ratings, because "Contender" and "On a Roll" read the aggregate
     // this completion has just moved.
     await awardAchievementsForCompletion(tx, row);
+    this.telemetry.metrics.recordCompletedMatch(row.mode, outcome.reason);
+    if (outcome.reason === "timeout") {
+      this.telemetry.metrics.recordClockTimeout();
+    }
+    this.announceCompletion(row, version, outcome);
     const ended: MatchEndedEvent = {
       matchId: row.id,
       version,
@@ -483,6 +531,30 @@ export class MatchRuntime {
       reason: outcome.reason,
     };
     return ratings ? { ...ended, ratings } : ended;
+  }
+
+  /**
+   * The completion event of section 17.1, once per seat. It happens here rather than
+   * in the gateway because this is where the row is, and the row is what knows when
+   * the match started and how many moves it took.
+   */
+  private announceCompletion(row: MatchRow, version: number, outcome: RulesOutcome): void {
+    const startedAt = (row.startedAt ?? row.createdAt).getTime();
+    const durationMs = Math.max(0, this.now() - startedAt);
+    for (const seat of [
+      { actorType: row.lightPlayerType, actorId: row.lightPlayerId },
+      { actorType: row.darkPlayerType, actorId: row.darkPlayerId },
+    ]) {
+      this.telemetry.capture(seat, {
+        name: "match-completed",
+        mode: row.mode,
+        timeControlSeconds: row.timeControlSeconds as TimeControl,
+        result: outcome.outcome,
+        endReason: outcome.reason,
+        moveCount: version,
+        durationMs,
+      });
+    }
   }
 
   private patch(

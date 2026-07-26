@@ -11,10 +11,10 @@ export default defineConfig({
       enabled: false,
       provider: "v8",
       include: ["src/**/*.ts"],
-      // The process entry point only reads configuration, installs signal
-      // handlers and listens; everything it wires up is covered through
-      // src/bootstrap.ts.
-      exclude: ["src/main.ts"],
+      // The process entry points only read configuration, install signal handlers
+      // and listen; everything they wire up is covered through src/bootstrap.ts and
+      // src/admin/grant.ts.
+      exclude: ["src/main.ts", "src/cli/*.ts"],
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "coverage",
     },

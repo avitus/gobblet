@@ -56,3 +56,23 @@ export async function truncateAllTables(executor: DatabaseExecutor): Promise<voi
     sql`truncate table match_events, matches, guest_sessions, email_verification_tokens, user_sessions, profiles, users cascade`,
   );
 }
+
+/**
+ * Removes one catalogue row. The catalogue is seeded by a migration, so a suite that
+ * exercises creating an entry has to make a gap for it first.
+ */
+export async function deleteAchievementByCode(
+  executor: DatabaseExecutor,
+  code: string,
+): Promise<void> {
+  await executor.execute(sql`delete from achievements where code = ${code}`);
+}
+
+/**
+ * Clears the start of a match, which is how a row that predates the column, or one
+ * written by something other than the runtime, reaches the code that has to cope
+ * with a match that never started.
+ */
+export async function clearMatchStart(executor: DatabaseExecutor, matchId: string): Promise<void> {
+  await executor.execute(sql`update matches set started_at = null where id = ${matchId}`);
+}
