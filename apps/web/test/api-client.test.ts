@@ -10,9 +10,20 @@ const MATCH_SUMMARY = {
   status: "completed",
   result: { outcome: "draw", reason: "repetition" },
   players: makeSnapshot().players,
+  moveCount: 22,
   createdAt: "2026-07-20T09:00:00.000Z",
   startedAt: "2026-07-20T09:00:01.000Z",
   endedAt: "2026-07-20T09:08:00.000Z",
+};
+
+const LEADERBOARD = {
+  period: "all-time",
+  periodStart: null,
+  periodEnd: null,
+  generatedAt: "2026-07-25T08:00:00.000Z",
+  entries: [],
+  nextCursor: null,
+  you: null,
 };
 
 const CONFIG = {
@@ -206,6 +217,46 @@ describe("ApiClient", () => {
       `http://server.test/v1/matches/${MATCH_ID}/snapshot`,
     ]);
     expect(signals).toEqual([undefined, controller.signal, undefined, controller.signal]);
+  });
+
+  it("asks for a leaderboard period, and pages with the cursor it was given", async () => {
+    const controller = new AbortController();
+    const urls: string[] = [];
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const fetchImpl: FetchLike = (input, init) => {
+      urls.push(input);
+      signals.push(init?.signal);
+      return Promise.resolve(jsonResponse(LEADERBOARD));
+    };
+    const client = clientWith(fetchImpl);
+
+    await expect(client.getLeaderboard({ period: "weekly" })).resolves.toMatchObject({
+      period: "all-time",
+    });
+    await client.getLeaderboard(
+      { period: "daily", cursor: "1380.9.14.1784889600000.abc" },
+      controller.signal,
+    );
+
+    expect(urls).toEqual([
+      "http://server.test/v1/leaderboards?period=weekly",
+      "http://server.test/v1/leaderboards?period=daily&cursor=1380.9.14.1784889600000.abc",
+    ]);
+    expect(signals).toEqual([undefined, controller.signal]);
+  });
+
+  it("reads the achievement catalogue with the caller's progress", async () => {
+    const controller = new AbortController();
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const client = clientWith((_input, init) => {
+      signals.push(init?.signal);
+      return Promise.resolve(jsonResponse({ achievements: [] }));
+    });
+
+    await expect(client.getAchievements()).resolves.toEqual({ achievements: [] });
+    await client.getAchievements(controller.signal);
+
+    expect(signals).toEqual([undefined, controller.signal]);
   });
 
   it("treats an empty body as no payload", async () => {

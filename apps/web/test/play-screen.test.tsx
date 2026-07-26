@@ -49,6 +49,7 @@ const VERIFIED_ME = {
   },
   casual: { wins: 3, losses: 1, draws: 0, played: 4 },
   ranked: null,
+  rank: null,
 };
 
 function mount(routes: Record<string, { status?: number; body?: unknown }> = {}) {

@@ -39,6 +39,30 @@ const ME = {
     currentStreak: 2,
     bestStreak: 3,
   },
+  rank: 12,
+};
+
+const ACHIEVEMENTS = {
+  achievements: [
+    {
+      code: "first-victory",
+      name: "First Victory",
+      description: "Win your first match.",
+      badge: "bronze",
+      ruleVersion: 1,
+      earnedAt: "2026-07-20T09:08:00.000Z",
+      matchId: MATCH_ID,
+    },
+    {
+      code: "century-club",
+      name: "Century Club",
+      description: "Complete one hundred matches.",
+      badge: "gold",
+      ruleVersion: 1,
+      earnedAt: null,
+      matchId: null,
+    },
+  ],
 };
 
 const HISTORY = {
@@ -65,9 +89,13 @@ const HISTORY = {
           rating: 1210,
         },
       },
+      moveCount: 14,
       createdAt: "2026-07-20T09:00:00.000Z",
       startedAt: "2026-07-20T09:00:01.000Z",
       endedAt: "2026-07-20T09:08:00.000Z",
+      side: "light",
+      outcome: "win",
+      ratingDelta: 12,
     },
     {
       matchId: "88888888-8888-4888-8888-888888888888",
@@ -91,9 +119,13 @@ const HISTORY = {
           rating: null,
         },
       },
+      moveCount: 3,
       createdAt: "2026-07-21T09:00:00.000Z",
       startedAt: "2026-07-21T09:00:01.000Z",
       endedAt: null,
+      side: "dark",
+      outcome: null,
+      ratingDelta: null,
     },
   ],
 };
@@ -141,11 +173,36 @@ describe("the match history screen", () => {
 
     const table = await screen.findByTestId("history-table");
     expect(table).toHaveTextContent("ranked");
-    expect(table).toHaveTextContent("light won by line");
+    expect(table).toHaveTextContent("won by line");
     expect(screen.getByRole("link", { name: "resume" })).toHaveAttribute(
       "href",
       "/match/88888888-8888-4888-8888-888888888888",
     );
+  });
+
+  it("shows the seat played, the opponent, the moves and the rating change", async () => {
+    signIn();
+    renderWithProviders(<HistoryScreen />, {
+      routes: { "GET /v1/me/matches": { body: HISTORY } },
+    });
+
+    const row = await screen.findByTestId(`history-row-${MATCH_ID}`);
+    expect(row).toHaveTextContent("light");
+    expect(row).toHaveTextContent("linus");
+    expect(row).toHaveTextContent("14");
+    expect(screen.getByTestId(`history-rating-${MATCH_ID}`)).toHaveTextContent("+12");
+  });
+
+  it("shows no rating change for a casual match", async () => {
+    signIn();
+    renderWithProviders(<HistoryScreen />, {
+      routes: { "GET /v1/me/matches": { body: HISTORY } },
+    });
+
+    await screen.findByTestId("history-table");
+    expect(
+      screen.getByTestId("history-rating-88888888-8888-4888-8888-888888888888"),
+    ).toHaveTextContent("-");
   });
 
   it("names a status that has no result of its own", async () => {
@@ -180,6 +237,8 @@ describe("the match history screen", () => {
               {
                 ...HISTORY.matches[0],
                 result: { outcome: "draw", reason: "repetition" },
+                outcome: "draw",
+                ratingDelta: 0,
               },
             ],
           },
@@ -247,6 +306,21 @@ describe("the settings screen", () => {
 
     expect(useSettingsStore.getState().soundMuted).toBe(true);
     expect(screen.getByLabelText("Game")).toBeDisabled();
+  });
+
+  it("mutes each communication channel on its own, and keeps it locally", async () => {
+    renderWithProviders(<SettingsScreen />);
+
+    await userEvent.click(screen.getByLabelText("Mute preset messages"));
+
+    expect(useSettingsStore.getState().presetMessagesMuted).toBe(true);
+    expect(useSettingsStore.getState().reactionsMuted).toBe(false);
+    expect(window.localStorage.getItem("gobblet.settings.v1")).toContain(
+      '"presetMessagesMuted":true',
+    );
+
+    await userEvent.click(screen.getByLabelText("Mute reactions"));
+    expect(useSettingsStore.getState().reactionsMuted).toBe(true);
   });
 
   it("plays a test sound through the engine", async () => {
@@ -334,16 +408,70 @@ describe("the profile screen", () => {
 
   it("shows the record the server holds", async () => {
     signIn();
-    renderWithProviders(<ProfileScreen />, { routes: { "GET /v1/me": { body: ME } } });
+    renderWithProviders(<ProfileScreen />, {
+      routes: { "GET /v1/me/achievements": { body: ACHIEVEMENTS }, "GET /v1/me": { body: ME } },
+    });
 
     expect(await screen.findByTestId("own-profile")).toHaveTextContent("verified");
     expect(screen.getByTestId("own-ranked")).toHaveTextContent("1240 rating, 5W 4L 1D");
+    expect(screen.getByTestId("own-rank")).toHaveTextContent("#12 all time");
+  });
+
+  it("lists the whole achievement catalogue, earned or not", async () => {
+    signIn();
+    renderWithProviders(<ProfileScreen />, {
+      routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
+        "GET /v1/me": { body: ME },
+      },
+    });
+
+    expect(await screen.findByTestId("achievement-first-victory")).toHaveAttribute(
+      "data-earned",
+      "true",
+    );
+    expect(screen.getByTestId("achievement-century-club")).toHaveAttribute("data-earned", "false");
+    expect(screen.getByTestId("achievement-century-club")).toHaveTextContent("not yet");
+  });
+
+  it("reports achievements the server could not read", async () => {
+    signIn();
+    renderWithProviders(<ProfileScreen />, {
+      routes: {
+        "GET /v1/me": { body: ME },
+        "GET /v1/me/achievements": {
+          status: 503,
+          body: {
+            error: {
+              code: "dependency_unavailable",
+              message: "No achievements today",
+              requestId: "r",
+            },
+          },
+        },
+      },
+    });
+
+    expect(await screen.findByText("No achievements today")).toBeInTheDocument();
+  });
+
+  it("says when no rank has been earned yet", async () => {
+    signIn();
+    renderWithProviders(<ProfileScreen />, {
+      routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
+        "GET /v1/me": { body: { ...ME, rank: null } },
+      },
+    });
+
+    expect(await screen.findByTestId("own-rank")).toHaveTextContent("unranked");
   });
 
   it("collects every account setting into one patch", async () => {
     signIn();
     const { calls } = renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": { body: ME },
         "PATCH /v1/me/profile": { body: ME },
       },
@@ -364,6 +492,7 @@ describe("the profile screen", () => {
     signIn();
     renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": {
           status: 503,
           body: {
@@ -384,6 +513,7 @@ describe("the profile screen", () => {
     signIn();
     renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": {
           body: { ...ME, ranked: null, account: { ...ME.account, emailVerified: false } },
         },
@@ -398,6 +528,7 @@ describe("the profile screen", () => {
     signIn();
     const { sent } = renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": { body: ME },
         "PATCH /v1/me/profile": { body: { ...ME, profile: { ...ME.profile, countryCode: null } } },
       },
@@ -462,6 +593,22 @@ describe("the profile screen", () => {
                 currentStreak: 1,
                 bestStreak: 4,
               },
+              rank: 3,
+              badges: [
+                {
+                  code: "uncovered",
+                  name: "Uncovered",
+                  badge: "gold",
+                  earnedAt: "2026-07-19T12:00:00.000Z",
+                },
+                {
+                  code: "first-victory",
+                  name: "First Victory",
+                  badge: "bronze",
+                  earnedAt: "2026-07-18T12:00:00.000Z",
+                },
+              ],
+              recentMatches: [HISTORY.matches[0]],
             },
           },
         },
@@ -471,12 +618,17 @@ describe("the profile screen", () => {
     const profile = await screen.findByTestId("public-profile");
     expect(profile).toHaveTextContent("1310 rating, 7W 3L 0D");
     expect(profile).toHaveTextContent("not given");
+    expect(screen.getByTestId("public-rank")).toHaveTextContent("#3 all time");
+    expect(screen.getByTestId("badge-uncovered")).toHaveAttribute("data-tier", "gold");
+    expect(screen.getByTestId(`recent-${MATCH_ID}`)).toHaveTextContent("as light");
+    expect(screen.getByTestId(`recent-${MATCH_ID}`)).toHaveTextContent("14 moves");
   });
 
   it("saves only what the player changed", async () => {
     signIn();
     const { calls } = renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": { body: ME },
         "PATCH /v1/me/profile": {
           body: { ...ME, profile: { ...ME.profile, reducedMotion: true } },
@@ -500,6 +652,7 @@ describe("the profile screen", () => {
     signIn();
     renderWithProviders(<ProfileScreen />, {
       routes: {
+        "GET /v1/me/achievements": { body: ACHIEVEMENTS },
         "GET /v1/me": { body: ME },
         "PATCH /v1/me/profile": {
           status: 422,
@@ -540,6 +693,9 @@ describe("the profile screen", () => {
               memberSince: "2025-11",
               casual: { wins: 1, losses: 2, draws: 0, played: 3 },
               ranked: null,
+              rank: null,
+              badges: [],
+              recentMatches: [],
             },
           },
         },
@@ -550,5 +706,8 @@ describe("the profile screen", () => {
     expect(profile).toHaveTextContent("2025-11");
     expect(profile).toHaveTextContent("FI");
     expect(profile).toHaveTextContent("no ranked matches yet");
+    expect(screen.getByTestId("public-rank")).toHaveTextContent("unranked");
+    expect(screen.getByTestId("no-badges")).toBeInTheDocument();
+    expect(screen.getByTestId("no-recent-matches")).toBeInTheDocument();
   });
 });

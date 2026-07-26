@@ -7,18 +7,68 @@ import {
   SwitchField,
   TextField,
 } from "@gobblet/design-system";
-import type { ProfileSettings, UpdateProfileRequest } from "@gobblet/protocol";
+import type {
+  AchievementProgress,
+  PlayerMatchSummary,
+  ProfileBadge,
+  ProfileSettings,
+  UpdateProfileRequest,
+} from "@gobblet/protocol";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { describeApiError } from "../api/errors";
 import { useApi } from "../api/provider";
-import { queryKeys, useMe, usePublicProfile } from "../api/queries";
+import { queryKeys, useAchievements, useMe, usePublicProfile } from "../api/queries";
+import { describePlayerResult, describeRatingDelta } from "../match/summary";
 import { useSessionStore } from "../session/store";
 import styles from "./ProfileScreen.module.css";
 
 function describeRecord(record: Readonly<{ wins: number; losses: number; draws: number }>): string {
   return `${String(record.wins)}W ${String(record.losses)}L ${String(record.draws)}D`;
+}
+
+function describeRank(rank: number | null): string {
+  return rank === null ? "unranked" : `#${String(rank)} all time`;
+}
+
+/** A badge is a code rendered from the tokens, never an image (appendix P6.8). */
+function BadgeList({ badges }: Readonly<{ badges: readonly ProfileBadge[] }>): React.JSX.Element {
+  if (badges.length === 0) {
+    return <p data-testid="no-badges">No achievements yet.</p>;
+  }
+  return (
+    <ul className={styles.badges} data-testid="profile-badges">
+      {badges.map((badge) => (
+        <li key={badge.code} data-testid={`badge-${badge.code}`} data-tier={badge.badge}>
+          <Badge tone={badge.badge === "gold" ? "accent" : "neutral"}>{badge.name}</Badge>
+          <span className={styles.badgeDate}>{badge.earnedAt.slice(0, 10)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RecentMatches({
+  matches,
+}: Readonly<{ matches: readonly PlayerMatchSummary[] }>): React.JSX.Element {
+  if (matches.length === 0) {
+    return <p data-testid="no-recent-matches">No completed matches yet.</p>;
+  }
+  return (
+    <ul className={styles.recent} data-testid="recent-matches">
+      {matches.map((match) => (
+        <li key={match.matchId} data-testid={`recent-${match.matchId}`}>
+          <span>{match.createdAt.slice(0, 10)}</span>
+          <span>{match.mode}</span>
+          <span>as {match.side}</span>
+          <span>{describePlayerResult(match)}</span>
+          <span>{describeRatingDelta(match.ratingDelta)}</span>
+          <span>{`${String(match.moveCount)} moves`}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /**
@@ -103,8 +153,12 @@ function OwnProfile(): React.JSX.Element {
               ? "no ranked matches yet"
               : `${String(me.data.ranked.rating)} rating, ${describeRecord(me.data.ranked)}`}
           </dd>
+          <dt>Rank</dt>
+          <dd data-testid="own-rank">{describeRank(me.data.rank)}</dd>
         </dl>
       </Card>
+
+      <OwnAchievements />
 
       <Card
         title="Account settings"
@@ -178,6 +232,40 @@ function OwnProfile(): React.JSX.Element {
   );
 }
 
+/** The whole catalogue with this account's progress, earned or not (section 11.4). */
+function OwnAchievements(): React.JSX.Element {
+  const achievements = useAchievements(true);
+
+  return (
+    <Card title="Achievements" description="Earned by playing; nothing can be bought.">
+      {achievements.isPending ? (
+        <Spinner label="Loading your achievements" />
+      ) : achievements.isError ? (
+        <Banner tone="error">{describeApiError(achievements.error)}</Banner>
+      ) : (
+        <ul className={styles.achievements} data-testid="own-achievements">
+          {achievements.data.achievements.map((entry) => (
+            <li
+              key={entry.code}
+              data-testid={`achievement-${entry.code}`}
+              data-earned={entry.earnedAt === null ? "false" : "true"}
+              className={entry.earnedAt === null ? styles.unearned : undefined}
+            >
+              <Badge tone={entry.earnedAt === null ? "neutral" : "accent"}>{entry.name}</Badge>
+              <span>{entry.description}</span>
+              <span className={styles.badgeDate}>{describeProgress(entry)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function describeProgress(entry: AchievementProgress): string {
+  return entry.earnedAt === null ? "not yet" : entry.earnedAt.slice(0, 10);
+}
+
 function OtherProfile({ username }: Readonly<{ username: string }>): React.JSX.Element {
   const profile = usePublicProfile(username);
 
@@ -197,23 +285,41 @@ function OtherProfile({ username }: Readonly<{ username: string }>): React.JSX.E
     );
   }
 
-  const { memberSince, countryCode, casual, ranked } = profile.data;
+  const { memberSince, countryCode, casual, ranked, rank, badges, recentMatches } = profile.data;
   return (
-    <Card title={username}>
-      <dl className={styles.details} data-testid="public-profile">
-        <dt>Member since</dt>
-        <dd>{memberSince}</dd>
-        <dt>Country</dt>
-        <dd>{countryCode ?? "not given"}</dd>
-        <dt>Casual</dt>
-        <dd>{describeRecord(casual)}</dd>
-        <dt>Ranked</dt>
-        <dd>
-          {ranked === null
-            ? "no ranked matches yet"
-            : `${String(ranked.rating)} rating, ${describeRecord(ranked)}`}
-        </dd>
-      </dl>
-    </Card>
+    <div className={styles.layout}>
+      <Card title={username}>
+        <dl className={styles.details} data-testid="public-profile">
+          <dt>Member since</dt>
+          <dd>{memberSince}</dd>
+          <dt>Country</dt>
+          <dd>{countryCode ?? "not given"}</dd>
+          <dt>Casual</dt>
+          <dd>{describeRecord(casual)}</dd>
+          <dt>Ranked</dt>
+          <dd>
+            {ranked === null
+              ? "no ranked matches yet"
+              : `${String(ranked.rating)} rating, ${describeRecord(ranked)}`}
+          </dd>
+          <dt>Rank</dt>
+          <dd data-testid="public-rank">{describeRank(rank)}</dd>
+        </dl>
+      </Card>
+
+      <Card title="Achievements">
+        <BadgeList badges={badges} />
+      </Card>
+
+      <Card
+        title="Recent matches"
+        description="The five most recent completed matches, without the moves."
+      >
+        <RecentMatches matches={recentMatches} />
+        <p>
+          <Link to="/leaderboard">See the leaderboard</Link>
+        </p>
+      </Card>
+    </div>
   );
 }

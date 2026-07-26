@@ -171,12 +171,8 @@
           "name": "email_verification_tokens_user_id_users_id_fk",
           "tableFrom": "email_verification_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -265,12 +261,8 @@
           "name": "guest_sessions_claimed_by_user_id_users_id_fk",
           "tableFrom": "guest_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "claimed_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["claimed_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -406,12 +398,8 @@
           "name": "match_events_match_id_matches_id_fk",
           "tableFrom": "match_events",
           "tableTo": "matches",
-          "columnsFrom": [
-            "match_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["match_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -661,12 +649,8 @@
           "name": "matches_rematch_of_match_id_matches_id_fk",
           "tableFrom": "matches",
           "tableTo": "matches",
-          "columnsFrom": [
-            "rematch_of_match_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["rematch_of_match_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -748,12 +732,8 @@
           "name": "profiles_user_id_users_id_fk",
           "tableFrom": "profiles",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -896,12 +876,8 @@
           "name": "rating_changes_match_id_matches_id_fk",
           "tableFrom": "rating_changes",
           "tableTo": "matches",
-          "columnsFrom": [
-            "match_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["match_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -909,12 +885,8 @@
           "name": "rating_changes_user_id_users_id_fk",
           "tableFrom": "rating_changes",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1026,12 +998,8 @@
           "name": "ratings_user_id_users_id_fk",
           "tableFrom": "ratings",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1094,12 +1062,8 @@
           "name": "user_achievements_user_id_users_id_fk",
           "tableFrom": "user_achievements",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1107,12 +1071,8 @@
           "name": "user_achievements_achievement_id_achievements_id_fk",
           "tableFrom": "user_achievements",
           "tableTo": "achievements",
-          "columnsFrom": [
-            "achievement_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["achievement_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1120,12 +1080,8 @@
           "name": "user_achievements_source_match_id_matches_id_fk",
           "tableFrom": "user_achievements",
           "tableTo": "matches",
-          "columnsFrom": [
-            "source_match_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_match_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1133,10 +1089,7 @@
       "compositePrimaryKeys": {
         "user_achievements_user_id_achievement_id_pk": {
           "name": "user_achievements_user_id_achievement_id_pk",
-          "columns": [
-            "user_id",
-            "achievement_id"
-          ]
+          "columns": ["user_id", "achievement_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1231,12 +1184,8 @@
           "name": "user_sessions_user_id_users_id_fk",
           "tableFrom": "user_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1380,94 +1329,52 @@
     "public.actor_type": {
       "name": "actor_type",
       "schema": "public",
-      "values": [
-        "user",
-        "guest"
-      ]
+      "values": ["user", "guest"]
     },
     "public.color_assignment": {
       "name": "color_assignment",
       "schema": "public",
-      "values": [
-        "random",
-        "alternated"
-      ]
+      "values": ["random", "alternated"]
     },
     "public.match_end_reason": {
       "name": "match_end_reason",
       "schema": "public",
-      "values": [
-        "line",
-        "revealed-line",
-        "timeout",
-        "resignation",
-        "repetition",
-        "admin"
-      ]
+      "values": ["line", "revealed-line", "timeout", "resignation", "repetition", "admin"]
     },
     "public.match_event_type": {
       "name": "match_event_type",
       "schema": "public",
-      "values": [
-        "match-created",
-        "move",
-        "resignation",
-        "timeout",
-        "match-ended"
-      ]
+      "values": ["match-created", "move", "resignation", "timeout", "match-ended"]
     },
     "public.match_mode": {
       "name": "match_mode",
       "schema": "public",
-      "values": [
-        "casual",
-        "ranked"
-      ]
+      "values": ["casual", "ranked"]
     },
     "public.match_result": {
       "name": "match_result",
       "schema": "public",
-      "values": [
-        "light",
-        "dark",
-        "draw"
-      ]
+      "values": ["light", "dark", "draw"]
     },
     "public.match_status": {
       "name": "match_status",
       "schema": "public",
-      "values": [
-        "queued",
-        "active",
-        "completed",
-        "aborted"
-      ]
+      "values": ["queued", "active", "completed", "aborted"]
     },
     "public.player_side": {
       "name": "player_side",
       "schema": "public",
-      "values": [
-        "light",
-        "dark"
-      ]
+      "values": ["light", "dark"]
     },
     "public.rating_outcome": {
       "name": "rating_outcome",
       "schema": "public",
-      "values": [
-        "win",
-        "loss",
-        "draw"
-      ]
+      "values": ["win", "loss", "draw"]
     },
     "public.user_status": {
       "name": "user_status",
       "schema": "public",
-      "values": [
-        "active",
-        "suspended",
-        "deleted"
-      ]
+      "values": ["active", "suspended", "deleted"]
     }
   },
   "schemas": {},

@@ -424,6 +424,8 @@ describe("GET /v1/me", () => {
       account: { username: "ada", email: "ada@example.com" },
       profile: { avatarUrl: null, countryCode: null, reducedMotion: false },
       casual: { wins: 0, losses: 0, draws: 0, played: 0 },
+      // An account with no rating has no rank rather than an invented one (P6.11).
+      rank: null,
     });
   });
 

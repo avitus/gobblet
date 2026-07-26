@@ -42,6 +42,7 @@ const me: MeResponse = {
   profile,
   casual: { wins: 3, losses: 1, draws: 0, played: 4 },
   ranked: null,
+  rank: null,
 };
 
 describe("accountSchema", () => {
@@ -151,6 +152,10 @@ describe("meResponseSchema", () => {
       meResponseSchema.safeParse({ ...me, casual: { wins: -1, losses: 0, draws: 0, played: 0 } })
         .success,
     ).toBe(false);
+  });
+
+  it("rejects a rank of zero, since ranks start at one", () => {
+    expect(meResponseSchema.safeParse({ ...me, rank: 0 }).success).toBe(false);
   });
 });
 

@@ -81,6 +81,8 @@ export function useQueue(): QueueView {
           case "connected":
           case "reconnecting":
           case "invalid-payload":
+          case "preset-message":
+          case "reaction":
             break;
         }
       }),

@@ -1,9 +1,11 @@
 import {
+  achievementsResponseSchema,
   authResponseSchema,
   checkUsernameResponseSchema,
   claimGuestResponseSchema,
   createGuestResponseSchema,
   httpErrorBodySchema,
+  leaderboardResponseSchema,
   matchHistoryResponseSchema,
   matchSnapshotSchema,
   matchSummarySchema,
@@ -12,11 +14,14 @@ import {
   publicServerConfigSchema,
 } from "@gobblet/protocol";
 import type {
+  AchievementsResponse,
   AuthResponse,
   CheckUsernameResponse,
   ClaimGuestRequest,
   ClaimGuestResponse,
   CreateGuestResponse,
+  LeaderboardPeriod,
+  LeaderboardResponse,
   MatchHistoryResponse,
   MatchSnapshot,
   MatchSummary,
@@ -166,6 +171,29 @@ export class ApiClient {
 
   getMatchHistory(signal?: AbortSignal): Promise<MatchHistoryResponse> {
     return this.send(matchHistoryResponseSchema, "/v1/me/matches", signal ? { signal } : {});
+  }
+
+  getAchievements(signal?: AbortSignal): Promise<AchievementsResponse> {
+    return this.send(achievementsResponseSchema, "/v1/me/achievements", signal ? { signal } : {});
+  }
+
+  /**
+   * A board is computed at read time, so the caller asks for a period and pages with
+   * the cursor the previous page returned (ADR-0028).
+   */
+  getLeaderboard(
+    query: Readonly<{ period: LeaderboardPeriod; cursor?: string }>,
+    signal?: AbortSignal,
+  ): Promise<LeaderboardResponse> {
+    const search = new URLSearchParams({ period: query.period });
+    if (query.cursor !== undefined) {
+      search.set("cursor", query.cursor);
+    }
+    return this.send(
+      leaderboardResponseSchema,
+      `/v1/leaderboards?${search.toString()}`,
+      signal ? { signal } : {},
+    );
   }
 
   getPublicProfile(username: string, signal?: AbortSignal): Promise<PublicProfile> {

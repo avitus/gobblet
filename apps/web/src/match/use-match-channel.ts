@@ -75,6 +75,8 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
         case "session-ready":
         case "queue-status":
         case "rematch-status":
+        case "preset-message":
+        case "reaction":
           break;
       }
     });

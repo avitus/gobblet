@@ -170,6 +170,8 @@ describe("settings store", () => {
           gameVolume: -1,
           communicationVolume: "loud",
           soundMuted: "yes",
+          presetMessagesMuted: "quiet",
+          reactionsMuted: true,
           motion: "sideways",
           renderTier: "ultra",
         }),
@@ -181,6 +183,8 @@ describe("settings store", () => {
       gameVolume: 0,
       communicationVolume: DEFAULT_SETTINGS.communicationVolume,
       soundMuted: false,
+      presetMessagesMuted: false,
+      reactionsMuted: true,
       motion: "system",
       renderTier: "auto",
     });

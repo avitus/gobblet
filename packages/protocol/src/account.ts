@@ -103,6 +103,8 @@ export const meResponseSchema = z.strictObject({
   profile: profileSettingsSchema,
   casual: casualRecordSchema,
   ranked: rankedRecordSchema.nullable(),
+  /** The all-time board position, as a public profile shows it (appendix P6.13). */
+  rank: z.int().positive().nullable(),
 });
 
 /**

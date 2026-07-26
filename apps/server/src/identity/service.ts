@@ -422,6 +422,7 @@ export class IdentityService {
       profile: toProfileSettings(profile),
       casual: await this.casualRecord(userId),
       ranked: await this.rankedRecord(userId),
+      rank: await readAllTimeRank(this.db, userId),
     };
   }
 

@@ -44,6 +44,7 @@ const ME = {
     currentStreak: 1,
     bestStreak: 1,
   },
+  rank: 4,
 };
 
 beforeEach(() => {

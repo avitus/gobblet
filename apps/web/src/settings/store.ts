@@ -13,6 +13,9 @@ export type Settings = Readonly<{
   gameVolume: number;
   communicationVolume: number;
   soundMuted: boolean;
+  /** Section 12.3: the two channels are muted independently, and locally as well. */
+  presetMessagesMuted: boolean;
+  reactionsMuted: boolean;
   motion: MotionPreference;
   renderTier: RenderTierPreference;
 }>;
@@ -28,6 +31,8 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   gameVolume: 0.8,
   communicationVolume: 0.6,
   soundMuted: false,
+  presetMessagesMuted: false,
+  reactionsMuted: false,
   motion: "system",
   renderTier: "auto",
 });
@@ -68,6 +73,8 @@ export function readSettings(store: KeyValueStore): Settings {
         DEFAULT_SETTINGS.communicationVolume,
       ),
       soundMuted: candidate.soundMuted === true,
+      presetMessagesMuted: candidate.presetMessagesMuted === true,
+      reactionsMuted: candidate.reactionsMuted === true,
       motion: readMotion(candidate.motion),
       renderTier: readTier(candidate.renderTier),
     };
@@ -86,6 +93,8 @@ function currentSettings(state: SettingsState): Settings {
     gameVolume: state.gameVolume,
     communicationVolume: state.communicationVolume,
     soundMuted: state.soundMuted,
+    presetMessagesMuted: state.presetMessagesMuted,
+    reactionsMuted: state.reactionsMuted,
     motion: state.motion,
     renderTier: state.renderTier,
   };

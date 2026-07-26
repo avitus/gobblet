@@ -12,6 +12,7 @@ type NavigationItem = Readonly<{ to: string; label: string }>;
 const NAVIGATION: readonly NavigationItem[] = [
   { to: "/", label: "Home" },
   { to: "/play", label: "Play" },
+  { to: "/leaderboard", label: "Leaderboard" },
   { to: "/history", label: "History" },
   { to: "/profile", label: "Profile" },
   { to: "/settings", label: "Settings" },

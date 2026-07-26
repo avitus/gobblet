@@ -9,7 +9,9 @@ import type {
 } from "@gobblet/protocol";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
+import { CommunicationPanel } from "../match/CommunicationPanel";
 import { opponentOf, seatOf } from "../match/seat";
+import { useCommunication } from "../match/use-communication";
 import { useMatchChannel } from "../match/use-match-channel";
 import type { MatchChannel } from "../match/use-match-channel";
 import { useMatchSounds } from "../match/use-match-sounds";
@@ -79,6 +81,7 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
   // Subscribed from the start: an offer can follow the end of a match immediately,
   // and a subscription that waited for the end would miss it.
   const rematch = useRematch(matchId, actorId);
+  const communication = useCommunication(matchId, seat);
 
   const running = view.status === "active" && ended === null;
   const clocks = useClockDisplay({
@@ -177,6 +180,13 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
             </Button>
           )}
         </Card>
+
+        {seat !== null && (
+          <CommunicationPanel
+            communication={communication}
+            opponentName={view.players[far].displayName}
+          />
+        )}
       </div>
 
       <Dialog

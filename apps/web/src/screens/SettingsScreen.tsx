@@ -95,6 +95,30 @@ export function SettingsScreen(): React.JSX.Element {
         </div>
       </Card>
 
+      <Card
+        title="Communication"
+        description="A muted channel is not sent to this browser at all, so nothing arrives to hide."
+      >
+        <div className={styles.fields}>
+          <SwitchField
+            label="Mute preset messages"
+            checked={settings.presetMessagesMuted}
+            onCheckedChange={(checked) => {
+              settings.update({ presetMessagesMuted: checked });
+            }}
+            id="preset-messages-muted-local"
+          />
+          <SwitchField
+            label="Mute reactions"
+            checked={settings.reactionsMuted}
+            onCheckedChange={(checked) => {
+              settings.update({ reactionsMuted: checked });
+            }}
+            id="reactions-muted-local"
+          />
+        </div>
+      </Card>
+
       <Card title="Presentation" description="Both settings take effect on the next board opened.">
         <div className={styles.fields}>
           <SelectField

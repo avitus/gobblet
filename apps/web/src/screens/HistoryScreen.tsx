@@ -1,20 +1,10 @@
 import { Badge, Banner, Card, Spinner } from "@gobblet/design-system";
-import type { MatchSummary } from "@gobblet/protocol";
 import { Link } from "react-router";
 import { describeApiError } from "../api/errors";
 import { useMatchHistory } from "../api/queries";
+import { describePlayerResult, describeRatingDelta } from "../match/summary";
 import { useSessionStore } from "../session/store";
 import styles from "./HistoryScreen.module.css";
-
-/** Only a finished row is described here; an active one carries a link instead. */
-function describeResult(match: MatchSummary): string {
-  if (match.result === null) {
-    return match.status;
-  }
-  return match.result.outcome === "draw"
-    ? "draw"
-    : `${match.result.outcome} won by ${match.result.reason.replace("-", " ")}`;
-}
 
 function describeDate(iso: string): string {
   return iso.slice(0, 10);
@@ -65,8 +55,10 @@ export function HistoryScreen(): React.JSX.Element {
               <th scope="col">Date</th>
               <th scope="col">Mode</th>
               <th scope="col">Clock</th>
-              <th scope="col">Light</th>
-              <th scope="col">Dark</th>
+              <th scope="col">Seat</th>
+              <th scope="col">Opponent</th>
+              <th scope="col">Moves</th>
+              <th scope="col">Rating</th>
               <th scope="col">Result</th>
             </tr>
           </thead>
@@ -82,13 +74,17 @@ export function HistoryScreen(): React.JSX.Element {
                   )}
                 </td>
                 <td>{`${String(match.timeControlSeconds / 60)} min`}</td>
-                <td>{match.players.light.displayName}</td>
-                <td>{match.players.dark.displayName}</td>
+                <td>{match.side}</td>
+                <td>{match.players[match.side === "light" ? "dark" : "light"].displayName}</td>
+                <td>{match.moveCount}</td>
+                <td data-testid={`history-rating-${match.matchId}`}>
+                  {describeRatingDelta(match.ratingDelta)}
+                </td>
                 <td>
                   {match.status === "active" ? (
                     <Link to={`/match/${match.matchId}`}>resume</Link>
                   ) : (
-                    describeResult(match)
+                    describePlayerResult(match)
                   )}
                 </td>
               </tr>

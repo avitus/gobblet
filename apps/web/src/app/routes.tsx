@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router";
 import { HistoryScreen } from "../screens/HistoryScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { LeaderboardScreen } from "../screens/LeaderboardScreen";
 import { MatchScreen } from "../screens/MatchScreen";
 import { NotFoundScreen } from "../screens/NotFoundScreen";
 import { PlayScreen } from "../screens/PlayScreen";
@@ -19,6 +20,7 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="play" element={<PlayScreen />} />
         <Route path="match/:matchId" element={<MatchScreen />} />
         <Route path="history" element={<HistoryScreen />} />
+        <Route path="leaderboard" element={<LeaderboardScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
         <Route path="profile" element={<ProfileScreen />} />
         <Route path="profile/:username" element={<ProfileScreen />} />

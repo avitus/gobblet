@@ -2,6 +2,7 @@ import {
   CLIENT_TO_SERVER_EVENTS,
   SERVER_TO_CLIENT_EVENTS,
   commandAckSchema,
+  communicationAckSchema,
   fatalErrorSchema,
   matchClockSyncEventSchema,
   matchEndedEventSchema,
@@ -9,9 +10,11 @@ import {
   matchMoveCommittedEventSchema,
   matchSnapshotSchema,
   matchSyncAckSchema,
+  presetMessageEventSchema,
   queueJoinAckSchema,
   queueLeaveAckSchema,
   queueStatusSchema,
+  reactionEventSchema,
   recoverableErrorSchema,
   rematchAckSchema,
   rematchStatusEventSchema,
@@ -21,6 +24,7 @@ import {
 import type {
   AppEnvironment,
   CommandAck,
+  CommunicationAck,
   FatalError,
   MatchClockSyncEvent,
   MatchEndedEvent,
@@ -29,10 +33,15 @@ import type {
   MatchSnapshot,
   MatchSyncAck,
   Move,
+  MuteState,
+  PresetMessageEvent,
+  PresetMessageKey,
   QueueJoinAck,
   QueueKey,
   QueueLeaveAck,
   QueueStatus,
+  ReactionEvent,
+  ReactionKey,
   RecoverableError,
   RematchAck,
   RematchStatusEvent,
@@ -62,6 +71,8 @@ export type MatchSocketEvent =
   | Readonly<{ type: "match-clock-sync"; payload: MatchClockSyncEvent }>
   | Readonly<{ type: "match-ended"; payload: MatchEndedEvent }>
   | Readonly<{ type: "rematch-status"; payload: RematchStatusEvent }>
+  | Readonly<{ type: "preset-message"; payload: PresetMessageEvent }>
+  | Readonly<{ type: "reaction"; payload: ReactionEvent }>
   | Readonly<{ type: "recoverable-error"; payload: RecoverableError }>
   | Readonly<{ type: "fatal-error"; payload: FatalError }>
   | Readonly<{ type: "connected" }>
@@ -110,6 +121,8 @@ const INBOUND: Readonly<Record<string, InboundParser>> = Object.freeze({
   [IN.matchClockSync]: inbound(matchClockSyncEventSchema, "match-clock-sync"),
   [IN.matchEnded]: inbound(matchEndedEventSchema, "match-ended"),
   [IN.matchRematchStatus]: inbound(rematchStatusEventSchema, "rematch-status"),
+  [IN.matchPresetMessage]: inbound(presetMessageEventSchema, "preset-message"),
+  [IN.matchReaction]: inbound(reactionEventSchema, "reaction"),
   [IN.errorRecoverable]: inbound(recoverableErrorSchema, "recoverable-error"),
   [IN.errorFatal]: inbound(fatalErrorSchema, "fatal-error"),
 });
@@ -223,6 +236,22 @@ export class MatchSocket {
 
   respondToRematch(matchId: string, accept: boolean): Promise<RematchAck> {
     return this.request(OUT.matchRematchRespond, { matchId, accept }, rematchAckSchema);
+  }
+
+  sendPresetMessage(matchId: string, messageKey: PresetMessageKey): Promise<CommunicationAck> {
+    return this.request(OUT.matchPresetMessage, { matchId, messageKey }, communicationAckSchema);
+  }
+
+  sendReaction(matchId: string, reactionKey: ReactionKey): Promise<CommunicationAck> {
+    return this.request(OUT.matchReaction, { matchId, reactionKey }, communicationAckSchema);
+  }
+
+  /**
+   * Mute is enforced by the server, which withholds the event, so the client tells
+   * it what to withhold rather than filtering what it renders (ADR-0026).
+   */
+  setMuteState(matchId: string, mutes: MuteState): Promise<CommunicationAck> {
+    return this.request(OUT.matchMuteState, { matchId, ...mutes }, communicationAckSchema);
   }
 
   submitMove(
