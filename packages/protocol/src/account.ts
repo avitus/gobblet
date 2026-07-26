@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { profileBadgeSchema } from "./achievements";
-import { USERNAME_UNAVAILABLE_REASONS, USER_STATUSES } from "./constants";
+import { USERNAME_UNAVAILABLE_REASONS, USER_ROLES, USER_STATUSES } from "./constants";
 import { playerMatchSummarySchema } from "./http";
 import {
   avatarUrlSchema,
@@ -25,6 +25,12 @@ export const accountSchema = z.strictObject({
   email: emailSchema,
   emailVerified: z.boolean(),
   status: z.enum(USER_STATUSES),
+  /**
+   * Whether this account may administer (appendix P7.1). The client reads it to
+   * decide whether to offer the dashboard; the server checks the account itself on
+   * every administrative request rather than trusting what a client was told.
+   */
+  role: z.enum(USER_ROLES),
   createdAt: isoTimestampSchema,
 });
 

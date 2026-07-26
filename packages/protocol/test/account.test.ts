@@ -25,6 +25,7 @@ const account: Account = {
   email: "ada@example.com",
   emailVerified: false,
   status: "active",
+  role: "player",
   createdAt: "2026-07-25T10:00:00.000Z",
 };
 

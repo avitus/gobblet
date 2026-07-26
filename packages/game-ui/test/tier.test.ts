@@ -1,5 +1,7 @@
+import { CLIENT_RENDER_TIERS } from "@gobblet/protocol";
 import { describe, expect, it } from "vitest";
 import {
+  RENDER_TIERS,
   UNKNOWN_CAPABILITIES,
   detectCapabilities,
   downgradeTier,
@@ -157,5 +159,11 @@ describe("capability detection", () => {
       slow: false,
       cores: 6,
     });
+  });
+});
+
+describe("the wire vocabulary for a tier", () => {
+  it("matches the tiers the protocol reports to analytics", () => {
+    expect([...RENDER_TIERS]).toEqual([...CLIENT_RENDER_TIERS]);
   });
 });

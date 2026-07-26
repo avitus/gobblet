@@ -202,6 +202,91 @@ export const LEADERBOARD_PAGE_SIZE = 100;
 /** How many recent matches a public profile shows (appendix P6.12). */
 export const PROFILE_RECENT_MATCH_COUNT = 5;
 
+/**
+ * What an account may do beyond playing. An administrator is an ordinary account
+ * carrying the `admin` role, not a second kind of credential
+ * (docs/adr/0029-administration-is-a-role-on-the-account.md).
+ */
+export const USER_ROLES = Object.freeze(["player", "admin"] as const);
+
+/** Every administrative mutation, as the audit log names it (section 14.4). */
+export const AUDIT_ACTIONS = Object.freeze([
+  "user-suspended",
+  "user-unsuspended",
+  "rating-adjusted",
+  "achievement-created",
+  "achievement-updated",
+  "role-granted",
+] as const);
+
+export const AUDIT_TARGET_TYPES = Object.freeze(["user", "achievement"] as const);
+
+/** Section 16 pages the administrative lists; a page may not exceed this. */
+export const ADMIN_PAGE_SIZE = 50;
+
+/**
+ * The events of section 17.1. The list is closed, so a property bag can never
+ * carry the free-form data that section forbids
+ * (docs/adr/0030-telemetry-behind-ports-relayed-through-the-server.md).
+ */
+export const ANALYTICS_EVENT_NAMES = Object.freeze([
+  "app-launched",
+  "render-tier-selected",
+  "setting-changed",
+  "guest-created",
+  "sign-up-completed",
+  "signed-in",
+  "queue-joined",
+  "match-found",
+  "match-started",
+  "match-completed",
+  "rematch-requested",
+  "rematch-accepted",
+  "desktop-update-completed",
+] as const);
+
+/**
+ * The subset a browser may report about itself. Everything else is a server fact,
+ * so a client cannot announce a match it did not finish.
+ */
+export const CLIENT_ANALYTICS_EVENT_NAMES = Object.freeze([
+  "app-launched",
+  "render-tier-selected",
+  "setting-changed",
+] as const);
+
+/** Where a client runs, for the desktop adoption figures of section 17.3. */
+export const CLIENT_PLATFORMS = Object.freeze(["web", "desktop"] as const);
+
+/** Section 17.1 tracks the authentication method; this product has one (ADR-0017). */
+export const AUTH_METHODS = Object.freeze(["password"] as const);
+
+/**
+ * Mirrors the render tiers of `@gobblet/game-ui`, which protocol must not depend on
+ * (docs/architecture.md section 6). A test in the client fails if the two drift.
+ */
+export const CLIENT_RENDER_TIERS = Object.freeze(["full", "reduced", "flat"] as const);
+
+/** The settings a change may be reported for, from the settings screen of Phase 5. */
+export const CLIENT_SETTING_NAMES = Object.freeze([
+  "render-tier",
+  "sound-muted",
+  "reduced-motion",
+  "preset-messages-muted",
+  "reactions-muted",
+] as const);
+
+/** How a client learned about a rendering tier: from detection or from a choice. */
+export const RENDER_TIER_SOURCES = Object.freeze(["detected", "chosen"] as const);
+
+/** Whether a desktop update finished (Phase 8 emits these; the schema exists now). */
+export const UPDATE_OUTCOMES = Object.freeze(["success", "failure"] as const);
+
+/** Section 17.1 payload limits: a page may batch, but not without bound. */
+export const TELEMETRY_BATCH_MAX = 20;
+export const TELEMETRY_MESSAGE_MAX_LENGTH = 300;
+export const TELEMETRY_STACK_MAX_LENGTH = 4000;
+
 /** How the colours of a match were decided (docs/product-spec.md section 9.4). */
 export const COLOR_ASSIGNMENTS = Object.freeze(["random", "alternated"] as const);
 
@@ -261,6 +346,17 @@ export type MatchResultOutcome = (typeof MATCH_RESULTS)[number];
 export type MatchEndReason = (typeof MATCH_END_REASONS)[number];
 export type ActorType = (typeof ACTOR_TYPES)[number];
 export type UserStatus = (typeof USER_STATUSES)[number];
+export type UserRole = (typeof USER_ROLES)[number];
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
+export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
+export type ClientAnalyticsEventName = (typeof CLIENT_ANALYTICS_EVENT_NAMES)[number];
+export type ClientPlatform = (typeof CLIENT_PLATFORMS)[number];
+export type AuthMethod = (typeof AUTH_METHODS)[number];
+export type ClientRenderTier = (typeof CLIENT_RENDER_TIERS)[number];
+export type ClientSettingName = (typeof CLIENT_SETTING_NAMES)[number];
+export type RenderTierSource = (typeof RENDER_TIER_SOURCES)[number];
+export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 export type UsernameUnavailableReason = (typeof USERNAME_UNAVAILABLE_REASONS)[number];
 export type QueueRejectionReason = (typeof QUEUE_REJECTION_REASONS)[number];
 export type RematchState = (typeof REMATCH_STATES)[number];
@@ -314,6 +410,14 @@ export function isActorType(value: unknown): value is ActorType {
 
 export function isUserStatus(value: unknown): value is UserStatus {
   return isMemberOf(USER_STATUSES, value);
+}
+
+export function isUserRole(value: unknown): value is UserRole {
+  return isMemberOf(USER_ROLES, value);
+}
+
+export function isAnalyticsEventName(value: unknown): value is AnalyticsEventName {
+  return isMemberOf(ANALYTICS_EVENT_NAMES, value);
 }
 
 export function isCommandRejectionReason(value: unknown): value is CommandRejectionReason {
