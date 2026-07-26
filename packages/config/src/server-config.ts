@@ -20,6 +20,7 @@ export type ServerConfig = Readonly<{
   databasePoolMax: number;
   guestSessionTtlDays: number;
   userSessionTtlDays: number;
+  credentialAttemptLimit: number;
 }>;
 
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -70,5 +71,6 @@ export function loadServerConfig(env: EnvSource = process.env): ServerConfig {
     databasePoolMax: values.DATABASE_POOL_MAX,
     guestSessionTtlDays: values.GUEST_SESSION_TTL_DAYS,
     userSessionTtlDays: values.USER_SESSION_TTL_DAYS,
+    credentialAttemptLimit: values.CREDENTIAL_ATTEMPT_LIMIT,
   });
 }

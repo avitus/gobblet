@@ -47,6 +47,9 @@ export const serverEnvSchema = z.object({
   // (docs/adr/0017-first-party-email-password-authentication.md).
   GUEST_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   USER_SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  // One address is one player in a deployment and every player in a test suite,
+  // so the throttle ADR-0017 accepts is a number the environment can raise.
+  CREDENTIAL_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(100_000).default(10),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

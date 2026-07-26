@@ -52,11 +52,12 @@ export type BuildAppOptions = Readonly<{
 const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
 
 /**
- * Credential attempts allowed per client address per window, the throttle
+ * The window the credential throttle
  * [ADR-0017](../../../docs/adr/0017-first-party-email-password-authentication.md)
- * accepts as the mitigation for owning password verification.
+ * accepts as the mitigation for owning password verification counts attempts in.
+ * How many are allowed in it is configuration, because one address is one player
+ * in a deployment and every player in a browser suite.
  */
-const CREDENTIAL_ATTEMPT_LIMIT = 10;
 const CREDENTIAL_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 export async function buildApp({
@@ -119,7 +120,7 @@ export async function buildApp({
   if (services) {
     const resolvers = { identity: services.identity, guests: services.guests };
     const limiter = new AttemptLimiter({
-      limit: CREDENTIAL_ATTEMPT_LIMIT,
+      limit: config.credentialAttemptLimit,
       windowMs: CREDENTIAL_ATTEMPT_WINDOW_MS,
       now,
     });

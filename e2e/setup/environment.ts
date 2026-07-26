@@ -37,4 +37,7 @@ export const SERVER_ENV: Readonly<Record<string, string>> = Object.freeze({
   MIN_SUPPORTED_CLIENT_VERSION: "0.1.0",
   DATABASE_URL,
   DATABASE_POOL_MAX: "8",
+  // Every player in the suite registers from the loopback address, so the
+  // per-address throttle would count them as one determined attacker.
+  CREDENTIAL_ATTEMPT_LIMIT: "1000",
 });

@@ -379,8 +379,9 @@ account exists without one.
 `POST /v1/auth/register` and `POST /v1/auth/sign-in` answer
 `{ account, session: { sessionToken, expiresAt }, emailVerification? }`. `emailVerification` is
 present only outside production, where no mail sender exists to deliver the link. Register,
-sign-in and verify-email are throttled per address and route; over the limit they answer
-`429 rate_limited` with a `retry-after` header.
+sign-in and verify-email are throttled per address and route, ten attempts per fifteen minutes
+unless `CREDENTIAL_ATTEMPT_LIMIT` says otherwise; over the limit they answer `429 rate_limited`
+with a `retry-after` header.
 
 `POST /v1/guests/claim` answers the same body plus `claimedMatches`, the number of matches moved
 to the new account. The guest token itself becomes an account session token, so a client holding

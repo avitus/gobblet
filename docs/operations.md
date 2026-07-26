@@ -71,6 +71,7 @@ Configuration and secret handling:
 | `VITE_APP_ENV`                 | Yes (web build)  | `local`                        | 0                    | Environment label shown in the client                  |
 | `GUEST_SESSION_TTL_DAYS`       | No               | `30`                           | 2                    | Lifetime of a guest session token                      |
 | `USER_SESSION_TTL_DAYS`        | No               | `30`                           | 3                    | Lifetime of an account session token                   |
+| `CREDENTIAL_ATTEMPT_LIMIT`     | No               | `10`                           | 3                    | Credential attempts per address per route per 15 min   |
 | `SENTRY_DSN`                   | Yes from Phase 7 | unset                          | 7                    | Sentry ingestion endpoint                              |
 | `METRICS_ENABLED`              | No               | unset (off)                    | 7                    | Enables the Prometheus-compatible metrics endpoint     |
 

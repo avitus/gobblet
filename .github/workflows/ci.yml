@@ -116,8 +116,10 @@ jobs:
       - name: Play a match in Chromium and WebKit
         run: pnpm test:e2e
 
+      # Always, not only on failure: a test that passes on its retry is reported
+      # as flaky and leaves the only trace of why in the report.
       - name: Upload the report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

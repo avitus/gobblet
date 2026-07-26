@@ -80,6 +80,9 @@ async function queueTogether(
 ): Promise<PairedMatch> {
   for (const player of players) {
     await player.page.getByRole("link", { name: "Play" }).click();
+    // Asserted before it is used: an unactionable control would otherwise be
+    // waited on until the whole specification times out, with nothing to read.
+    await expect(player.page.getByTestId("mode")).toBeEnabled();
     await player.page.getByTestId("mode").selectOption(mode);
     await expect(player.page.getByTestId("join-queue")).toBeEnabled();
   }

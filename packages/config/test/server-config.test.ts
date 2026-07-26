@@ -22,6 +22,7 @@ describe("loadServerConfig", () => {
       databasePoolMax: 10,
       guestSessionTtlDays: 30,
       userSessionTtlDays: 30,
+      credentialAttemptLimit: 10,
     });
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.corsOrigins)).toBe(true);
@@ -43,6 +44,7 @@ describe("loadServerConfig", () => {
       DATABASE_POOL_MAX: "25",
       GUEST_SESSION_TTL_DAYS: "7",
       USER_SESSION_TTL_DAYS: "90",
+      CREDENTIAL_ATTEMPT_LIMIT: "500",
     });
 
     expect(config.nodeEnv).toBe("production");
@@ -53,11 +55,21 @@ describe("loadServerConfig", () => {
     expect(config.databasePoolMax).toBe(25);
     expect(config.guestSessionTtlDays).toBe(7);
     expect(config.userSessionTtlDays).toBe(90);
+    expect(config.credentialAttemptLimit).toBe(500);
   });
 
   it("rejects a session lifetime outside the supported range", () => {
     expect(() => loadServerConfig({ USER_SESSION_TTL_DAYS: "0" })).toThrow(ConfigValidationError);
     expect(() => loadServerConfig({ GUEST_SESSION_TTL_DAYS: "400" })).toThrow(
+      ConfigValidationError,
+    );
+  });
+
+  it("rejects a credential attempt limit that would disable the throttle", () => {
+    expect(() => loadServerConfig({ CREDENTIAL_ATTEMPT_LIMIT: "0" })).toThrow(
+      ConfigValidationError,
+    );
+    expect(() => loadServerConfig({ CREDENTIAL_ATTEMPT_LIMIT: "half" })).toThrow(
       ConfigValidationError,
     );
   });

@@ -305,6 +305,28 @@ describe("POST /v1/auth/sign-in", () => {
     expect(limited[0]?.headers["retry-after"]).toBeDefined();
     expect(httpErrorBodySchema.parse(limited[0]?.json()).error.code).toBe("rate_limited");
   });
+
+  it("takes the number of attempts it allows from the configuration", async () => {
+    await register();
+    const strict = await buildApp({
+      config: loadServerConfig({ LOG_LEVEL: "fatal", CREDENTIAL_ATTEMPT_LIMIT: "2" }),
+      services: { runtime, guests, identity, leaderboards },
+      now: clock.now,
+    });
+
+    const statuses = [];
+    for (let index = 0; index < 3; index += 1) {
+      const response = await strict.inject({
+        method: "POST",
+        url: "/v1/auth/sign-in",
+        payload: { email: credentials.email, password: `wrong-horse-${String(index)}` },
+      });
+      statuses.push(response.statusCode);
+    }
+    await strict.close();
+
+    expect(statuses).toEqual([401, 401, 429]);
+  });
 });
 
 describe("POST /v1/auth/sign-out", () => {
