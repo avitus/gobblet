@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 
 export const actorTypeEnum = pgEnum("actor_type", ["user", "guest"]);
 export const userStatusEnum = pgEnum("user_status", ["active", "suspended", "deleted"]);
+export const userRoleEnum = pgEnum("user_role", ["player", "admin"]);
 export const matchModeEnum = pgEnum("match_mode", ["casual", "ranked"]);
 export const matchStatusEnum = pgEnum("match_status", ["queued", "active", "completed", "aborted"]);
 export const matchResultEnum = pgEnum("match_result", ["light", "dark", "draw"]);
@@ -44,6 +45,16 @@ export const matchEventTypeEnum = pgEnum("match_event_type", [
   "timeout",
   "match-ended",
 ]);
+export const auditActionEnum = pgEnum("audit_action", [
+  "user-suspended",
+  "user-unsuspended",
+  "rating-adjusted",
+  "achievement-created",
+  "achievement-updated",
+  "role-granted",
+]);
+export const auditTargetTypeEnum = pgEnum("audit_target_type", ["user", "achievement"]);
+export const connectionEventKindEnum = pgEnum("connection_event_kind", ["attached", "detached"]);
 
 /**
  * Section 15.1 names `auth_subject` because identity was going to be delegated.
@@ -61,6 +72,12 @@ export const users = pgTable(
     usernameNormalized: text("username_normalized").notNull(),
     displayName: text("display_name").notNull(),
     status: userStatusEnum("status").notNull().default("active"),
+    /**
+     * An administrator is an ordinary account with a role, granted by a script and
+     * checked on every administrative request
+     * (docs/adr/0029-administration-is-a-role-on-the-account.md).
+     */
+    role: userRoleEnum("role").notNull().default("player"),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),
     suspendedReason: text("suspended_reason"),
@@ -176,6 +193,12 @@ export const matches = pgTable(
     winningLineIds: text("winning_line_ids").array(),
     /** How the seats were decided, which section 9.4 requires to be auditable. */
     colorAssignment: colorAssignmentEnum("color_assignment").notNull().default("random"),
+    /**
+     * How long the longer-waiting player waited for this pairing. Persisted so the
+     * average matchmaking wait of section 16 survives a deployment, and `null` for a
+     * match that was not made by a queue (a rematch, or a development fixture).
+     */
+    pairingWaitMs: integer("pairing_wait_ms"),
     /** The match this one alternates colours from, for a rematch (section 4.5). */
     rematchOfMatchId: uuid("rematch_of_match_id").references((): AnyPgColumn => matches.id, {
       onDelete: "set null",
@@ -299,6 +322,8 @@ export const achievements = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     ruleVersion: integer("rule_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** When an administrator last edited the metadata or the flag (section 16). */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("achievements_code_key").on(table.code)],
 );
@@ -327,6 +352,84 @@ export const userAchievements = pgTable(
   ],
 );
 
+/**
+ * The audit record section 14.4 requires of every administrative mutation. It is
+ * written in the same transaction as the change it describes, and never updated or
+ * deleted (docs/adr/0029-administration-is-a-role-on-the-account.md).
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Null for the console, the only actor that is not an administrator's account. */
+    adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+    action: auditActionEnum("action").notNull(),
+    targetType: auditTargetTypeEnum("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    /** What the target was called when the action happened, for a readable log. */
+    targetLabel: text("target_label"),
+    before: jsonb("before").notNull(),
+    after: jsonb("after").notNull(),
+    /** Required by the schema, so a caller that skips the screen cannot omit it. */
+    reason: text("reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** The reading order of the log, and the key its cursor pages by. */
+    index("audit_log_created_at_idx").on(table.createdAt.desc(), table.id.desc()),
+    index("audit_log_target_idx").on(table.targetId),
+    index("audit_log_action_idx").on(table.action),
+  ],
+);
+
+/**
+ * A corrective rating change (section 16). It is deliberately not a
+ * `rating_changes` row: that table is the per-match audit period leaderboards
+ * aggregate, and a correction has no match, no side and no opponent (appendix P7.4).
+ */
+export const ratingAdjustments = pgTable(
+  "rating_adjustments",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+    auditId: uuid("audit_id")
+      .notNull()
+      .references(() => auditLog.id, { onDelete: "cascade" }),
+    ratingBefore: integer("rating_before").notNull(),
+    ratingAfter: integer("rating_after").notNull(),
+    delta: integer("delta").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("rating_adjustments_user_idx").on(table.userId)],
+);
+
+/**
+ * The reconnection history section 16 asks to inspect. It is a table of its own
+ * rather than a `match_events` row, because an event consumes the sequence number
+ * that is the match version and a socket changes no game state (appendix P7.5).
+ */
+export const matchConnectionEvents = pgTable(
+  "match_connection_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    kind: connectionEventKindEnum("kind").notNull(),
+    actorType: actorTypeEnum("actor_type").notNull(),
+    actorId: uuid("actor_id").notNull(),
+    socketId: text("socket_id").notNull(),
+    /** Why a socket detached, when the transport said. */
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("match_connection_events_match_idx").on(table.matchId, table.id)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type ProfileRow = typeof profiles.$inferSelect;
@@ -349,3 +452,9 @@ export type AchievementRow = typeof achievements.$inferSelect;
 export type NewAchievementRow = typeof achievements.$inferInsert;
 export type UserAchievementRow = typeof userAchievements.$inferSelect;
 export type NewUserAchievementRow = typeof userAchievements.$inferInsert;
+export type AuditLogRow = typeof auditLog.$inferSelect;
+export type NewAuditLogRow = typeof auditLog.$inferInsert;
+export type RatingAdjustmentRow = typeof ratingAdjustments.$inferSelect;
+export type NewRatingAdjustmentRow = typeof ratingAdjustments.$inferInsert;
+export type MatchConnectionEventRow = typeof matchConnectionEvents.$inferSelect;
+export type NewMatchConnectionEventRow = typeof matchConnectionEvents.$inferInsert;

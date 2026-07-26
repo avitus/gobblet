@@ -1,18 +1,25 @@
+import { randomUUID } from "node:crypto";
 import { ACHIEVEMENT_CATALOGUE } from "@gobblet/protocol";
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   achievements,
   awardAchievements,
+  findAchievementByCode,
+  insertAchievement,
   insertMatch,
   insertUser,
   listAchievementProgress,
+  listAchievementsForAdmin,
   listEnabledAchievements,
+  updateAchievement,
   userAchievements,
 } from "../src/index";
 import type { DatabaseHandle, MatchRow, UserRow } from "../src/index";
 import { matchFixture, userFixture } from "./helpers/fixtures";
-import { setupTestDatabase, truncateAll } from "./helpers/test-database";
+import { expectQueryToFail, setupTestDatabase, truncateAll } from "./helpers/test-database";
+
+const CATALOGUE_CODES = ACHIEVEMENT_CATALOGUE.map((entry) => entry.code);
 
 let handle: DatabaseHandle;
 
@@ -22,8 +29,25 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await truncateAll(handle);
-  await handle.db.update(achievements).set({ enabled: true });
+  await handle.db.delete(achievements).where(notInArray(achievements.code, CATALOGUE_CODES));
+  await restoreCatalogue();
 });
+
+/** The catalogue is seeded by a migration, so an editing test must put it back. */
+async function restoreCatalogue(): Promise<void> {
+  for (const entry of ACHIEVEMENT_CATALOGUE) {
+    await handle.db
+      .update(achievements)
+      .set({
+        name: entry.name,
+        description: entry.description,
+        badgeAsset: entry.badge,
+        ruleVersion: entry.ruleVersion,
+        enabled: true,
+      })
+      .where(eq(achievements.code, entry.code));
+  }
+}
 
 afterAll(async () => {
   await handle.close();
@@ -179,5 +203,75 @@ describe("progress", () => {
     const progress = await listAchievementProgress(handle.db, mine.id);
 
     expect(progress.every((entry) => entry.earnedAt === null)).toBe(true);
+  });
+});
+
+describe("the catalogue an administrator manages", () => {
+  it("lists every row, disabled ones included, with how many hold it", async () => {
+    const user = await createUser();
+    await awardAchievements(handle.db, user.id, ["first-victory"], null);
+    await handle.db
+      .update(achievements)
+      .set({ enabled: false })
+      .where(eq(achievements.code, "four-ways"));
+
+    const rows = await listAchievementsForAdmin(handle.db);
+
+    expect(rows).toHaveLength(ACHIEVEMENT_CATALOGUE.length);
+    expect(rows.map((row) => row.code)).toEqual([...CATALOGUE_CODES].sort());
+    expect(rows.find((row) => row.code === "first-victory")).toMatchObject({
+      awarded: 1,
+      enabled: true,
+    });
+    expect(rows.find((row) => row.code === "four-ways")).toMatchObject({
+      awarded: 0,
+      enabled: false,
+    });
+    expect(rows[0]?.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it("edits the metadata and the flag, and moves the moment it was edited", async () => {
+    const before = await findAchievementByCode(handle.db, "time-keeper");
+    if (before === undefined) {
+      throw new Error("expected the seeded catalogue");
+    }
+
+    const updated = await updateAchievement(handle.db, before.id, {
+      name: "Clockwatcher",
+      enabled: false,
+    });
+
+    expect(updated).toMatchObject({
+      code: "time-keeper",
+      name: "Clockwatcher",
+      description: before.description,
+      enabled: false,
+    });
+    expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(before.updatedAt.getTime());
+  });
+
+  it("refuses to edit a row that does not exist", async () => {
+    const missing = randomUUID();
+
+    await expect(updateAchievement(handle.db, missing, { enabled: true })).rejects.toThrow(
+      `updateAchievement found no achievement ${missing}`,
+    );
+  });
+
+  it("cannot add a second row for a code that already exists", async () => {
+    const failure = await expectQueryToFail(() =>
+      insertAchievement(handle.db, {
+        code: "first-victory",
+        name: "First Victory",
+        description: "Win your first match.",
+        badgeAsset: "bronze",
+      }),
+    );
+
+    expect(failure.constraint).toBe("achievements_code_key");
+  });
+
+  it("finds nothing for a code the catalogue does not carry", async () => {
+    expect(await findAchievementByCode(handle.db, "grandmaster")).toBeUndefined();
   });
 });

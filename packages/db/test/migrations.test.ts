@@ -23,13 +23,18 @@ describe("migrations", () => {
     const tables = result.rows.map((row) => row.table_name);
     expect(tables).toEqual(
       expect.arrayContaining([
+        "achievements",
+        "audit_log",
         "email_verification_tokens",
         "guest_sessions",
+        "match_connection_events",
         "match_events",
         "matches",
         "profiles",
+        "rating_adjustments",
         "rating_changes",
         "ratings",
+        "user_achievements",
         "user_sessions",
         "users",
       ]),

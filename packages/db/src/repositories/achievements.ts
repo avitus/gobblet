@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { achievements, userAchievements } from "../schema";
-import type { AchievementRow } from "../schema";
+import type { AchievementRow, NewAchievementRow } from "../schema";
 import type { DatabaseExecutor } from "../executor";
 
 /**
@@ -55,6 +55,113 @@ export async function listAchievementProgress(
     )
     .where(eq(achievements.enabled, true))
     .orderBy(asc(achievements.code));
+}
+
+export type AchievementAdminRow = Readonly<{
+  achievementId: string;
+  code: string;
+  name: string;
+  description: string;
+  badgeAsset: string;
+  enabled: boolean;
+  ruleVersion: number;
+  awarded: number;
+  updatedAt: Date;
+}>;
+
+/**
+ * The whole catalogue with how many accounts hold each badge, which is the list an
+ * administrator manages (section 16). Disabled rows are included, because hiding
+ * them is the very thing being administered.
+ */
+export async function listAchievementsForAdmin(
+  executor: DatabaseExecutor,
+): Promise<AchievementAdminRow[]> {
+  const result = await executor.execute<{
+    achievement_id: string;
+    code: string;
+    name: string;
+    description: string;
+    badge_asset: string;
+    enabled: boolean;
+    rule_version: number;
+    awarded: string;
+    updated_at: string;
+  }>(sql`
+    select
+      a.id as achievement_id,
+      a.code,
+      a.name,
+      a.description,
+      a.badge_asset,
+      a.enabled,
+      a.rule_version,
+      count(ua.user_id)::text as awarded,
+      a.updated_at
+    from achievements a
+    left join user_achievements ua on ua.achievement_id = a.id
+    group by a.id
+    order by a.code
+  `);
+
+  return result.rows.map((row) => ({
+    achievementId: row.achievement_id,
+    code: row.code,
+    name: row.name,
+    description: row.description,
+    badgeAsset: row.badge_asset,
+    enabled: row.enabled,
+    ruleVersion: row.rule_version,
+    awarded: Number(row.awarded),
+    updatedAt: new Date(row.updated_at),
+  }));
+}
+
+export async function findAchievementByCode(
+  executor: DatabaseExecutor,
+  code: string,
+): Promise<AchievementRow | undefined> {
+  const [row] = await executor
+    .select()
+    .from(achievements)
+    .where(eq(achievements.code, code))
+    .limit(1);
+  return row;
+}
+
+export async function insertAchievement(
+  executor: DatabaseExecutor,
+  values: NewAchievementRow,
+): Promise<AchievementRow> {
+  const [row] = await executor.insert(achievements).values(values).returning();
+  if (!row) {
+    throw new Error("insertAchievement returned no row");
+  }
+  return row;
+}
+
+/** Only the fields present are written, so one endpoint serves a partial edit. */
+export type AchievementPatch = Readonly<{
+  name?: string | undefined;
+  description?: string | undefined;
+  badgeAsset?: string | undefined;
+  enabled?: boolean | undefined;
+}>;
+
+export async function updateAchievement(
+  executor: DatabaseExecutor,
+  achievementId: string,
+  patch: AchievementPatch,
+): Promise<AchievementRow> {
+  const [row] = await executor
+    .update(achievements)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(achievements.id, achievementId))
+    .returning();
+  if (!row) {
+    throw new Error(`updateAchievement found no achievement ${achievementId}`);
+  }
+  return row;
 }
 
 /**

@@ -115,6 +115,27 @@ export async function setUserSuspension(
   return row;
 }
 
+/**
+ * Grants or removes the administrative role. Nothing in the API calls this: the
+ * first administrator is made by a script, and a role change is audited by its
+ * caller (docs/adr/0029-administration-is-a-role-on-the-account.md).
+ */
+export async function setUserRole(
+  executor: DatabaseExecutor,
+  userId: string,
+  role: UserRow["role"],
+): Promise<UserRow> {
+  const [row] = await executor
+    .update(users)
+    .set({ role, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning();
+  if (!row) {
+    throw new Error(`setUserRole found no user ${userId}`);
+  }
+  return row;
+}
+
 export async function insertProfile(
   executor: DatabaseExecutor,
   values: NewProfileRow,

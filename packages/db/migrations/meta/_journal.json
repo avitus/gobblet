@@ -29,6 +29,13 @@
       "when": 1785044010930,
       "tag": "0003_phase6_social",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785085057314,
+      "tag": "0004_phase7_administration",
+      "breakpoints": true
     }
   ]
 }

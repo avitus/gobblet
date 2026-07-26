@@ -6,9 +6,14 @@ export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 export {
   achievements,
   actorTypeEnum,
+  auditActionEnum,
+  auditLog,
+  auditTargetTypeEnum,
   colorAssignmentEnum,
+  connectionEventKindEnum,
   emailVerificationTokens,
   guestSessions,
+  matchConnectionEvents,
   matchEndReasonEnum,
   matchEventTypeEnum,
   matchEvents,
@@ -18,32 +23,40 @@ export {
   matches,
   playerSideEnum,
   profiles,
+  ratingAdjustments,
   ratingChanges,
   ratingOutcomeEnum,
   ratings,
   userAchievements,
+  userRoleEnum,
   userSessions,
   userStatusEnum,
   users,
 } from "./schema";
 export type {
   AchievementRow,
+  AuditLogRow,
   EmailVerificationTokenRow,
   GuestSessionRow,
+  MatchConnectionEventRow,
   MatchEventRow,
   MatchRow,
   NewAchievementRow,
+  NewAuditLogRow,
   NewEmailVerificationTokenRow,
   NewGuestSessionRow,
+  NewMatchConnectionEventRow,
   NewMatchEventRow,
   NewMatchRow,
   NewProfileRow,
+  NewRatingAdjustmentRow,
   NewRatingChangeRow,
   NewRatingRow,
   NewUserAchievementRow,
   NewUserRow,
   NewUserSessionRow,
   ProfileRow,
+  RatingAdjustmentRow,
   RatingChangeRow,
   RatingRow,
   UserAchievementRow,
@@ -53,10 +66,53 @@ export type {
 
 export {
   awardAchievements,
+  findAchievementByCode,
+  insertAchievement,
   listAchievementProgress,
+  listAchievementsForAdmin,
   listEnabledAchievements,
+  updateAchievement,
 } from "./repositories/achievements";
-export type { AchievementProgressRow } from "./repositories/achievements";
+export type {
+  AchievementAdminRow,
+  AchievementPatch,
+  AchievementProgressRow,
+} from "./repositories/achievements";
+
+export {
+  countActiveActors,
+  countActiveSessions,
+  searchUsers,
+  summariseMatches,
+  summarisePairings,
+} from "./repositories/admin";
+export type {
+  ActivitySummaryRow,
+  AdminUserCursorRow,
+  AdminUserRow,
+  AdminUserSearchOptions,
+  MatchOutcomeSummaryRow,
+  PairingSummaryRow,
+} from "./repositories/admin";
+
+export {
+  countAuditRecords,
+  insertAuditRecord,
+  listAuditRecords,
+  listModerationHistory,
+} from "./repositories/audit";
+export type { AuditCursorRow, AuditEntryRow, AuditQueryOptions } from "./repositories/audit";
+
+export {
+  insertMatchConnectionEvent,
+  listMatchConnectionEvents,
+} from "./repositories/match-connections";
+
+export {
+  insertRatingAdjustment,
+  listRatingAdjustmentsForUser,
+  setRating,
+} from "./repositories/rating-adjustments";
 
 export { readLeaderboardPage } from "./repositories/leaderboards";
 export type {
@@ -93,6 +149,7 @@ export {
   insertProfile,
   insertUser,
   markEmailVerified,
+  setUserRole,
   setUserSuspension,
   touchUser,
   uniqueUserConflict,
