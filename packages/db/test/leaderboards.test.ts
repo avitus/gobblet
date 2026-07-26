@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   insertMatch,
@@ -108,6 +108,38 @@ describe("the all-time board", () => {
       [3, "linus", 1300],
     ]);
     expect(page.entries[0]).toMatchObject({ wins: 9, games: 12 });
+  });
+
+  it("answers the moment the rating changed as a date, not as raw text", async () => {
+    const placed = await place("ada", { rating: 1500 });
+
+    const page = await readLeaderboardPage(handle.db, { window: null, limit: 10 });
+
+    expect(page.entries[0]?.ratedAt).toBeInstanceOf(Date);
+    expect(page.entries[0]?.ratedAt.toISOString()).toBe(placed.ratedAt.toISOString());
+  });
+
+  it("reports the moment at the resolution a cursor carries, so a page cannot repeat a row", async () => {
+    const placed = await place("ada", { rating: 1500 });
+    await handle.db.execute(
+      sql`update ratings set updated_at = '2026-07-22T09:00:00.123456Z' where user_id = ${placed.user.id}::uuid`,
+    );
+
+    const page = await readLeaderboardPage(handle.db, { window: null, limit: 10 });
+    const after = await readLeaderboardPage(handle.db, {
+      window: null,
+      limit: 10,
+      cursor: {
+        rating: 1500,
+        wins: 0,
+        games: 0,
+        ratedAt: new Date("2026-07-22T09:00:00.123Z"),
+        userId: placed.user.id,
+      },
+    });
+
+    expect(page.entries[0]?.ratedAt.toISOString()).toBe("2026-07-22T09:00:00.123Z");
+    expect(after.entries).toEqual([]);
   });
 
   it("omits an account with no rating row, so nothing is invented for it", async () => {

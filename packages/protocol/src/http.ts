@@ -5,6 +5,7 @@ import {
   HTTP_ERROR_CODES,
   MATCH_MODES,
   MATCH_STATUSES,
+  PLAYER_RESULTS,
 } from "./constants";
 import { playerSchema } from "./game-state";
 import {
@@ -76,14 +77,28 @@ export const matchSummarySchema = z.strictObject({
   status: z.enum(MATCH_STATUSES),
   result: matchResultSchema.nullable(),
   players: matchPlayersSchema,
+  /** Committed moves, which section 11.2 allows a summary to show. */
+  moveCount: z.int().nonnegative(),
   createdAt: isoTimestampSchema,
   startedAt: isoTimestampSchema.nullable(),
   endedAt: isoTimestampSchema.nullable(),
 });
 
+/**
+ * A summary as one of its participants reads it (spec section 11.2): which colour
+ * they held, how it went for them, and what it did to their rating.
+ */
+export const playerMatchSummarySchema = matchSummarySchema.extend({
+  side: playerSchema,
+  /** `null` while the match is unfinished, so nothing is decided early. */
+  outcome: z.enum(PLAYER_RESULTS).nullable(),
+  /** `null` for a casual match, which moves no rating. */
+  ratingDelta: z.int().nullable(),
+});
+
 /** The own-history listing (spec section 11.2), newest match first. */
 export const matchHistoryResponseSchema = z.strictObject({
-  matches: z.array(matchSummarySchema),
+  matches: z.array(playerMatchSummarySchema),
 });
 
 export const devMatchParticipantSchema = z.strictObject({
@@ -111,6 +126,7 @@ export type PublicServerConfig = z.infer<typeof publicServerConfigSchema>;
 export type CreateGuestRequest = z.infer<typeof createGuestRequestSchema>;
 export type CreateGuestResponse = z.infer<typeof createGuestResponseSchema>;
 export type MatchSummary = z.infer<typeof matchSummarySchema>;
+export type PlayerMatchSummary = z.infer<typeof playerMatchSummarySchema>;
 export type MatchHistoryResponse = z.infer<typeof matchHistoryResponseSchema>;
 export type DevMatchParticipant = z.infer<typeof devMatchParticipantSchema>;
 export type CreateDevMatchRequest = z.infer<typeof createDevMatchRequestSchema>;

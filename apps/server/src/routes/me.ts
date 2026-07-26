@@ -65,10 +65,26 @@ export function registerMeRoutes(
       return reply;
     }
 
-    const matches = await runtime.listSummariesForActor(
+    const matches = await runtime.listPlayerSummariesForActor(
       { actorType: resolved.actorType, actorId: resolved.actorId },
       MATCH_HISTORY_LIMIT,
     );
     return reply.send({ matches });
+  });
+
+  /**
+   * The whole catalogue with this account's progress (spec section 11.4), so the
+   * client can show what is still unearned without a second definition of the set.
+   */
+  app.get("/v1/me/achievements", async (request, reply) => {
+    const resolved = await requireIdentity(resolvers, request, reply);
+    if (!resolved) {
+      return reply;
+    }
+    if (resolved.actorType !== "user") {
+      return sendError(request, reply, "forbidden", "This endpoint requires an account");
+    }
+
+    return reply.send({ achievements: await identity.achievements(resolved.actorId) });
   });
 }

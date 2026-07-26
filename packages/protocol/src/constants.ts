@@ -210,6 +210,9 @@ export const REMATCH_OFFER_MS = 30_000;
 /** A player's result in a rated match, as stored in the rating audit. */
 export const RATING_OUTCOMES = Object.freeze(["win", "loss", "draw"] as const);
 
+/** How a match summary reads to one of its participants (spec section 11.2). */
+export const PLAYER_RESULTS = Object.freeze(["win", "loss", "draw"] as const);
+
 /**
  * Elo parameters fixed by docs/product-spec.md sections 2.6 and 10. They live here
  * because the rating audit stores the formula version alongside every change, and a
@@ -269,6 +272,7 @@ export type AchievementBadgeTier = (typeof ACHIEVEMENT_BADGE_TIERS)[number];
 export type LeaderboardPeriod = (typeof LEADERBOARD_PERIODS)[number];
 export type ColorAssignment = (typeof COLOR_ASSIGNMENTS)[number];
 export type RatingOutcome = (typeof RATING_OUTCOMES)[number];
+export type PlayerResult = (typeof PLAYER_RESULTS)[number];
 export type CommandRejectionReason = (typeof COMMAND_REJECTION_REASONS)[number];
 export type HttpErrorCode = (typeof HTTP_ERROR_CODES)[number];
 export type FatalErrorAction = (typeof FATAL_ERROR_ACTIONS)[number];

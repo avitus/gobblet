@@ -31,6 +31,7 @@ export {
   MINIMUM_RATING,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  PLAYER_RESULTS,
   PRESET_MESSAGE_KEYS,
   PROFILE_RECENT_MATCH_COUNT,
   PROTOCOL_VERSION,
@@ -82,6 +83,7 @@ export type {
   MatchMode,
   MatchResultOutcome,
   MatchStatus,
+  PlayerResult,
   PresetMessageKey,
   QueueRejectionReason,
   RatingOutcome,
@@ -316,6 +318,7 @@ export {
   httpErrorDetails,
   matchHistoryResponseSchema,
   matchSummarySchema,
+  playerMatchSummarySchema,
   publicServerConfigSchema,
 } from "./http";
 
@@ -329,6 +332,7 @@ export type {
   HttpErrorDetail,
   MatchHistoryResponse,
   MatchSummary,
+  PlayerMatchSummary,
   PublicServerConfig,
 } from "./http";
 

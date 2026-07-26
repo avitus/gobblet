@@ -1,7 +1,10 @@
 import { loadServerConfig } from "@gobblet/config";
 import type { ServerConfig } from "@gobblet/config";
+import { upsertRating } from "@gobblet/db";
 import type { DatabaseHandle } from "@gobblet/db";
 import {
+  ACHIEVEMENT_CATALOGUE,
+  achievementsResponseSchema,
   authResponseSchema,
   checkUsernameResponseSchema,
   claimGuestResponseSchema,
@@ -18,6 +21,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
+import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { TestClock, envelope } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -40,6 +44,7 @@ let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
 let identity: IdentityService;
+let leaderboards: LeaderboardService;
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -56,7 +61,12 @@ beforeEach(async () => {
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
   guests = new GuestService({ db: handle.db, config, now: clock.now });
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
-  app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
+  leaderboards = new LeaderboardService({ db: handle.db, now: clock.now });
+  app = await buildApp({
+    config,
+    services: { runtime, guests, identity, leaderboards },
+    now: clock.now,
+  });
 });
 
 afterEach(async () => {
@@ -856,6 +866,9 @@ describe("GET /v1/profiles/:username", () => {
       memberSince: new Date(clock.now()).toISOString().slice(0, 7),
       casual: { wins: 0, losses: 0, draws: 0, played: 0 },
       ranked: null,
+      rank: null,
+      badges: [],
+      recentMatches: [],
     });
     expect(JSON.stringify(profile)).not.toContain("ada@example.com");
   });
@@ -907,6 +920,133 @@ describe("GET /v1/profiles/:username", () => {
 
     expect(response.statusCode).toBe(200);
     expect(JSON.stringify(response.json())).not.toContain("suspended");
+  });
+
+  it("shows the badges, the all-time rank and the last five finished matches", async () => {
+    const registered = await register();
+    const opponent = await createGuest();
+    for (let index = 0; index < 6; index += 1) {
+      const snapshot = await runtime.createMatch({
+        mode: "casual",
+        timeControlSeconds: 300,
+        light: { actorType: "user", actorId: registered.account.userId, displayName: "ada" },
+        dark: { actorType: "guest", actorId: opponent.guestId, displayName: opponent.displayName },
+      });
+      clock.advance(1_000);
+      await runtime.applyResignCommand(
+        { actorType: "guest", actorId: opponent.guestId },
+        envelope(snapshot.matchId, 0),
+      );
+    }
+
+    const profile = publicProfileSchema.parse(
+      (await app.inject({ method: "GET", url: "/v1/profiles/ada" })).json(),
+    );
+
+    expect(profile.badges.map((badge) => badge.code)).toEqual(["first-victory"]);
+    expect(profile.recentMatches).toHaveLength(5);
+    expect(profile.recentMatches[0]).toMatchObject({
+      side: "light",
+      outcome: "win",
+      ratingDelta: null,
+      moveCount: 0,
+    });
+    // A casual win moves no rating, so the account still belongs to no board.
+    expect(profile.rank).toBeNull();
+  });
+
+  it("shows the rank of a rated account", async () => {
+    const registered = await register();
+    await upsertRating(handle.db, registered.account.userId, {
+      rating: 1300,
+      gamesPlayed: 1,
+      wins: 1,
+      losses: 0,
+      draws: 0,
+      currentStreak: 1,
+      bestStreak: 1,
+    });
+
+    const profile = publicProfileSchema.parse(
+      (await app.inject({ method: "GET", url: "/v1/profiles/ada" })).json(),
+    );
+
+    expect(profile.rank).toBe(1);
+    expect(profile.ranked).toMatchObject({ rating: 1300, wins: 1 });
+  });
+});
+
+describe("GET /v1/me/achievements", () => {
+  it("answers the whole catalogue with what has been earned", async () => {
+    const registered = await register();
+    const opponent = await createGuest();
+    const snapshot = await runtime.createMatch({
+      mode: "casual",
+      timeControlSeconds: 300,
+      light: { actorType: "user", actorId: registered.account.userId, displayName: "ada" },
+      dark: { actorType: "guest", actorId: opponent.guestId, displayName: opponent.displayName },
+    });
+    await runtime.applyResignCommand(
+      { actorType: "guest", actorId: opponent.guestId },
+      envelope(snapshot.matchId, 0),
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/me/achievements",
+      headers: auth(registered.session.sessionToken),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = achievementsResponseSchema.parse(response.json());
+    expect(body.achievements).toHaveLength(ACHIEVEMENT_CATALOGUE.length);
+    const earned = body.achievements.filter((entry) => entry.earnedAt !== null);
+    expect(earned.map((entry) => entry.code)).toEqual(["first-victory"]);
+    expect(earned[0]).toMatchObject({
+      name: "First Victory",
+      badge: "bronze",
+      matchId: snapshot.matchId,
+    });
+    expect(body.achievements.find((entry) => entry.code === "four-ways")?.earnedAt).toBeNull();
+  });
+
+  it("requires an account, because a guest earns nothing", async () => {
+    const guest = await createGuest();
+
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/me/achievements",
+          headers: auth(guest.sessionToken),
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await app.inject({ method: "GET", url: "/v1/me/achievements" })).statusCode).toBe(401);
+  });
+
+  it("withholds an achievement this protocol version does not name", async () => {
+    const registered = await register();
+    // The catalogue is seed data that no truncation clears, so the row is written
+    // idempotently and removed again.
+    await handle.db.execute(
+      `insert into achievements (code, name, description, badge_asset, rule_version)
+       values ('phase-seven-secret', 'Secret', 'Not yet named on the wire', 'gold', 1)
+       on conflict (code) do nothing`,
+    );
+
+    const body = achievementsResponseSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/me/achievements",
+          headers: auth(registered.session.sessionToken),
+        })
+      ).json(),
+    );
+    await handle.db.execute(`delete from achievements where code = 'phase-seven-secret'`);
+
+    expect(body.achievements).toHaveLength(ACHIEVEMENT_CATALOGUE.length);
   });
 });
 

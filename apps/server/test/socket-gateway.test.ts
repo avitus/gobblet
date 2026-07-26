@@ -33,6 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
+import { LeaderboardService } from "../src/leaderboard/service";
 import { RematchService } from "../src/matchmaking/rematch";
 import { MatchmakingService } from "../src/matchmaking/service";
 import type { MatchmakingQueue } from "../src/matchmaking/service";
@@ -57,6 +58,7 @@ let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
 let identity: IdentityService;
+let leaderboards: LeaderboardService;
 let matchmaking: MatchmakingService;
 let rematch: RematchService;
 let logs: Readonly<{ context: Readonly<Record<string, unknown>>; message: string }>[];
@@ -81,9 +83,14 @@ beforeEach(async () => {
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
   guests = new GuestService({ db: handle.db, config, now: clock.now });
   identity = new IdentityService({ db: handle.db, config, now: clock.now });
+  leaderboards = new LeaderboardService({ db: handle.db, now: clock.now });
   matchmaking = new MatchmakingService({ runtime, identity, now: clock.now });
   rematch = new RematchService({ runtime, identity, now: clock.now });
-  app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
+  app = await buildApp({
+    config,
+    services: { runtime, guests, identity, leaderboards },
+    now: clock.now,
+  });
   await app.listen({ host: "127.0.0.1", port: 0 });
   gateway = new MatchGateway({
     httpServer: app.server,
@@ -146,7 +153,7 @@ async function spawnGateway(
 ): Promise<{ gateway: MatchGateway; url: string }> {
   const localApp = await buildApp({
     config,
-    services: { runtime: gatewayRuntime, guests, identity },
+    services: { runtime: gatewayRuntime, guests, identity, leaderboards },
     now: clock.now,
   });
   await localApp.listen({ host: "127.0.0.1", port: 0 });

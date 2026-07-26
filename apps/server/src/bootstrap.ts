@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import { GuestService } from "./guests/service";
 import { IdentityService } from "./identity/service";
+import { LeaderboardService } from "./leaderboard/service";
 import { RematchService } from "./matchmaking/rematch";
 import { MatchmakingService } from "./matchmaking/service";
 import { MatchRuntime } from "./match/runtime";
@@ -22,6 +23,7 @@ export type BootstrappedServer = Readonly<{
   runtime: MatchRuntime;
   guests: GuestService;
   identity: IdentityService;
+  leaderboards: LeaderboardService;
   matchmaking: MatchmakingService;
   rematch: RematchService;
   gateway: MatchGateway;
@@ -50,12 +52,13 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
   const runtime = new MatchRuntime({ db: database.db, now });
   const guests = new GuestService({ db: database.db, config, now });
   const identity = new IdentityService({ db: database.db, config, now });
+  const leaderboards = new LeaderboardService({ db: database.db, now });
   const matchmaking = new MatchmakingService({ runtime, identity, now });
   const rematch = new RematchService({ runtime, identity, now });
 
   const app = await buildApp({
     config,
-    services: { runtime, guests, identity },
+    services: { runtime, guests, identity, leaderboards },
     readiness: [{ name: "database", check: () => checkDatabaseConnection(database.db) }],
     now,
   });
@@ -84,6 +87,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     runtime,
     guests,
     identity,
+    leaderboards,
     matchmaking,
     rematch,
     gateway,

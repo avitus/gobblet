@@ -5,7 +5,6 @@ import {
   findUnfinishedMatchForActor,
   insertMatch,
   insertMatchEvent,
-  listMatchesForActor,
   listUnfinishedMatches,
   lockMatchForUpdate,
   updateMatchState,
@@ -23,6 +22,7 @@ import type {
   MatchSnapshot,
   MatchSummary,
   MovePayload,
+  PlayerMatchSummary,
   TimeControl,
 } from "@gobblet/protocol";
 import { awardAchievementsForCompletion } from "../achievements/service";
@@ -30,6 +30,7 @@ import { winningLineIds } from "../achievements/lines";
 import { applyRatingsForCompletion, readSeatRatings } from "../rating/service";
 import { chargeActiveSide, readClocks, zeroActiveSide } from "./clock";
 import type { CommittedClocks } from "./clock";
+import { listPlayerHistory } from "./history";
 import { matchClocks, participantSide, toSnapshot, toSummary } from "./snapshot";
 import type { Actor, LastMove } from "./snapshot";
 import { gameStateHash, opponentOutcome, outcomeOfGameState, writeGameState } from "./state";
@@ -170,12 +171,11 @@ export class MatchRuntime {
   }
 
   /**
-   * Own match history, newest first. Summaries never carry the move event log,
-   * which stays administrative (spec section 11.2).
+   * Own match history, newest first, as the actor read it. Summaries never carry
+   * the move event log, which stays administrative (spec section 11.2).
    */
-  async listSummariesForActor(actor: Actor, limit: number): Promise<MatchSummary[]> {
-    const rows = await listMatchesForActor(this.db, actor, limit);
-    return rows.map((row) => toSummary(row));
+  async listPlayerSummariesForActor(actor: Actor, limit: number): Promise<PlayerMatchSummary[]> {
+    return listPlayerHistory(this.db, actor, limit);
   }
 
   /** Whether the actor already holds a clock, which bars it from a queue (spec section 9.2). */

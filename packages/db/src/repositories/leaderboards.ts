@@ -52,7 +52,8 @@ type RawLeaderboardRow = Readonly<{
   rating: number;
   wins: number;
   games: number;
-  rated_at: Date;
+  /** A raw statement bypasses the column mappers, so a timestamp arrives as text. */
+  rated_at: string;
 }>;
 
 function toRow(raw: RawLeaderboardRow): LeaderboardRow {
@@ -65,7 +66,7 @@ function toRow(raw: RawLeaderboardRow): LeaderboardRow {
     rating: raw.rating,
     wins: raw.wins,
     games: raw.games,
-    ratedAt: raw.rated_at,
+    ratedAt: new Date(raw.rated_at),
   };
 }
 
@@ -120,13 +121,15 @@ export async function readLeaderboardPage(
         ratings.rating,
         stats.wins,
         stats.games,
-        ratings.updated_at as rated_at,
+        -- Truncated to the resolution a cursor can carry, so a page boundary
+        -- cannot land inside one timestamp and repeat the row that made it.
+        date_trunc('milliseconds', ratings.updated_at) as rated_at,
         rank() over (
           order by
             ratings.rating desc,
             stats.wins desc,
             stats.games asc,
-            ratings.updated_at asc,
+            date_trunc('milliseconds', ratings.updated_at) asc,
             ratings.user_id asc
         )::int as rank
       from ratings

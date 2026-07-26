@@ -6,6 +6,8 @@ import type {
   MatchResult,
   MatchSnapshot,
   MatchSummary,
+  PlayerMatchSummary,
+  PlayerResult,
   TimeControl,
 } from "@gobblet/protocol";
 import { readClocks } from "./clock";
@@ -106,8 +108,36 @@ export function toSummary(row: MatchRow, ratings: SeatRatings = UNRATED_SEATS): 
     status: row.status,
     result: matchResultOf(row),
     players: matchPlayers(row, ratings),
+    moveCount: row.moveCount,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
     endedAt: row.endedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * The same summary read from one seat (spec section 11.2): the colour held, the
+ * result as that player experienced it and the rating it moved.
+ */
+export function toPlayerSummary(
+  row: MatchRow,
+  side: Player,
+  ratingDelta: number | null,
+): PlayerMatchSummary {
+  return {
+    ...toSummary(row),
+    side,
+    outcome: playerResultOf(row, side),
+    ratingDelta,
+  };
+}
+
+function playerResultOf(row: MatchRow, side: Player): PlayerResult | null {
+  if (row.result === null) {
+    return null;
+  }
+  if (row.result === "draw") {
+    return "draw";
+  }
+  return row.result === side ? "win" : "loss";
 }

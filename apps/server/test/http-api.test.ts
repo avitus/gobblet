@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildApp } from "../src/app";
 import { GuestService } from "../src/guests/service";
 import { IdentityService } from "../src/identity/service";
+import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -32,6 +33,7 @@ let clock: TestClock;
 let runtime: MatchRuntime;
 let guests: GuestService;
 let identity: IdentityService;
+let leaderboards: LeaderboardService;
 let app: FastifyInstance | undefined;
 
 beforeAll(async () => {
@@ -48,6 +50,7 @@ beforeEach(async () => {
   runtime = new MatchRuntime({ db: handle.db, now: clock.now });
   guests = new GuestService({ db: handle.db, config: localConfig, now: clock.now });
   identity = new IdentityService({ db: handle.db, config: localConfig, now: clock.now });
+  leaderboards = new LeaderboardService({ db: handle.db, now: clock.now });
 });
 
 afterEach(async () => {
@@ -56,7 +59,11 @@ afterEach(async () => {
 });
 
 async function start(config: ServerConfig = localConfig): Promise<FastifyInstance> {
-  app = await buildApp({ config, services: { runtime, guests, identity }, now: clock.now });
+  app = await buildApp({
+    config,
+    services: { runtime, guests, identity, leaderboards },
+    now: clock.now,
+  });
   return app;
 }
 

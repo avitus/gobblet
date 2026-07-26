@@ -211,9 +211,27 @@ describe("publicProfileSchema", () => {
         currentStreak: 1,
         bestStreak: 1,
       },
+      rank: 7,
+      badges: [
+        {
+          code: "first-victory",
+          name: "First Victory",
+          badge: "bronze",
+          earnedAt: "2026-07-25T10:07:00.000Z",
+        },
+      ],
+      recentMatches: [],
     };
 
     expect(publicProfileSchema.parse(publicProfile)).toEqual(publicProfile);
+    expect(publicProfileSchema.parse({ ...publicProfile, rank: null }).rank).toBeNull();
+    expect(publicProfileSchema.safeParse({ ...publicProfile, rank: 0 }).success).toBe(false);
+    expect(
+      publicProfileSchema.safeParse({
+        ...publicProfile,
+        badges: [{ code: "first-victory", name: "First Victory", badge: "bronze", earnedAt: null }],
+      }).success,
+    ).toBe(false);
     expect(
       publicProfileSchema.safeParse({ ...publicProfile, memberSince: "2026-07-25" }).success,
     ).toBe(false);
@@ -230,6 +248,10 @@ describe("publicProfileSchema", () => {
         countryCode: null,
         memberSince: "2026-07",
         casual: { wins: 0, losses: 0, draws: 0, played: 0 },
+        ranked: null,
+        rank: null,
+        badges: [],
+        recentMatches: [],
         email: "ada@example.com",
       }).success,
     ).toBe(false);

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { profileBadgeSchema } from "./achievements";
 import { USERNAME_UNAVAILABLE_REASONS, USER_STATUSES } from "./constants";
+import { playerMatchSummarySchema } from "./http";
 import {
   avatarUrlSchema,
   countryCodeSchema,
@@ -58,6 +60,11 @@ export const publicProfileSchema = z.strictObject({
   casual: casualRecordSchema,
   /** `null` until the account has finished a ranked match, so nothing is invented. */
   ranked: rankedRecordSchema.nullable(),
+  /** The all-time board position, `null` for an account with no rating (appendix P6.13). */
+  rank: z.int().positive().nullable(),
+  badges: z.array(profileBadgeSchema),
+  /** The most recent completed matches, without the move log (appendix P6.12). */
+  recentMatches: z.array(playerMatchSummarySchema),
 });
 
 export const registerRequestSchema = z.strictObject({

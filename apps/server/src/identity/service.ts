@@ -34,6 +34,7 @@ import {
 } from "@gobblet/db";
 import type { Database, ProfileRow, UserRow } from "@gobblet/db";
 import {
+  PROFILE_RECENT_MATCH_COUNT,
   isReservedUsername,
   normalizeEmail,
   normalizeUsername,
@@ -41,6 +42,7 @@ import {
 } from "@gobblet/protocol";
 import type {
   Account,
+  AchievementProgress,
   AuthResponse,
   CasualRecord,
   CheckUsernameResponse,
@@ -56,6 +58,9 @@ import type {
   UpdateProfileRequest,
   UserStatus,
 } from "@gobblet/protocol";
+import { readAchievementProgress, readProfileBadges } from "../achievements/read";
+import { readAllTimeRank } from "../leaderboard/rank";
+import { listCompletedPlayerHistory } from "../match/history";
 
 /**
  * Accounts, their sessions and their profiles
@@ -394,6 +399,13 @@ export class IdentityService {
       memberSince: user.createdAt.toISOString().slice(0, 7),
       casual: await this.casualRecord(user.id),
       ranked: await this.rankedRecord(user.id),
+      rank: await readAllTimeRank(this.db, user.id),
+      badges: await readProfileBadges(this.db, user.id),
+      recentMatches: await listCompletedPlayerHistory(
+        this.db,
+        { actorType: "user", actorId: user.id },
+        PROFILE_RECENT_MATCH_COUNT,
+      ),
     };
   }
 
@@ -414,6 +426,11 @@ export class IdentityService {
 
   async updateProfile(userId: string, patch: UpdateProfileRequest): Promise<ProfileSettings> {
     return toProfileSettings(await updateProfile(this.db, userId, patch));
+  }
+
+  /** The whole catalogue with this account's progress against it (spec section 11.4). */
+  async achievements(userId: string): Promise<AchievementProgress[]> {
+    return readAchievementProgress(this.db, userId);
   }
 
   /** `null` until a ranked match has finished, so an unrated account shows no rating. */

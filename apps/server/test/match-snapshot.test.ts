@@ -1,6 +1,16 @@
-import { matchSnapshotSchema, matchSummarySchema } from "@gobblet/protocol";
+import {
+  matchSnapshotSchema,
+  matchSummarySchema,
+  playerMatchSummarySchema,
+} from "@gobblet/protocol";
 import { describe, expect, it } from "vitest";
-import { matchResultOf, participantSide, toSnapshot, toSummary } from "../src/match/snapshot";
+import {
+  matchResultOf,
+  participantSide,
+  toPlayerSummary,
+  toSnapshot,
+  toSummary,
+} from "../src/match/snapshot";
 import {
   CLOCK_START,
   DARK_ACTOR,
@@ -97,5 +107,40 @@ describe("toSummary", () => {
 
     expect(summary.startedAt).toBeNull();
     expect(summary.endedAt).toBeNull();
+  });
+});
+
+describe("toPlayerSummary", () => {
+  const finished = matchRowFixture({
+    status: "completed",
+    result: "light",
+    endReason: "line",
+    moveCount: 9,
+    endedAt: new Date(CLOCK_START + 60_000),
+  });
+
+  it("reads a win from the winning seat and a loss from the other", () => {
+    expect(playerMatchSummarySchema.parse(toPlayerSummary(finished, "light", 16))).toMatchObject({
+      side: "light",
+      outcome: "win",
+      ratingDelta: 16,
+      moveCount: 9,
+    });
+    expect(toPlayerSummary(finished, "dark", -16).outcome).toBe("loss");
+  });
+
+  it("reads a draw the same way from both seats", () => {
+    const drawn = matchRowFixture({
+      status: "completed",
+      result: "draw",
+      endReason: "repetition",
+    });
+
+    expect(toPlayerSummary(drawn, "light", 0).outcome).toBe("draw");
+    expect(toPlayerSummary(drawn, "dark", 0).outcome).toBe("draw");
+  });
+
+  it("decides nothing while the match is unfinished", () => {
+    expect(toPlayerSummary(matchRowFixture(), "light", null).outcome).toBeNull();
   });
 });

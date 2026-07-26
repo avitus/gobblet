@@ -8,10 +8,12 @@ import type { GuestService } from "./guests/service";
 import { sendError } from "./http/errors";
 import { AttemptLimiter } from "./identity/rate-limit";
 import type { IdentityService } from "./identity/service";
+import type { LeaderboardService } from "./leaderboard/service";
 import type { MatchRuntime } from "./match/runtime";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerDevMatchRoutes } from "./routes/dev-matches";
 import { registerGuestRoutes } from "./routes/guests";
+import { registerLeaderboardRoutes } from "./routes/leaderboards";
 import { registerMatchRoutes } from "./routes/matches";
 import { registerMeRoutes } from "./routes/me";
 import { registerProfileRoutes } from "./routes/profiles";
@@ -37,6 +39,7 @@ export type AppServices = Readonly<{
   runtime: MatchRuntime;
   guests: GuestService;
   identity: IdentityService;
+  leaderboards: LeaderboardService;
 }>;
 
 export type BuildAppOptions = Readonly<{
@@ -129,6 +132,7 @@ export async function buildApp({
     });
     registerUsernameRoutes(app, services.identity);
     registerProfileRoutes(app, services.identity);
+    registerLeaderboardRoutes(app, services.leaderboards, resolvers);
     registerMeRoutes(app, services.identity, resolvers, services.runtime);
     registerMatchRoutes(app, services.runtime, resolvers);
     registerDevMatchRoutes(app, services.runtime, resolvers, config);
