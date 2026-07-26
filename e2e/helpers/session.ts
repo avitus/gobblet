@@ -21,9 +21,13 @@ export async function openContext(browser: Browser, options: ContextOptions = {}
     renderTier: options.renderTier ?? "flat",
     soundMuted: true,
   });
+  // Seeded once, not on every load: a setting the specification changes must
+  // survive a reload, which is the client's own promise about them.
   await context.addInitScript(
     ([key, value]) => {
-      window.localStorage.setItem(key, value);
+      if (window.localStorage.getItem(key) === null) {
+        window.localStorage.setItem(key, value);
+      }
     },
     [SETTINGS_STORAGE_NAME, settings] as const,
   );
@@ -36,4 +40,33 @@ export async function startGuest(page: Page, displayName: string): Promise<void>
   await page.getByTestId("guest-name").fill(displayName);
   await page.getByTestId("play-as-guest").click();
   await expect(page.getByTestId("identity-name")).toHaveText(displayName);
+}
+
+export type Credentials = Readonly<{ username: string; email: string; password: string }>;
+
+/**
+ * Credentials no other run can collide with. A retry registers again, and the
+ * suite's database survives between the two attempts.
+ */
+export function newCredentials(prefix: string): Credentials {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const username = `${prefix}_${suffix}`;
+  return { username, email: `${username}@example.test`, password: "correct-horse-battery-9" };
+}
+
+/**
+ * A verified account, made through the screens a player uses. No mail is sent
+ * outside production, so registration hands the token to the verification screen,
+ * which is where ranked eligibility comes from (appendix P3).
+ */
+export async function startAccount(page: Page, credentials: Credentials): Promise<void> {
+  await page.goto("/register");
+  await page.getByLabel("Email").fill(credentials.email);
+  await page.getByLabel("Username").fill(credentials.username);
+  await page.getByLabel("Password").fill(credentials.password);
+  await page.getByTestId("register-submit").click();
+
+  await expect(page.getByTestId("verify-submit")).toBeVisible();
+  await page.getByTestId("verify-submit").click();
+  await expect(page.getByTestId("identity-name")).toHaveText(credentials.username);
 }

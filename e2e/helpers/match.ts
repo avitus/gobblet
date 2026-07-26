@@ -1,5 +1,12 @@
 import { expect, type Browser, type Page } from "@playwright/test";
-import { openContext, startGuest, type ContextOptions, type Player } from "./session";
+import {
+  openContext,
+  startAccount,
+  startGuest,
+  type ContextOptions,
+  type Credentials,
+  type Player,
+} from "./session";
 
 export type Seat = "light" | "dark";
 
@@ -40,8 +47,40 @@ export async function pairGuests(
     players.map((player, index) => startGuest(player.page, names[index] ?? "guest")),
   );
 
+  return queueTogether(players, names, "casual");
+}
+
+/**
+ * Two verified accounts queue for the same ranked clock. Only an account may play a
+ * ranked match, which is what rates it, boards it and can earn a badge (section 11).
+ */
+export async function pairAccounts(
+  browser: Browser,
+  accounts: readonly [Credentials, Credentials],
+  options: ContextOptions = {},
+): Promise<PairedMatch> {
+  const players = await Promise.all([openContext(browser, options), openContext(browser, options)]);
+
+  for (const [index, player] of players.entries()) {
+    // One registration at a time: a username is claimed by whoever asks first.
+    await startAccount(player.page, accounts[index] ?? accounts[0]);
+  }
+
+  return queueTogether(
+    players,
+    accounts.map((account) => account.username),
+    "ranked",
+  );
+}
+
+async function queueTogether(
+  players: readonly Player[],
+  names: readonly string[],
+  mode: "casual" | "ranked",
+): Promise<PairedMatch> {
   for (const player of players) {
     await player.page.getByRole("link", { name: "Play" }).click();
+    await player.page.getByTestId("mode").selectOption(mode);
     await expect(player.page.getByTestId("join-queue")).toBeEnabled();
   }
   for (const player of players) {
