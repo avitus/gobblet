@@ -43,6 +43,22 @@ export function readClocks(row: MatchRow, now: number): ClockReading {
   });
 }
 
+/**
+ * A stored clock that cannot be true. Time that has not happened yet and a negative
+ * remaining time are both defects rather than states, and section 17.4 alerts on
+ * them, so they are named here and counted where a row is read.
+ */
+export function clockAnomaly(row: MatchRow, now: number): string | null {
+  if (row.lightRemainingMs < 0 || row.darkRemainingMs < 0) {
+    return "negative-remaining";
+  }
+  const turnStartedAt = row.turnStartedAt?.getTime() ?? null;
+  if (turnStartedAt !== null && turnStartedAt > now) {
+    return "turn-starts-in-the-future";
+  }
+  return null;
+}
+
 export type CommittedClocks = Readonly<{
   lightRemainingMs: number;
   darkRemainingMs: number;

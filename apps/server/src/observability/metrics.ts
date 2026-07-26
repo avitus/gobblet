@@ -23,10 +23,16 @@ export type QueueDepthReading = Readonly<{
  * The figures that are facts about this process rather than counts of things that
  * happened. They are read at scrape time, so a reader never sees a stale queue.
  */
+export type PoolReading = Readonly<{ total: number; idle: number; waiting: number }>;
+
 export type GaugeSources = Readonly<{
   activeMatches: () => number;
   connectedSockets: () => number;
   queueDepths: () => readonly QueueDepthReading[];
+  /** Connections held, spare and queued: the shape of pool exhaustion (section 17.4). */
+  pool: () => PoolReading;
+  /** Whether this instance would answer `GET /health/ready` affirmatively. */
+  ready: () => Promise<boolean>;
 }>;
 
 export class MetricsRegistry {
@@ -56,9 +62,16 @@ export class MetricsRegistry {
 
   private readonly clientSessions: Counter<"platform" | "version">;
 
+  private readonly matchTransactionFailures: Counter<"operation">;
+
+  private readonly clockAnomalies: Counter<"kind">;
+
   private sources: GaugeSources | null = null;
 
-  constructor(deployment: Readonly<{ appVersion: string; gitSha: string; appEnv: string }>) {
+  constructor(
+    deployment: Readonly<{ appVersion: string; gitSha: string; appEnv: string }>,
+    startedAtSeconds: number = Date.now() / 1000,
+  ) {
     this.httpRequests = new Counter({
       name: "gobblet_http_requests_total",
       help: "HTTP requests by route pattern and status.",
@@ -132,6 +145,19 @@ export class MetricsRegistry {
       registers: [this.registry],
     });
 
+    this.matchTransactionFailures = new Counter({
+      name: "gobblet_match_transaction_failures_total",
+      help: "Match transactions that failed and rolled back, by operation.",
+      labelNames: ["operation"],
+      registers: [this.registry],
+    });
+    this.clockAnomalies = new Counter({
+      name: "gobblet_clock_anomalies_total",
+      help: "Stored clocks that cannot be true, by kind. A non-zero value is a defect.",
+      labelNames: ["kind"],
+      registers: [this.registry],
+    });
+
     const deploymentInfo = new Gauge({
       name: "gobblet_deployment_info",
       help: "Always 1, carrying the running version as labels.",
@@ -146,6 +172,46 @@ export class MetricsRegistry {
       },
       1,
     );
+
+    new Gauge({
+      name: "gobblet_deployment_started_seconds",
+      help: "When this process started, so an alert can tell a regression from a deploy.",
+      registers: [this.registry],
+    }).set(startedAtSeconds);
+
+    const ready = new Gauge({
+      name: "gobblet_ready",
+      help: "1 when this instance would accept traffic, 0 when it would not.",
+      registers: [this.registry],
+      collect: async (): Promise<void> => {
+        ready.set((await this.sources?.ready()) === true ? 1 : 0);
+      },
+    });
+
+    const poolTotal = new Gauge({
+      name: "gobblet_database_pool_connections",
+      help: "Connections the pool holds.",
+      registers: [this.registry],
+      collect: (): void => {
+        poolTotal.set(this.sources?.pool().total ?? 0);
+      },
+    });
+    const poolIdle = new Gauge({
+      name: "gobblet_database_pool_idle",
+      help: "Connections the pool could hand out immediately.",
+      registers: [this.registry],
+      collect: (): void => {
+        poolIdle.set(this.sources?.pool().idle ?? 0);
+      },
+    });
+    const poolWaiting = new Gauge({
+      name: "gobblet_database_pool_waiting",
+      help: "Callers queued for a connection. Sustained above zero is exhaustion.",
+      registers: [this.registry],
+      collect: (): void => {
+        poolWaiting.set(this.sources?.pool().waiting ?? 0);
+      },
+    });
 
     const activeMatches = new Gauge({
       name: "gobblet_active_matches",
@@ -229,6 +295,16 @@ export class MetricsRegistry {
 
   recordClientSession(platform: string, version: string): void {
     this.clientSessions.inc({ platform, version });
+  }
+
+  /** A match transaction that rolled back. Anything above zero deserves a look. */
+  recordMatchTransactionFailure(operation: string): void {
+    this.matchTransactionFailures.inc({ operation });
+  }
+
+  /** A stored clock that cannot be true, which section 17.4 alerts on. */
+  recordClockAnomaly(kind: string): void {
+    this.clockAnomalies.inc({ kind });
   }
 
   /**

@@ -100,21 +100,21 @@ endpoints and `GET /v1/config`. All other interactions are planned.
                           +----------------------+
 ```
 
-| Component                | Responsibility                                                          | Status                                              |
-| ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
-| `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Implemented (Phase 5)                               |
-| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 4), gameplay surface grows later |
-| `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
-| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions   | Implemented (Phase 1)                               |
-| `packages/protocol`      | Zod schemas and shared command, event and snapshot types                | Implemented (Phase 2)                               |
-| `packages/db`            | Drizzle schema, migrations, transactional repositories                  | Implemented (Phase 2)                               |
-| `packages/config`        | Typed environment parsing and validation                                | Implemented (Phase 0)                               |
-| `packages/auth`          | Password hashing and verification, opaque session token helpers         | Implemented (Phase 3)                               |
-| `packages/observability` | Pino logging, metrics registry, error reporting helpers                 | Planned (Phase 7)                                   |
-| `packages/design-system` | CSS custom property tokens and shared primitives                        | Implemented (Phase 5)                               |
-| `packages/game-ui`       | Shared React game UI reused by web and desktop                          | Implemented (Phase 5)                               |
-| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                | Grows with each phase's suites                      |
+| Component                | Responsibility                                                         | Status                                              |
+| ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------- |
+| `apps/web`               | All player-facing UI, optimistic feedback, socket client               | Implemented (Phase 5)                               |
+| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates | Planned (Phase 8)                                   |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                           | Implemented (Phase 4), gameplay surface grows later |
+| `apps/admin`             | Not created: the surface is gated routes inside `apps/web`             | Superseded (Phase 7, appendix P7.1)                 |
+| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions  | Implemented (Phase 1)                               |
+| `packages/protocol`      | Zod schemas and shared command, event and snapshot types               | Implemented (Phase 2)                               |
+| `packages/db`            | Drizzle schema, migrations, transactional repositories                 | Implemented (Phase 2)                               |
+| `packages/config`        | Typed environment parsing and validation                               | Implemented (Phase 0)                               |
+| `packages/auth`          | Password hashing and verification, opaque session token helpers        | Implemented (Phase 3)                               |
+| `packages/observability` | Not created: the server owns it, in `apps/server/src/observability`    | Superseded (Phase 7, appendix P7.19)                |
+| `packages/design-system` | CSS custom property tokens and shared primitives                       | Implemented (Phase 5)                               |
+| `packages/game-ui`       | Shared React game UI reused by web and desktop                         | Implemented (Phase 5)                               |
+| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites               | Grows with each phase's suites                      |
 
 The server runs HTTP and real-time transport in one Node process (see
 [ADR-0006](adr/0006-fastify-socketio-server.md)). There is exactly one authoritative
@@ -368,8 +368,9 @@ effective_remaining = stored_remaining_ms - (server_now - turn_started_at)
 
 ## 11. Restart, recovery and deploy draining
 
-Status: restart recovery implemented (Phase 2) in `apps/server/src/bootstrap.ts`; the full
-deploy pipeline with draining arrives in Phase 7.
+Status: restart recovery implemented (Phase 2) in `apps/server/src/bootstrap.ts`; draining
+implemented (Phase 7) in `BootstrappedServer.close`, and the deploy workflow that calls for it is
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), waiting only on a host.
 
 On process start:
 
@@ -436,7 +437,7 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Matchmaking, Elo, rematch                                 | Implemented | Phase 4      |
 | 3D client and shared game UI                              | Implemented | Phase 5      |
 | Social surface and progression                            | Implemented | Phase 6      |
-| Admin API, audit log, metrics, alerting                   | Planned     | Phase 7      |
+| Admin API, audit log, metrics, alerting                   | Implemented | Phase 7      |
 | Desktop shell, signing, auto-update                       | Planned     | Phase 8      |
 | Load, soak and launch hardening                           | Planned     | Phase 9      |
 

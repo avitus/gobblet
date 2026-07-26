@@ -1,0 +1,290 @@
+name: Deploy
+
+# The ordered jobs of specification section 22.2 and the runbooks of
+# docs/operations.md sections 7 and 8. There is no host yet
+# (docs/adr/0015-defer-hosting-choice.md), so the deploy steps refuse to guess: each
+# one requires the connection secrets of its environment and fails loudly when they
+# are absent, rather than reporting a deployment that did not happen. The order, the
+# approval gate and the drain are what this file fixes now; the commands inside the
+# two deploy jobs are the only part waiting on a provider.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The commit to deploy. Must already be green on CI.
+        required: true
+        default: main
+      skip-production:
+        description: Deploy to staging only.
+        type: boolean
+        default: false
+
+concurrency:
+  # One deploy at a time. A queued deploy waits rather than racing the drain of
+  # the one before it.
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+
+jobs:
+  build:
+    name: Build the artefact
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      sha: ${{ steps.identify.outputs.sha }}
+      version: ${{ steps.identify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Identify the release
+        id: identify
+        run: |
+          sha="$(git rev-parse HEAD)"
+          version="$(node -p "require('./package.json').version")"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${version} at ${sha}"
+
+      - name: Build
+        run: pnpm build
+        env:
+          APP_VERSION: ${{ steps.identify.outputs.version }}
+          GIT_SHA: ${{ steps.identify.outputs.sha }}
+
+      - name: Generate the alert rules from the definitions
+        run: pnpm ops:alerts
+
+      - name: The rules file must match the definitions
+        run: git diff --exit-code ops/alerts/gobblet.rules.yml
+
+      - name: Upload the server bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ steps.identify.outputs.sha }}
+          path: |
+            apps/server/dist/
+            apps/web/dist/
+            packages/*/dist/
+          retention-days: 14
+
+  staging-migrate:
+    name: Migrate staging
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require a database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::No staging database is configured. See docs/adr/0015-defer-hosting-choice.md."
+            exit 1
+          fi
+
+      - name: Back up before migrating
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:backup --directory "${RUNNER_TEMP}/backup"
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
+
+      - name: Keep the pre-migration backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-pre-migration-${{ needs.build.outputs.sha }}
+          path: ${{ runner.temp }}/backup/
+          retention-days: 14
+
+  staging-deploy:
+    name: Deploy staging
+    needs: [build, staging-migrate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - name: Require a host
+        env:
+          HOST: ${{ vars.STAGING_URL }}
+        run: |
+          if [ -z "${HOST}" ]; then
+            echo "::error::No staging host is configured. See docs/adr/0015-defer-hosting-choice.md."
+            exit 1
+          fi
+
+      - name: Release the build
+        run: |
+          echo "::error::The provider command belongs here, and is the only step this workflow is missing."
+          exit 1
+
+  staging-smoke:
+    name: Smoke staging
+    needs: [build, staging-deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Section 22.2 step 5 and docs/operations.md section 7: liveness, readiness,
+      # the configuration document, and a match that plays a move, reconnects and
+      # finds the version advanced.
+      - name: Smoke test
+        env:
+          SMOKE_BASE_URL: ${{ vars.STAGING_URL }}
+        run: pnpm --filter @gobblet/server smoke
+
+  production-approval:
+    name: Approve production
+    needs: [build, staging-smoke]
+    if: ${{ !inputs.skip-production }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The gate itself. Reviewers are configured on the environment in repository
+    # settings; the workflow cannot grant itself approval.
+    environment: production
+    steps:
+      - name: Record the approval
+        run: |
+          echo "Approved ${{ needs.build.outputs.version }} at ${{ needs.build.outputs.sha }}"
+          echo "Preconditions: staging smoke passed, migrations applied to staging, no open Sev1 or Sev2."
+
+  production-migrate:
+    name: Migrate production
+    needs: [build, production-approval]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require a database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::No production database is configured. See docs/adr/0015-defer-hosting-choice.md."
+            exit 1
+          fi
+
+      - name: Back up before migrating
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:backup --directory "${RUNNER_TEMP}/backup"
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
+
+      - name: Keep the pre-migration backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-pre-migration-${{ needs.build.outputs.sha }}
+          path: ${{ runner.temp }}/backup/
+          retention-days: 14
+
+  production-deploy:
+    name: Deploy production and drain
+    needs: [build, production-migrate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - name: Require a host
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+        run: |
+          if [ -z "${HOST}" ]; then
+            echo "::error::No production host is configured. See docs/adr/0015-defer-hosting-choice.md."
+            exit 1
+          fi
+
+      # docs/operations.md section 8. The new container becomes ready before the old
+      # one stops taking matchmaking, and the old one keeps its matches until they
+      # finish or SHUTDOWN_DRAIN_SECONDS elapses. A client that is cut off calls
+      # match:sync and loses nothing, which apps/server/test/phase7-exit-criteria.test.ts
+      # proves against the runtime rather than against a deployment.
+      - name: Start the new container and wait for readiness
+        run: |
+          echo "::error::The provider command belongs here, and is the only step this workflow is missing."
+          exit 1
+
+      - name: Drain the old container
+        if: success()
+        run: |
+          echo "Stop routing new matchmaking, then wait out SHUTDOWN_DRAIN_SECONDS."
+          echo "::error::The provider command belongs here."
+          exit 1
+
+      - name: Watch the post-deploy window
+        if: success()
+        run: |
+          echo "Error rate, readiness and match transaction failures for the observation window."
+          echo "See ops/alerts/gobblet.rules.yml, GobbletErrorRegressionAfterDeploy."

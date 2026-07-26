@@ -10,6 +10,8 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "admin:grant": "tsx --env-file-if-exists=../../.env src/cli/grant-admin.ts",
+    "ops:alerts": "tsx src/cli/write-alert-rules.ts",
+    "smoke": "tsx src/cli/smoke.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test",

@@ -49,6 +49,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The backup round trip of ADR-0032 shells out to pg_dump and pg_restore, and
+      # both refuse an archive from a newer server. The runner image ships a client,
+      # but the deploy this proves must not depend on which one, so a mismatch with
+      # the service container is corrected here rather than skipped in the test.
+      - name: PostgreSQL client tools
+        run: |
+          want=16
+          have="$(pg_dump --version 2>/dev/null | grep -oE '[0-9]+' | head -n1 || echo none)"
+          echo "pg_dump reports major version ${have}, the service is ${want}"
+          if [ "${have}" != "${want}" ]; then
+            sudo install -d /usr/share/postgresql-common/pgdg
+            sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+              -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+              | sudo tee /etc/apt/sources.list.d/pgdg.list
+            sudo apt-get update
+            sudo apt-get install --yes "postgresql-client-${want}"
+            echo "/usr/lib/postgresql/${want}/bin" >> "$GITHUB_PATH"
+          fi
+
       - name: Formatting
         run: pnpm format:check
 

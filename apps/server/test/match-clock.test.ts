@@ -2,6 +2,7 @@ import type { MatchRow } from "@gobblet/db";
 import { describe, expect, it } from "vitest";
 import {
   chargeActiveSide,
+  clockAnomaly,
   effectiveRemainingMs,
   readClocks,
   zeroActiveSide,
@@ -107,5 +108,25 @@ describe("committing clocks", () => {
       lightRemainingMs: 300_000,
       darkRemainingMs: 0,
     });
+  });
+});
+
+describe("clockAnomaly", () => {
+  it("sees nothing wrong with an ordinary running clock", () => {
+    expect(clockAnomaly(row(), BASE + 10_000)).toBeNull();
+  });
+
+  it("names a clock that has run into debt", () => {
+    expect(clockAnomaly(row({ darkRemainingMs: -1 }), BASE)).toBe("negative-remaining");
+  });
+
+  it("names a turn that has not begun yet", () => {
+    expect(clockAnomaly(row({ turnStartedAt: new Date(BASE + 5_000) }), BASE)).toBe(
+      "turn-starts-in-the-future",
+    );
+  });
+
+  it("says nothing about a match that holds no running turn", () => {
+    expect(clockAnomaly(row({ turnStartedAt: null }), BASE)).toBeNull();
   });
 });

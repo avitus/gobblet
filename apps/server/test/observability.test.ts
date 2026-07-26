@@ -216,6 +216,8 @@ describe("MetricsRegistry", () => {
     metrics.observeSources({
       activeMatches: () => matches,
       connectedSockets: () => 3,
+      pool: () => ({ total: 4, idle: 3, waiting: 0 }),
+      ready: () => Promise.resolve(true),
       queueDepths: () => [{ mode: "casual", timeControlSeconds: 300, depth: 2 }],
     });
 

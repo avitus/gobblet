@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { Move } from "@gobblet/game-core";
 import { countMatchEvents, findMatchById, listMatchEvents } from "@gobblet/db";
 import type { DatabaseHandle } from "@gobblet/db";
 import { matchSnapshotSchema, commandAckSchema } from "@gobblet/protocol";
 import type { MatchSnapshot } from "@gobblet/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MatchRuntime } from "../src/match/runtime";
+import { createSilentTelemetry } from "../src/observability/telemetry";
 import type { CommandResult } from "../src/match/runtime";
 import {
   DARK_ACTOR,
@@ -466,6 +468,53 @@ describe("restart recovery", () => {
     });
 
     expectAccepted(result, 2);
+  });
+});
+
+describe("what the instruments see", () => {
+  it("counts a match transaction that rolled back, and still raises it", async () => {
+    const telemetry = createSilentTelemetry();
+    const broken = new MatchRuntime({
+      db: {
+        transaction: () => Promise.reject(new Error("the connection went away")),
+      } as unknown as DatabaseHandle["db"],
+      now: clock.now,
+      telemetry,
+    });
+
+    await expect(
+      broken.createMatch({
+        mode: "casual",
+        timeControlSeconds: 300,
+        light: LIGHT_ACTOR,
+        dark: DARK_ACTOR,
+      }),
+    ).rejects.toThrow(/the connection went away/);
+
+    expect(await telemetry.metrics.expose()).toContain(
+      'gobblet_match_transaction_failures_total{operation="create-match"} 1',
+    );
+  });
+
+  it("counts a stored clock that cannot be true, and answers the command anyway", async () => {
+    const telemetry = createSilentTelemetry();
+    const watchful = new MatchRuntime({ db: handle.db, now: clock.now, telemetry });
+    const { matchId } = await createMatch();
+    // A turn that starts later than now is impossible, and is what the alert of
+    // section 17.4 is about.
+    await handle.db.execute(
+      `update matches set turn_started_at = now() + interval '1 hour' where id = '${matchId}'`,
+    );
+
+    const result = await watchful.applyMoveCommand(LIGHT_ACTOR, {
+      ...envelope(matchId, 0),
+      payload: { move: WINNING_SCRIPT[0] as Move },
+    });
+
+    expect(result.ack.ok).toBe(true);
+    expect(await telemetry.metrics.expose()).toContain(
+      'gobblet_clock_anomalies_total{kind="turn-starts-in-the-future"} 1',
+    );
   });
 });
 

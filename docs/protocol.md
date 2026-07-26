@@ -428,24 +428,64 @@ registered when `APP_ENV` is `local` or `NODE_ENV` is `test`; a deployed environ
 
 ### 9.4 Administration
 
-Status: planned (Phase 7). Every mutation writes an audit record.
+Status: implemented (Phase 7). Every mutation writes an audit record in the same transaction as
+the change, and every mutation requires a reason of at least eight characters, because the schema
+requires it rather than the screen
+([ADR-0029](adr/0029-administration-is-a-role-on-the-account.md)).
 
 | Method | Path                                    | Auth  | Purpose                                   | Phase | Implemented today |
 | ------ | --------------------------------------- | ----- | ----------------------------------------- | ----- | ----------------- |
-| GET    | `/v1/admin/users`                       | admin | Search and list users                     | 7     | No                |
-| GET    | `/v1/admin/users/:userId`               | admin | User detail, including moderation history | 7     | No                |
-| POST   | `/v1/admin/users/:userId/suspend`       | admin | Suspend an account                        | 7     | No                |
-| POST   | `/v1/admin/users/:userId/unsuspend`     | admin | Lift a suspension                         | 7     | No                |
-| GET    | `/v1/admin/matches/:matchId`            | admin | Full match inspection, including events   | 7     | No                |
-| POST   | `/v1/admin/ratings/:userId/adjust`      | admin | Corrective rating adjustment              | 7     | No                |
-| GET    | `/v1/admin/achievements`                | admin | List achievement definitions              | 7     | No                |
-| POST   | `/v1/admin/achievements`                | admin | Create an achievement definition          | 7     | No                |
-| PATCH  | `/v1/admin/achievements/:achievementId` | admin | Update an achievement definition          | 7     | No                |
-| GET    | `/v1/admin/metrics/summary`             | admin | Operational summary for the admin surface | 7     | No                |
-| GET    | `/v1/admin/audit`                       | admin | Read the audit log                        | 7     | No                |
+| GET    | `/v1/admin/users`                       | admin | Search and list users                     | 7     | Yes               |
+| GET    | `/v1/admin/users/:userId`               | admin | User detail, including moderation history | 7     | Yes               |
+| POST   | `/v1/admin/users/:userId/suspend`       | admin | Suspend an account                        | 7     | Yes               |
+| POST   | `/v1/admin/users/:userId/reinstate`     | admin | Lift a suspension                         | 7     | Yes               |
+| POST   | `/v1/admin/users/:userId/rating`        | admin | Corrective rating adjustment              | 7     | Yes               |
+| GET    | `/v1/admin/matches`                     | admin | Recent matches, newest first              | 7     | Yes               |
+| GET    | `/v1/admin/matches/:matchId`            | admin | Full match inspection, including events   | 7     | Yes               |
+| GET    | `/v1/admin/achievements`                | admin | List achievement definitions              | 7     | Yes               |
+| POST   | `/v1/admin/achievements`                | admin | Create an achievement definition          | 7     | Yes               |
+| PATCH  | `/v1/admin/achievements/:achievementId` | admin | Update an achievement definition          | 7     | Yes               |
+| GET    | `/v1/admin/metrics`                     | admin | Operational summary for the admin surface | 7     | Yes               |
+| GET    | `/v1/admin/audit`                       | admin | Read the audit log                        | 7     | Yes               |
 
-Audit record shape: `{ adminActorId, action, targetType, targetId, before, after, reason, createdAt }`.
-A mutation that cannot write its audit record must fail.
+Two paths differ from the plan: the suspension is lifted by `reinstate` and the rating correction
+hangs off the user rather than a separate `ratings` collection, so every action on one account
+shares one prefix. The metrics summary is `/v1/admin/metrics` and is SQL over the deployment, not
+the per-instance exposition of `/metrics`
+([appendix P7.13](product-spec.md#appendix-p7--phase-7-decisions-and-deviations-recorded-not-silently-decided)).
+
+Audit record shape: `{ id, adminUserId, action, targetType, targetId, targetLabel, before, after, reason, createdAt }`,
+where `adminUserId` is null only for the console, the one actor that is not an account. A mutation
+that cannot write its audit record fails, and no endpoint updates or deletes a record.
+
+The role itself is not granted over HTTP. `pnpm admin:grant <username> "<reason>"` is the only way
+to create an administrator, so the surface cannot widen itself
+([`operations.md` section 14.1](operations.md)).
+
+A request without the role is answered `403 forbidden` with the same body whatever the path, so
+the surface reveals nothing about what it contains. The web client hides the dashboard from an
+account that does not have the role, but the refusal is the server's.
+
+### 9.5 Telemetry relay
+
+Status: implemented (Phase 7). The browser holds no provider key: it reports to the server, which
+forwards to Sentry and PostHog when those are configured and drops the report when they are not
+([ADR-0030](adr/0030-telemetry-behind-ports-relayed-through-the-server.md)).
+
+| Method | Path                   | Auth     | Purpose                        | Phase | Implemented today |
+| ------ | ---------------------- | -------- | ------------------------------ | ----- | ----------------- |
+| POST   | `/v1/telemetry/events` | optional | Relay a client analytics event | 7     | Yes               |
+| POST   | `/v1/telemetry/errors` | optional | Relay a client error report    | 7     | Yes               |
+
+Both accept a session when there is one and work without one, both are throttled per address by
+`TELEMETRY_ATTEMPT_LIMIT`, and both answer `200 { "accepted": n }` whether or not a provider is
+configured, because a client must not learn the deployment's telemetry posture from a reply. Event
+names are a closed union in `@gobblet/protocol`; anything else is a `validation_failed` rather
+than something forwarded to a provider.
+
+`GET /metrics` is not part of `/v1`. It exists only when `METRICS_ENABLED` is set, requires
+`METRICS_TOKEN` as a bearer token when one is configured, and answers `404 not_found` otherwise
+([ADR-0031](adr/0031-metrics-are-a-prometheus-exposition.md)).
 
 ## 10. Error model
 
@@ -563,7 +603,7 @@ Client rules:
 
 ## 13. Authorization matrix
 
-Status: implemented for guests, users and participants (Phase 3); admin roles are Phase 7.
+Status: implemented for every column, including the administrative role (Phase 7).
 `Yes*` marks an action allowed only with a verified email address.
 
 | Capability                                | Guest | User | Participant | Admin |
@@ -580,8 +620,10 @@ Status: implemented for guests, users and participants (Phase 3); admin roles ar
 | Persistent profile, history, achievements | No    | Yes  | Yes         | Yes   |
 | Admin endpoints                           | No    | No   | No          | Yes   |
 
-Admin access is a server-side role check, never a client-side route guard. Guests are treated
-as rating 1200 for casual pairing purposes and never receive a persistent rating.
+Admin access is a server-side role check, never a client-side route guard: the role is read from
+the account on every request, so revoking it takes effect on the next one rather than at the next
+sign-in. Guests are treated as rating 1200 for casual pairing purposes and never receive a
+persistent rating.
 
 Seating is decided by one function, `checkParticipant` in `apps/server/src/match/eligibility.ts`,
 which match creation calls today and the Phase 4 queues will call as well. It refuses a guest in

@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@gobblet/db": "workspace:*",
+    "@gobblet/protocol": "workspace:*",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.15.0",
     "tsx": "^4.20.3",

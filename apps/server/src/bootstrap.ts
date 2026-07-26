@@ -65,11 +65,14 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
       release: config.appVersion,
       environment: config.appEnv,
     }),
-    metrics: new MetricsRegistry({
-      appVersion: config.appVersion,
-      gitSha: config.gitSha,
-      appEnv: config.appEnv,
-    }),
+    metrics: new MetricsRegistry(
+      {
+        appVersion: config.appVersion,
+        gitSha: config.gitSha,
+        appEnv: config.appEnv,
+      },
+      now() / 1000,
+    ),
     recentErrors: new RecentErrors(),
     pseudonymise: createPseudonymiser(config.telemetryPseudonymSecret),
     now,
@@ -126,6 +129,13 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     activeMatches: () => gateway.activeMatchCount(),
     connectedSockets: () => gateway.connectionCount(),
     queueDepths: () => matchmaking.depths(),
+    pool: () => ({
+      total: database.pool.totalCount,
+      idle: database.pool.idleCount,
+      waiting: database.pool.waitingCount,
+    }),
+    ready: async () =>
+      (await Promise.all(readiness.map((probe) => probe.check()))).every((ok) => ok),
   });
 
   return {

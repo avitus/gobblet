@@ -10,7 +10,13 @@ import {
   lockMatchForUpdate,
   updateMatchState,
 } from "@gobblet/db";
-import type { Database, DatabaseExecutor, MatchRow, MatchStatePatch } from "@gobblet/db";
+import type {
+  Database,
+  DatabaseExecutor,
+  MatchRow,
+  MatchStatePatch,
+  Transaction,
+} from "@gobblet/db";
 import { applyMove, createInitialGame } from "@gobblet/game-core";
 import type { GameState, LegalMoveEvaluation, Move, Player } from "@gobblet/game-core";
 import type {
@@ -31,7 +37,7 @@ import { winningLineIds } from "../achievements/lines";
 import { createSilentTelemetry } from "../observability/telemetry";
 import type { TelemetryService } from "../observability/telemetry";
 import { applyRatingsForCompletion, readSeatRatings } from "../rating/service";
-import { chargeActiveSide, readClocks, zeroActiveSide } from "./clock";
+import { chargeActiveSide, clockAnomaly, readClocks, zeroActiveSide } from "./clock";
 import type { CommittedClocks } from "./clock";
 import { listPlayerHistory } from "./history";
 import { matchClocks, participantSide, toSnapshot, toSummary } from "./snapshot";
@@ -125,6 +131,38 @@ export class MatchRuntime {
     return this.clock();
   }
 
+  /**
+   * Every match transaction runs through here, so a rollback is counted once and in
+   * one place. The count is what section 17.4 alerts on: a match transaction that
+   * fails is not a rejected command, it is a defect.
+   */
+  private async transact<T>(
+    operation: string,
+    action: (tx: Transaction) => Promise<T>,
+  ): Promise<T> {
+    const startedAt = this.clock();
+    const observe = (): void => {
+      this.telemetry.metrics.observeDatabaseLatency(operation, (this.clock() - startedAt) / 1000);
+    };
+    try {
+      const result = await this.db.transaction(action);
+      observe();
+      return result;
+    } catch (error) {
+      this.telemetry.metrics.recordMatchTransactionFailure(operation);
+      observe();
+      throw error;
+    }
+  }
+
+  /** Counts a stored clock that cannot be true, and carries on with the command. */
+  private watchClock(row: MatchRow, now: number): void {
+    const anomaly = clockAnomaly(row, now);
+    if (anomaly !== null) {
+      this.telemetry.metrics.recordClockAnomaly(anomaly);
+    }
+  }
+
   async createMatch(input: CreateMatchInput): Promise<MatchSnapshot> {
     const now = this.now();
     const startedAt = new Date(now);
@@ -132,7 +170,7 @@ export class MatchRuntime {
     const state = createInitialGame(firstPlayer);
     const remainingMs = input.timeControlSeconds * 1000;
 
-    return this.db.transaction(async (tx) => {
+    return this.transact("create-match", async (tx) => {
       const row = await insertMatch(tx, {
         mode: input.mode,
         timeControlSeconds: input.timeControlSeconds,
@@ -269,7 +307,7 @@ export class MatchRuntime {
    * (spec section 20.4).
    */
   async settleExpiredClock(matchId: string): Promise<SettleResult | null> {
-    return this.db.transaction(async (tx) => {
+    return this.transact("settle-clock", async (tx) => {
       const now = this.now();
       const row = await lockMatchForUpdate(tx, matchId);
       if (!row) {
@@ -305,12 +343,13 @@ export class MatchRuntime {
     options: Readonly<{ requireTurn: boolean }>,
     commit: (context: CommandContext) => Promise<CommandResult>,
   ): Promise<CommandResult> {
-    return this.db.transaction(async (tx) => {
+    return this.transact("command", async (tx) => {
       const now = this.now();
       const row = await lockMatchForUpdate(tx, envelope.matchId);
       if (!row) {
         return rejection(envelope, "not-authorized", null);
       }
+      this.watchClock(row, now);
 
       const side = participantSide(row, actor);
       if (side === null) {

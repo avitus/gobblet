@@ -29,7 +29,10 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file-if-exists=../../.env src/cli/migrate.ts"
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/cli/migrate.ts",
+    "db:backup": "tsx --env-file-if-exists=../../.env src/cli/backup.ts",
+    "db:restore": "tsx --env-file-if-exists=../../.env src/cli/restore.ts",
+    "db:export-critical": "tsx --env-file-if-exists=../../.env src/cli/export-critical.ts"
   },
   "dependencies": {
     "@gobblet/config": "workspace:*",
