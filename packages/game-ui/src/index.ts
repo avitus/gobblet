@@ -69,6 +69,9 @@ export type { Vector3 } from "./scene/layout";
 export { LOW_TIME_THRESHOLD_MS, displayedClocks, formatClock, isLowTime } from "./clock";
 export type { ClockReading, DisplayedClocks } from "./clock";
 
+export { useClockDisplay } from "./use-clock-display";
+export type { ClockDisplayInput, ClockDisplayOptions } from "./use-clock-display";
+
 export { SILENT_ENGINE, SOUND_CUES, createSoundEngine } from "./sound/engine";
 export type {
   AudioContextLike,

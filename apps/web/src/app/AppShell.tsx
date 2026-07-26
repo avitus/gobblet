@@ -10,8 +10,10 @@ const NARROW_QUERY = "(max-width: 767px)";
 type NavigationItem = Readonly<{ to: string; label: string }>;
 
 const NAVIGATION: readonly NavigationItem[] = [
-  { to: "/", label: "Play" },
+  { to: "/", label: "Home" },
+  { to: "/play", label: "Play" },
   { to: "/history", label: "History" },
+  { to: "/profile", label: "Profile" },
   { to: "/settings", label: "Settings" },
 ];
 

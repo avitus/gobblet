@@ -1,5 +1,7 @@
-import { Badge, Banner, Button, Card, Spinner } from "@gobblet/design-system";
-import { useMutation } from "@tanstack/react-query";
+import { Badge, Banner, Button, Card, Spinner, TextField } from "@gobblet/design-system";
+import type { MeResponse, PublicServerConfig } from "@gobblet/protocol";
+import { useMutation, type UseQueryResult } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApi } from "../api/provider";
 import { useMe, useServerConfig } from "../api/queries";
@@ -20,8 +22,11 @@ export function HomeScreen(): React.JSX.Element {
   const config = useServerConfig();
   const me = useMe(session?.kind === "account");
 
+  const [guestName, setGuestName] = useState("");
+
   const startGuest = useMutation({
-    mutationFn: () => api.createGuest(),
+    mutationFn: (displayName: string) =>
+      displayName === "" ? api.createGuest() : api.createGuest(displayName),
     onSuccess: (guest) => {
       signedIn(storedSessionFromGuest(guest));
     },
@@ -35,11 +40,20 @@ export function HomeScreen(): React.JSX.Element {
           description="Four sizes, sixteen squares, and a piece that can swallow another."
         >
           {startGuest.isError && <Banner tone="error">{describeApiError(startGuest.error)}</Banner>}
+          <TextField
+            label="Display name"
+            value={guestName}
+            data-testid="guest-name"
+            hint="Optional. Leave it empty and the server picks one."
+            onChange={(event) => {
+              setGuestName(event.target.value);
+            }}
+          />
           <div className={styles.actions}>
             <Button
               busy={startGuest.isPending}
               onClick={() => {
-                startGuest.mutate();
+                startGuest.mutate(guestName.trim());
               }}
               data-testid="play-as-guest"
             >
@@ -71,25 +85,8 @@ export function HomeScreen(): React.JSX.Element {
             <div className={styles.actions}>
               <Button onClick={() => void navigate("/register")}>Keep this history</Button>
             </div>
-          ) : me.isLoading ? (
-            <Spinner label="Loading your record" />
-          ) : me.isError ? (
-            <Banner tone="error">{describeApiError(me.error)}</Banner>
-          ) : me.data === undefined ? null : (
-            <dl className={styles.details} data-testid="account-record">
-              <dt>Email</dt>
-              <dd>{me.data.account.emailVerified ? "verified" : "unverified"}</dd>
-              <dt>Casual</dt>
-              <dd>
-                {me.data.casual.wins}W {me.data.casual.losses}L {me.data.casual.draws}D
-              </dd>
-              <dt>Ranked</dt>
-              <dd>
-                {me.data.ranked === null
-                  ? "no ranked matches yet"
-                  : `${String(me.data.ranked.rating)} rating, ${String(me.data.ranked.wins)}W ${String(me.data.ranked.losses)}L ${String(me.data.ranked.draws)}D`}
-              </dd>
-            </dl>
+          ) : (
+            <AccountRecord query={me} />
           )}
           {session.kind === "account" && me.data?.account.emailVerified === false && (
             <Banner tone="warning" title="Email not verified">
@@ -100,23 +97,61 @@ export function HomeScreen(): React.JSX.Element {
       )}
 
       <Card title="Server" compact>
-        {config.isLoading ? (
-          <Spinner label="Checking the server" />
-        ) : config.isError ? (
-          <Banner tone="error">{describeApiError(config.error)}</Banner>
-        ) : config.data === undefined ? null : (
-          <dl className={styles.details}>
-            <dt>Environment</dt>
-            <dd>{config.data.appEnv}</dd>
-            <dt>Build</dt>
-            <dd>{config.data.appVersion}</dd>
-            <dt>Modes</dt>
-            <dd>{config.data.modes.join(", ")}</dd>
-            <dt>Clocks</dt>
-            <dd>{formatTimeControls(config.data.timeControlsSeconds)}</dd>
-          </dl>
-        )}
+        <ServerRecord query={config} />
       </Card>
     </div>
+  );
+}
+
+function AccountRecord({
+  query,
+}: Readonly<{ query: UseQueryResult<MeResponse> }>): React.JSX.Element {
+  if (query.isPending) {
+    return <Spinner label="Loading your record" />;
+  }
+  if (query.isError) {
+    return <Banner tone="error">{describeApiError(query.error)}</Banner>;
+  }
+
+  const { account, casual, ranked } = query.data;
+  return (
+    <dl className={styles.details} data-testid="account-record">
+      <dt>Email</dt>
+      <dd>{account.emailVerified ? "verified" : "unverified"}</dd>
+      <dt>Casual</dt>
+      <dd>
+        {casual.wins}W {casual.losses}L {casual.draws}D
+      </dd>
+      <dt>Ranked</dt>
+      <dd>
+        {ranked === null
+          ? "no ranked matches yet"
+          : `${String(ranked.rating)} rating, ${String(ranked.wins)}W ${String(ranked.losses)}L ${String(ranked.draws)}D`}
+      </dd>
+    </dl>
+  );
+}
+
+function ServerRecord({
+  query,
+}: Readonly<{ query: UseQueryResult<PublicServerConfig> }>): React.JSX.Element {
+  if (query.isPending) {
+    return <Spinner label="Checking the server" />;
+  }
+  if (query.isError) {
+    return <Banner tone="error">{describeApiError(query.error)}</Banner>;
+  }
+
+  return (
+    <dl className={styles.details}>
+      <dt>Environment</dt>
+      <dd>{query.data.appEnv}</dd>
+      <dt>Build</dt>
+      <dd>{query.data.appVersion}</dd>
+      <dt>Modes</dt>
+      <dd>{query.data.modes.join(", ")}</dd>
+      <dt>Clocks</dt>
+      <dd>{formatTimeControls(query.data.timeControlsSeconds)}</dd>
+    </dl>
   );
 }

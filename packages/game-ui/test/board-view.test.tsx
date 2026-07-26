@@ -56,6 +56,32 @@ describe("BoardView", () => {
     expect(screen.getByTestId("scene-square-r0c0")).toBeInTheDocument();
   });
 
+  it("reports the lifted piece so a caller can play the select sound", async () => {
+    const onSelectionChange = vi.fn();
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(
+      <BoardView
+        state={OPENING_STATE}
+        seat="light"
+        locked={false}
+        onSubmit={() => undefined}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    expect(onSelectionChange).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId("reserve-light-0"));
+    expect(onSelectionChange).toHaveBeenLastCalledWith({
+      kind: "reserve",
+      owner: "light",
+      reserveStack: 0,
+    });
+
+    await userEvent.click(screen.getByTestId("reserve-light-0"));
+    expect(onSelectionChange).toHaveBeenLastCalledWith(null);
+  });
+
   it("downgrades without losing the match view when the context is lost", async () => {
     render(
       <BoardView

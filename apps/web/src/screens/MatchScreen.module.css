@@ -1,0 +1,121 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.boardColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+}
+
+.notice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-instant) ease;
+}
+
+.playerToMove {
+  border-color: var(--color-accent);
+}
+
+.playerHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.playerColour {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+}
+
+.playerColour[data-colour="light"] {
+  background: var(--color-piece-light);
+}
+
+.playerColour[data-colour="dark"] {
+  background: var(--color-piece-dark);
+}
+
+.playerName {
+  font-weight: 600;
+}
+
+.clock {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.clockLow {
+  color: var(--color-destination-warning);
+}
+
+.playerRating {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.details dt {
+  color: var(--color-text-secondary);
+}
+
+.details dd {
+  margin: 0;
+  font-family: var(--font-family-mono);
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

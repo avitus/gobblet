@@ -9,8 +9,7 @@
     "*.css"
   ],
   "exports": {
-    ".": "./src/index.ts",
-    "./board.css": "./src/flat/FlatBoard.css"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

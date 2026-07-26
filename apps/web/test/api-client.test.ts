@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiClient, type FetchLike } from "../src/api/client";
 import { ApiError, describeApiError, isApiError } from "../src/api/errors";
+import { LIGHT_ACTOR_ID, MATCH_ID, makeSnapshot } from "./helpers/match";
+
+const MATCH_SUMMARY = {
+  matchId: MATCH_ID,
+  mode: "casual",
+  timeControlSeconds: 300,
+  status: "completed",
+  result: { outcome: "draw", reason: "repetition" },
+  players: makeSnapshot().players,
+  createdAt: "2026-07-20T09:00:00.000Z",
+  startedAt: "2026-07-20T09:00:01.000Z",
+  endedAt: "2026-07-20T09:08:00.000Z",
+};
 
 const CONFIG = {
   appEnv: "local",
@@ -145,6 +158,54 @@ describe("ApiClient", () => {
       "http://server.test/v1/me/matches",
       "http://server.test/v1/profiles/a%20b%2Fc",
     ]);
+  });
+
+  it("names a guest only when the caller asked for a name", async () => {
+    const bodies: (BodyInit | null | undefined)[] = [];
+    const fetchImpl: FetchLike = (_input, init) => {
+      bodies.push(init?.body);
+      return Promise.resolve(
+        jsonResponse({
+          guestId: LIGHT_ACTOR_ID,
+          displayName: "Guest 1234",
+          sessionToken: "session-token",
+          expiresAt: "2026-08-01T00:00:00.000Z",
+        }),
+      );
+    };
+    const client = clientWith(fetchImpl);
+
+    await client.createGuest();
+    await client.createGuest("Ada");
+
+    expect(bodies).toEqual([JSON.stringify({}), JSON.stringify({ displayName: "Ada" })]);
+  });
+
+  it("reads a single match and its snapshot, with or without a signal", async () => {
+    const controller = new AbortController();
+    const urls: string[] = [];
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const fetchImpl: FetchLike = (input, init) => {
+      urls.push(input);
+      signals.push(init?.signal);
+      return Promise.resolve(
+        jsonResponse(urls.length <= 2 ? MATCH_SUMMARY : makeSnapshot({ version: 3 })),
+      );
+    };
+    const client = clientWith(fetchImpl);
+
+    await expect(client.getMatch(MATCH_ID)).resolves.toMatchObject({ mode: "casual" });
+    await client.getMatch(MATCH_ID, controller.signal);
+    await expect(client.getMatchSnapshot(MATCH_ID)).resolves.toMatchObject({ version: 3 });
+    await client.getMatchSnapshot(MATCH_ID, controller.signal);
+
+    expect(urls).toEqual([
+      `http://server.test/v1/matches/${MATCH_ID}`,
+      `http://server.test/v1/matches/${MATCH_ID}`,
+      `http://server.test/v1/matches/${MATCH_ID}/snapshot`,
+      `http://server.test/v1/matches/${MATCH_ID}/snapshot`,
+    ]);
+    expect(signals).toEqual([undefined, controller.signal, undefined, controller.signal]);
   });
 
   it("treats an empty body as no payload", async () => {

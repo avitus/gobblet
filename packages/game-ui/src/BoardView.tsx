@@ -1,6 +1,7 @@
 import type { Move, Player, SerializedGameState } from "@gobblet/game-core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FlatBoard } from "./flat/FlatBoard";
+import type { Origin } from "./interaction/board-model";
 import { useBoardInteraction } from "./interaction/use-board-interaction";
 import { BoardScene } from "./scene/BoardScene";
 import type { CameraOrbit } from "./scene/camera";
@@ -14,6 +15,8 @@ export type BoardViewProps = Readonly<{
   onSubmit: (move: Move) => void;
   preference?: RenderTierPreference;
   orbit?: CameraOrbit;
+  /** Called when the lifted piece changes, so a caller can play the select sound. */
+  onSelectionChange?: (origin: Origin | null) => void;
   /** Injected in tests so tier selection needs no graphics context. */
   initialTier?: RenderTier;
 }>;
@@ -30,10 +33,20 @@ export function BoardView({
   onSubmit,
   preference = "auto",
   orbit,
+  onSelectionChange,
   initialTier,
 }: BoardViewProps): React.JSX.Element {
   const [tier, setTier] = useState<RenderTier | null>(initialTier ?? null);
   const interaction = useBoardInteraction({ state, seat, locked, onSubmit });
+  const selectionRef = useRef<Origin | null>(null);
+
+  useEffect(() => {
+    if (selectionRef.current === interaction.selected) {
+      return;
+    }
+    selectionRef.current = interaction.selected;
+    onSelectionChange?.(interaction.selected);
+  }, [interaction.selected, onSelectionChange]);
 
   useEffect(() => {
     if (initialTier !== undefined) {

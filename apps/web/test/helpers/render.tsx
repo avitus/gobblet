@@ -25,13 +25,24 @@ export type RouteTable = Readonly<Record<string, RouteResponse | (() => RouteRes
  * A fetch stand-in keyed by "METHOD /path". Anything not listed answers 404,
  * which surfaces a forgotten route as a test failure rather than a hang.
  */
-export function fakeFetch(routes: RouteTable): { fetch: FetchLike; calls: string[] } {
+export type SentRequest = Readonly<{ key: string; body: unknown }>;
+
+export function fakeFetch(routes: RouteTable): {
+  fetch: FetchLike;
+  calls: string[];
+  sent: SentRequest[];
+} {
   const calls: string[] = [];
+  const sent: SentRequest[] = [];
   const fetchImpl: FetchLike = (input, init) => {
     const method = init?.method ?? "GET";
     const path = new URL(input, "http://server.test").pathname;
     const key = `${method} ${path}`;
     calls.push(key);
+    sent.push({
+      key,
+      body: typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined,
+    });
     const entry = routes[key];
     const resolved = typeof entry === "function" ? entry() : entry;
     if (resolved === undefined) {
@@ -51,7 +62,7 @@ export function fakeFetch(routes: RouteTable): { fetch: FetchLike; calls: string
       }),
     );
   };
-  return { fetch: fetchImpl, calls };
+  return { fetch: fetchImpl, calls, sent };
 }
 
 export type RenderAppOptions = Readonly<{
@@ -63,8 +74,8 @@ export type RenderAppOptions = Readonly<{
 export function renderWithProviders(
   ui: ReactNode,
   options: RenderAppOptions = {},
-): RenderResult & { calls: string[] } {
-  const { fetch: fetchImpl, calls } = fakeFetch(options.routes ?? {});
+): RenderResult & { calls: string[]; sent: SentRequest[] } {
+  const { fetch: fetchImpl, calls, sent } = fakeFetch(options.routes ?? {});
   const client = new ApiClient({
     baseUrl: "http://server.test",
     fetch: fetchImpl,
@@ -77,5 +88,5 @@ export function renderWithProviders(
     </ApiProvider>,
   );
 
-  return { ...result, calls };
+  return { ...result, calls, sent };
 }

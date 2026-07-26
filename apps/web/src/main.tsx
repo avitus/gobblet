@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { ApiProvider } from "./api/provider";
 import { AppRoutes } from "./app/routes";
+import { SocketProvider } from "./match/provider";
+import { SoundProvider } from "./sound/provider";
 import "@gobblet/design-system/tokens.css";
 import "@gobblet/design-system/base.css";
 
@@ -14,9 +16,13 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <ApiProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <SocketProvider>
+        <SoundProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </SoundProvider>
+      </SocketProvider>
     </ApiProvider>
   </StrictMode>,
 );

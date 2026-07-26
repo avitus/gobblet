@@ -30,8 +30,16 @@ export function SocketProvider({ socket, children }: SocketProviderProps): React
   );
 
   useEffect(() => {
+    // The handshake is the only statement of who the server thinks this connection
+    // is, so the seat a screen renders comes from here rather than from the token.
+    const unsubscribe = created.subscribe((event) => {
+      if (event.type === "session-ready") {
+        useSessionStore.getState().actorResolved(event.payload);
+      }
+    });
     created.connect();
     return () => {
+      unsubscribe();
       created.close();
     };
   }, [created]);

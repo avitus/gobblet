@@ -37,12 +37,23 @@ function Harness({ matchId }: Readonly<{ matchId: string | null }>): React.JSX.E
       <button type="button" data-testid="dismiss" onClick={channel.dismissNotice}>
         dismiss
       </button>
+      <button
+        type="button"
+        data-testid="select"
+        onClick={() => channel.select({ player: "light", kind: "reserve", reserveStack: 0 })}
+      >
+        select
+      </button>
+      <span data-testid="selection">{channel.state.selection?.kind ?? "none"}</span>
     </div>
   );
 }
 
-function mount(matchId: string | null = MATCH_ID) {
+function mount(matchId: string | null = MATCH_ID, options: { connected?: boolean } = {}) {
   const transport = new FakeTransport();
+  if (options.connected === true) {
+    transport.connected = true;
+  }
   const socket = new MatchSocket({
     url: "http://localhost:4000",
     clientVersion: "1.0.0",
@@ -52,13 +63,13 @@ function mount(matchId: string | null = MATCH_ID) {
     now: () => SERVER_TIME,
   });
 
-  render(
+  const { unmount } = render(
     <SocketProvider socket={socket}>
       <Harness matchId={matchId} />
     </SocketProvider>,
   );
 
-  return { transport, socket };
+  return { transport, socket, unmount };
 }
 
 async function settle(transport: FakeTransport, snapshotVersion = 0): Promise<void> {
@@ -163,6 +174,32 @@ describe("useMatchChannel", () => {
       (entry) => entry.commandId,
     );
     expect(commandIds).toEqual([first.commandId, first.commandId]);
+  });
+
+  it("retries an unacknowledged resignation once the connection returns", async () => {
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      await userEvent.click(screen.getByTestId("resign"));
+    });
+    const [first] = transport.payloadsFor("match:resign") as [{ commandId: string }];
+
+    await act(async () => {
+      transport.answer("match:resign", { ok: "nonsense" });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("pending")).toHaveTextContent(first.commandId);
+
+    await act(async () => {
+      transport.fire("connect");
+      await Promise.resolve();
+    });
+    await settle(transport);
+
+    expect(
+      (transport.payloadsFor("match:resign") as { commandId: string }[]).map((e) => e.commandId),
+    ).toEqual([first.commandId, first.commandId]);
   });
 
   it("asks for a snapshot when a broadcast skips a version", async () => {
@@ -385,6 +422,60 @@ describe("useMatchChannel", () => {
     });
 
     expect(screen.getByTestId("version")).toHaveTextContent("0");
+  });
+
+  it("opens itself when it mounts on a connection that is already up", async () => {
+    const { transport } = mount(MATCH_ID, { connected: true });
+
+    await settle(transport);
+    expect(screen.getByTestId("phase")).toHaveTextContent("ready");
+  });
+
+  it("takes a snapshot the server pushed on its own", async () => {
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      transport.fire("match:snapshot", makeSnapshot({ version: 6 }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("version")).toHaveTextContent("6");
+  });
+
+  it("shows a reconnection attempt as such", async () => {
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      transport.fire("reconnect_attempt", 2);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("phase")).toHaveTextContent("reconnecting");
+  });
+
+  it("holds the selection the board reports", async () => {
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      await userEvent.click(screen.getByTestId("select"));
+    });
+
+    expect(screen.getByTestId("selection")).toHaveTextContent("reserve");
+  });
+
+  it("drops a handshake that finishes after the view is gone", async () => {
+    const { transport, unmount } = mount();
+
+    unmount();
+    await act(async () => {
+      transport.answer("session:authenticate", { ok: true, session: READY });
+      await Promise.resolve();
+    });
+
+    expect(transport.payloadsFor("match:sync")).toHaveLength(0);
   });
 
   it("refuses to work outside a provider", () => {

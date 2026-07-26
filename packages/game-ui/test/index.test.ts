@@ -48,6 +48,7 @@ describe("the package surface", () => {
         "squarePosition",
         "tierSettings",
         "useBoardInteraction",
+        "useClockDisplay",
       ].sort(),
     );
   });

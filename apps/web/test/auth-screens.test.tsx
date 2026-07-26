@@ -75,6 +75,33 @@ describe("home screen", () => {
     expect(await screen.findByTestId("identity-name")).toHaveTextContent("Guest Fox");
   });
 
+  it("carries the name the visitor chose for the guest session", async () => {
+    const { sent } = renderWithProviders(<AppRoutes />, {
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "POST /v1/guests": {
+          status: 201,
+          body: {
+            guestId: "22222222-2222-4222-8222-222222222222",
+            displayName: "Ada",
+            sessionToken: "guest-token",
+            expiresAt: "2026-07-26T10:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    await userEvent.type(await screen.findByTestId("guest-name"), "  Ada  ");
+    await userEvent.click(screen.getByTestId("play-as-guest"));
+
+    await waitFor(() => {
+      expect(sent.filter((entry) => entry.key === "POST /v1/guests")).toEqual([
+        { key: "POST /v1/guests", body: { displayName: "Ada" } },
+      ]);
+    });
+    expect(await screen.findByTestId("identity-name")).toHaveTextContent("Ada");
+  });
+
   it("reports a refused guest session", async () => {
     renderWithProviders(<AppRoutes />, {
       routes: {
@@ -146,6 +173,85 @@ describe("home screen", () => {
 
     expect(await screen.findByTestId("account-record")).toHaveTextContent("1216 rating");
     expect(screen.getByText("Email not verified")).toBeInTheDocument();
+  });
+
+  it("leads to the two ways of getting an account", async () => {
+    renderWithProviders(<AppRoutes />, {
+      routes: { "GET /v1/config": { body: CONFIG } },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByTestId("sign-in-submit")).toBeInTheDocument();
+  });
+
+  it("offers to create an account from the lobby", async () => {
+    renderWithProviders(<AppRoutes />, {
+      routes: { "GET /v1/config": { body: CONFIG } },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByTestId("register-submit")).toBeInTheDocument();
+  });
+
+  it("offers a guest the chance to keep their history", async () => {
+    useSessionStore.getState().signedIn({
+      token: "session-token",
+      kind: "guest",
+      displayName: "Guest 1234",
+      username: null,
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      routes: { "GET /v1/config": { body: CONFIG } },
+    });
+
+    await userEvent.click(screen.getByText("Keep this history"));
+    expect(await screen.findByText("Keep your guest history")).toBeInTheDocument();
+  });
+
+  it("reports a record the server could not give", async () => {
+    useSessionStore.getState().signedIn({
+      token: "session-token",
+      kind: "account",
+      displayName: "ada",
+      username: "ada",
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "GET /v1/me": {
+          status: 503,
+          body: {
+            error: {
+              code: "dependency_unavailable",
+              message: "The database is away",
+              requestId: "r",
+            },
+          },
+        },
+      },
+    });
+
+    expect(await screen.findByText("The database is away")).toBeInTheDocument();
+  });
+
+  it("says when an account has no ranked record yet", async () => {
+    useSessionStore.getState().signedIn({
+      token: "session-token",
+      kind: "account",
+      displayName: "ada",
+      username: "ada",
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "GET /v1/me": { body: { ...ME, ranked: null } },
+      },
+    });
+
+    expect(await screen.findByTestId("account-record")).toHaveTextContent("no ranked matches yet");
   });
 });
 
@@ -228,6 +334,73 @@ describe("registration", () => {
     expect(calls).not.toContain("POST /v1/auth/register");
   });
 
+  it("names only the field that is wrong", async () => {
+    const { calls } = renderWithProviders(<AppRoutes />, {
+      initialPath: "/register",
+      routes: { "GET /v1/config": { body: CONFIG } },
+    });
+
+    await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
+    await userEvent.type(screen.getByLabelText("Username"), "ada");
+    await userEvent.type(screen.getByLabelText("Password"), "tiny");
+    await userEvent.click(screen.getByTestId("register-submit"));
+
+    expect(screen.getByText(/At least 12 characters/)).toBeInTheDocument();
+    expect(screen.queryByText("Enter a valid email address.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/start with a letter/)).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Password"), " but long enough 1");
+    await userEvent.clear(screen.getByLabelText("Email"));
+    await userEvent.click(screen.getByTestId("register-submit"));
+
+    expect(screen.getByText("Enter a valid email address.")).toBeInTheDocument();
+    expect(screen.queryByText(/At least 12 characters/)).not.toBeInTheDocument();
+    expect(calls).not.toContain("POST /v1/auth/register");
+  });
+
+  it("says nothing when the username is free", async () => {
+    renderWithProviders(<AppRoutes />, {
+      initialPath: "/register",
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "POST /v1/usernames/check": {
+          body: { username: "ada", available: true, reason: null },
+        },
+      },
+    });
+
+    await userEvent.type(screen.getByLabelText("Username"), "ada");
+    await userEvent.tab();
+
+    expect(await screen.findByText(/Public and permanent/)).toBeInTheDocument();
+  });
+
+  it("reports a registration the server refused", async () => {
+    renderWithProviders(<AppRoutes />, {
+      initialPath: "/register",
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "POST /v1/auth/register": {
+          status: 409,
+          body: {
+            error: {
+              code: "conflict",
+              message: "That email is already registered",
+              requestId: "r",
+            },
+          },
+        },
+      },
+    });
+
+    await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
+    await userEvent.type(screen.getByLabelText("Username"), "ada");
+    await userEvent.type(screen.getByLabelText("Password"), "correct horse 1");
+    await userEvent.click(screen.getByTestId("register-submit"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That email is already registered");
+  });
+
   it("reports an unavailable username when the field loses focus", async () => {
     renderWithProviders(<AppRoutes />, {
       initialPath: "/register",
@@ -235,6 +408,23 @@ describe("registration", () => {
         "GET /v1/config": { body: CONFIG },
         "POST /v1/usernames/check": {
           body: { username: "ada", available: false, reason: "taken" },
+        },
+      },
+    });
+
+    await userEvent.type(screen.getByLabelText("Username"), "ada");
+    await userEvent.tab();
+
+    expect(await screen.findByText(/username is unavailable \(taken\)/)).toBeInTheDocument();
+  });
+
+  it("falls back to plain unavailability when no reason is given", async () => {
+    renderWithProviders(<AppRoutes />, {
+      initialPath: "/register",
+      routes: {
+        "GET /v1/config": { body: CONFIG },
+        "POST /v1/usernames/check": {
+          body: { username: "ada", available: false, reason: null },
         },
       },
     });

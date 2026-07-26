@@ -211,15 +211,12 @@ async function resync(socket: MatchSocket, matchId: string, dispatch: Dispatch):
  * snapshot still shows it was not applied, so the same intent keeps one
  * `commandId` and the server's idempotency does the rest (docs/adr/0011).
  */
-async function retryPending(
+function retryPending(
   socket: MatchSocket,
   pending: PendingCommand | null,
   dispatch: Dispatch,
 ): Promise<void> {
-  if (!pending) {
-    return;
-  }
-  await send(socket, pending, dispatch);
+  return pending === null ? Promise.resolve() : send(socket, pending, dispatch);
 }
 
 async function send(
@@ -228,10 +225,9 @@ async function send(
   dispatch: Dispatch,
 ): Promise<void> {
   try {
-    const ack =
-      command.move === null
-        ? await socket.resign(command)
-        : await socket.submitMove({ ...command, move: command.move });
+    const ack = await (command.move === null
+      ? socket.resign(command)
+      : socket.submitMove({ ...command, move: command.move }));
     dispatch({ type: "command-answered", ack });
   } catch {
     dispatch({ type: "notice", notice: "The move has not been acknowledged yet" });

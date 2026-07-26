@@ -173,6 +173,18 @@ describe("MatchSocket", () => {
     ]);
   });
 
+  it("names a lifecycle the transport described poorly", () => {
+    const { transport, events } = connect();
+
+    transport.fire("disconnect");
+    transport.fire("reconnect_attempt");
+
+    expect(events).toEqual([
+      { type: "disconnected", reason: "unknown" },
+      { type: "reconnecting", attempt: 0 },
+    ]);
+  });
+
   it("stops publishing to a listener that unsubscribed", () => {
     const { transport, socket } = connect();
     const seen: MatchSocketEvent[] = [];
