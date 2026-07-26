@@ -82,6 +82,50 @@ describe("BoardView", () => {
     expect(onSelectionChange).toHaveBeenLastCalledWith(null);
   });
 
+  it("reports the tier it settled on and who decided it", () => {
+    const onTierSelected = vi.fn();
+    const { rerender } = render(
+      <BoardView
+        state={OPENING_STATE}
+        seat="light"
+        locked={false}
+        onSubmit={() => undefined}
+        onTierSelected={onTierSelected}
+      />,
+    );
+
+    expect(onTierSelected).toHaveBeenLastCalledWith("flat", "detected");
+
+    rerender(
+      <BoardView
+        state={OPENING_STATE}
+        seat="light"
+        locked={false}
+        onSubmit={() => undefined}
+        preference="flat"
+        onTierSelected={onTierSelected}
+      />,
+    );
+
+    expect(onTierSelected).toHaveBeenLastCalledWith("flat", "chosen");
+  });
+
+  it("reports a tier it was given as one that was chosen", () => {
+    const onTierSelected = vi.fn();
+    render(
+      <BoardView
+        state={OPENING_STATE}
+        seat="light"
+        locked={false}
+        onSubmit={() => undefined}
+        initialTier="reduced"
+        onTierSelected={onTierSelected}
+      />,
+    );
+
+    expect(onTierSelected).toHaveBeenCalledWith("reduced", "chosen");
+  });
+
   it("downgrades without losing the match view when the context is lost", async () => {
     render(
       <BoardView

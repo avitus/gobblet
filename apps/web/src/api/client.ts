@@ -1,5 +1,14 @@
 import {
   achievementsResponseSchema,
+  adminAchievementListResponseSchema,
+  adminAchievementSchema,
+  adminActiveMatchesResponseSchema,
+  adminAuditResponseSchema,
+  adminMatchDetailSchema,
+  adminMetricsSummarySchema,
+  adminRatingAdjustResponseSchema,
+  adminUserDetailSchema,
+  adminUserListResponseSchema,
   authResponseSchema,
   checkUsernameResponseSchema,
   claimGuestResponseSchema,
@@ -15,10 +24,25 @@ import {
 } from "@gobblet/protocol";
 import type {
   AchievementsResponse,
+  AdminAchievement,
+  AdminAchievementCreateRequest,
+  AdminAchievementListResponse,
+  AdminAchievementUpdateRequest,
+  AdminActiveMatchesResponse,
+  AdminAuditQuery,
+  AdminAuditResponse,
+  AdminMatchDetail,
+  AdminMetricsSummary,
+  AdminRatingAdjustRequest,
+  AdminRatingAdjustResponse,
+  AdminUserDetail,
+  AdminUserListResponse,
+  AdminUserSearchQuery,
   AuthResponse,
   CheckUsernameResponse,
   ClaimGuestRequest,
   ClaimGuestResponse,
+  ClientAnalyticsEvent,
   CreateGuestResponse,
   LeaderboardPeriod,
   LeaderboardResponse,
@@ -30,6 +54,7 @@ import type {
   PublicServerConfig,
   RegisterRequest,
   SignInRequest,
+  TelemetryErrorRequest,
   UpdateProfileRequest,
 } from "@gobblet/protocol";
 import { z } from "zod";
@@ -218,6 +243,151 @@ export class ApiClient {
       `/v1/matches/${encodeURIComponent(matchId)}/snapshot`,
       signal ? { signal } : {},
     );
+  }
+
+  /**
+   * The administrative surface of section 16. It is called from the gated routes of
+   * the same client, because an administrator is an account with a role rather than
+   * a user of a second application (ADR-0029).
+   */
+  searchUsers(query: AdminUserSearchQuery, signal?: AbortSignal): Promise<AdminUserListResponse> {
+    const search = new URLSearchParams();
+    if (query.query !== undefined) {
+      search.set("query", query.query);
+    }
+    if (query.status !== undefined) {
+      search.set("status", query.status);
+    }
+    if (query.cursor !== undefined) {
+      search.set("cursor", query.cursor);
+    }
+    const suffix = search.size === 0 ? "" : `?${search.toString()}`;
+    return this.send(
+      adminUserListResponseSchema,
+      `/v1/admin/users${suffix}`,
+      signal ? { signal } : {},
+    );
+  }
+
+  getAdminUser(userId: string, signal?: AbortSignal): Promise<AdminUserDetail> {
+    return this.send(
+      adminUserDetailSchema,
+      `/v1/admin/users/${encodeURIComponent(userId)}`,
+      signal ? { signal } : {},
+    );
+  }
+
+  suspendUser(userId: string, reason: string): Promise<AdminUserDetail> {
+    return this.send(
+      adminUserDetailSchema,
+      `/v1/admin/users/${encodeURIComponent(userId)}/suspend`,
+      {
+        method: "POST",
+        body: { reason },
+      },
+    );
+  }
+
+  reinstateUser(userId: string, reason: string): Promise<AdminUserDetail> {
+    return this.send(
+      adminUserDetailSchema,
+      `/v1/admin/users/${encodeURIComponent(userId)}/reinstate`,
+      { method: "POST", body: { reason } },
+    );
+  }
+
+  adjustRating(
+    userId: string,
+    input: AdminRatingAdjustRequest,
+  ): Promise<AdminRatingAdjustResponse> {
+    return this.send(
+      adminRatingAdjustResponseSchema,
+      `/v1/admin/users/${encodeURIComponent(userId)}/rating`,
+      { method: "POST", body: input },
+    );
+  }
+
+  getActiveMatches(signal?: AbortSignal): Promise<AdminActiveMatchesResponse> {
+    return this.send(
+      adminActiveMatchesResponseSchema,
+      "/v1/admin/matches",
+      signal ? { signal } : {},
+    );
+  }
+
+  getAdminMatch(matchId: string, signal?: AbortSignal): Promise<AdminMatchDetail> {
+    return this.send(
+      adminMatchDetailSchema,
+      `/v1/admin/matches/${encodeURIComponent(matchId)}`,
+      signal ? { signal } : {},
+    );
+  }
+
+  getAdminAchievements(signal?: AbortSignal): Promise<AdminAchievementListResponse> {
+    return this.send(
+      adminAchievementListResponseSchema,
+      "/v1/admin/achievements",
+      signal ? { signal } : {},
+    );
+  }
+
+  createAchievement(input: AdminAchievementCreateRequest): Promise<AdminAchievement> {
+    return this.send(adminAchievementSchema, "/v1/admin/achievements", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  updateAchievement(
+    achievementId: string,
+    input: AdminAchievementUpdateRequest,
+  ): Promise<AdminAchievement> {
+    return this.send(
+      adminAchievementSchema,
+      `/v1/admin/achievements/${encodeURIComponent(achievementId)}`,
+      { method: "PATCH", body: input },
+    );
+  }
+
+  getAdminMetrics(signal?: AbortSignal): Promise<AdminMetricsSummary> {
+    return this.send(adminMetricsSummarySchema, "/v1/admin/metrics", signal ? { signal } : {});
+  }
+
+  getAuditLog(query: AdminAuditQuery, signal?: AbortSignal): Promise<AdminAuditResponse> {
+    const search = new URLSearchParams();
+    if (query.action !== undefined) {
+      search.set("action", query.action);
+    }
+    if (query.targetId !== undefined) {
+      search.set("targetId", query.targetId);
+    }
+    if (query.cursor !== undefined) {
+      search.set("cursor", query.cursor);
+    }
+    const suffix = search.size === 0 ? "" : `?${search.toString()}`;
+    return this.send(
+      adminAuditResponseSchema,
+      `/v1/admin/audit${suffix}`,
+      signal ? { signal } : {},
+    );
+  }
+
+  /**
+   * Analytics and browser errors go to the server, which decides what reaches a
+   * provider: no provider software ships to the browser (ADR-0030).
+   */
+  async sendTelemetryEvents(events: readonly ClientAnalyticsEvent[]): Promise<void> {
+    await this.send(acknowledgementSchema, "/v1/telemetry/events", {
+      method: "POST",
+      body: { events },
+    });
+  }
+
+  async reportClientError(report: TelemetryErrorRequest): Promise<void> {
+    await this.send(acknowledgementSchema, "/v1/telemetry/errors", {
+      method: "POST",
+      body: report,
+    });
   }
 }
 

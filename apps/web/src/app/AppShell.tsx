@@ -1,6 +1,7 @@
 import { Badge, Button, Card, cx, useMediaQuery } from "@gobblet/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router";
+import { useAdminAccess } from "../admin/useAdminAccess";
 import { useApi } from "../api/provider";
 import { useSessionStore } from "../session/store";
 import styles from "./AppShell.module.css";
@@ -21,6 +22,9 @@ const NAVIGATION: readonly NavigationItem[] = [
 export function AppShell(): React.JSX.Element {
   const tooNarrow = useMediaQuery(NARROW_QUERY);
   const session = useSessionStore((state) => state.session);
+  // The dashboard is offered only to an account that holds the role; the address
+  // works for nobody else either, because the server checks it too (ADR-0029).
+  const admin = useAdminAccess();
   const signedOut = useSessionStore((state) => state.signedOut);
   const api = useApi();
   const navigate = useNavigate();
@@ -52,7 +56,10 @@ export function AppShell(): React.JSX.Element {
           Gobblet
         </NavLink>
         <nav className={styles.nav} aria-label="Main">
-          {NAVIGATION.map((item) => (
+          {[
+            ...NAVIGATION,
+            ...(admin.allowed === true ? [{ to: "/admin", label: "Admin" }] : []),
+          ].map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

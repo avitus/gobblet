@@ -1,4 +1,12 @@
 import { Route, Routes } from "react-router";
+import { AdminAchievementsScreen } from "../admin/AdminAchievementsScreen";
+import { AdminAuditScreen } from "../admin/AdminAuditScreen";
+import { AdminGate } from "../admin/AdminGate";
+import { AdminMatchScreen } from "../admin/AdminMatchScreen";
+import { AdminMatchesScreen } from "../admin/AdminMatchesScreen";
+import { AdminOverviewScreen } from "../admin/AdminOverviewScreen";
+import { AdminUserScreen } from "../admin/AdminUserScreen";
+import { AdminUsersScreen } from "../admin/AdminUsersScreen";
 import { HistoryScreen } from "../screens/HistoryScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { LeaderboardScreen } from "../screens/LeaderboardScreen";
@@ -27,6 +35,15 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="sign-in" element={<SignInScreen />} />
         <Route path="register" element={<RegisterScreen />} />
         <Route path="verify-email" element={<VerifyEmailScreen />} />
+        <Route path="admin" element={<AdminGate />}>
+          <Route index element={<AdminOverviewScreen />} />
+          <Route path="users" element={<AdminUsersScreen />} />
+          <Route path="users/:userId" element={<AdminUserScreen />} />
+          <Route path="matches" element={<AdminMatchesScreen />} />
+          <Route path="matches/:matchId" element={<AdminMatchScreen />} />
+          <Route path="achievements" element={<AdminAchievementsScreen />} />
+          <Route path="audit" element={<AdminAuditScreen />} />
+        </Route>
         <Route path="*" element={<NotFoundScreen />} />
       </Route>
     </Routes>

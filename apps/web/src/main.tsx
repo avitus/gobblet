@@ -5,6 +5,8 @@ import { ApiProvider } from "./api/provider";
 import { AppRoutes } from "./app/routes";
 import { SocketProvider } from "./match/provider";
 import { SoundProvider } from "./sound/provider";
+import { AppErrorBoundary } from "./telemetry/ErrorBoundary";
+import { TelemetryProvider } from "./telemetry/provider";
 import "@gobblet/design-system/tokens.css";
 import "@gobblet/design-system/base.css";
 
@@ -16,13 +18,17 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <ApiProvider>
-      <SocketProvider>
-        <SoundProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </SoundProvider>
-      </SocketProvider>
+      <TelemetryProvider>
+        <SocketProvider>
+          <SoundProvider>
+            <BrowserRouter>
+              <AppErrorBoundary>
+                <AppRoutes />
+              </AppErrorBoundary>
+            </BrowserRouter>
+          </SoundProvider>
+        </SocketProvider>
+      </TelemetryProvider>
     </ApiProvider>
   </StrictMode>,
 );

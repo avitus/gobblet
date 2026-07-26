@@ -10,6 +10,7 @@ import { RENDER_TIERS } from "@gobblet/game-ui";
 import { useSettingsStore } from "../settings/store";
 import type { MotionPreference, RenderTierPreference } from "../settings/store";
 import { useSoundEngine } from "../sound/provider";
+import { useTelemetry } from "../telemetry/provider";
 import styles from "./SettingsScreen.module.css";
 
 const TIER_LABELS: Readonly<Record<RenderTierPreference, string>> = Object.freeze({
@@ -38,6 +39,7 @@ export function SettingsScreen(): React.JSX.Element {
   const settings = useSettingsStore();
   const systemReducedMotion = usePrefersReducedMotion();
   const engine = useSoundEngine();
+  const telemetry = useTelemetry();
 
   return (
     <div className={styles.layout}>
@@ -48,6 +50,11 @@ export function SettingsScreen(): React.JSX.Element {
             checked={settings.soundMuted}
             onCheckedChange={(checked) => {
               settings.update({ soundMuted: checked });
+              telemetry.capture({
+                name: "setting-changed",
+                setting: "sound-muted",
+                enabled: checked,
+              });
             }}
             id="sound-muted"
           />
@@ -105,6 +112,11 @@ export function SettingsScreen(): React.JSX.Element {
             checked={settings.presetMessagesMuted}
             onCheckedChange={(checked) => {
               settings.update({ presetMessagesMuted: checked });
+              telemetry.capture({
+                name: "setting-changed",
+                setting: "preset-messages-muted",
+                enabled: checked,
+              });
             }}
             id="preset-messages-muted-local"
           />
@@ -113,6 +125,11 @@ export function SettingsScreen(): React.JSX.Element {
             checked={settings.reactionsMuted}
             onCheckedChange={(checked) => {
               settings.update({ reactionsMuted: checked });
+              telemetry.capture({
+                name: "setting-changed",
+                setting: "reactions-muted",
+                enabled: checked,
+              });
             }}
             id="reactions-muted-local"
           />
@@ -126,7 +143,15 @@ export function SettingsScreen(): React.JSX.Element {
             value={settings.renderTier}
             data-testid="render-tier"
             onChange={(event) => {
-              settings.update({ renderTier: event.target.value as RenderTierPreference });
+              const preference = event.target.value as RenderTierPreference;
+              settings.update({ renderTier: preference });
+              // "auto" is a request to detect rather than a tier, so it is reported
+              // as a change with no tier on it.
+              telemetry.capture({
+                name: "setting-changed",
+                setting: "render-tier",
+                ...(preference === "auto" ? {} : { tier: preference }),
+              });
             }}
             options={(["auto", ...RENDER_TIERS] as const).map((tier) => ({
               value: tier,
@@ -145,7 +170,13 @@ export function SettingsScreen(): React.JSX.Element {
                 : undefined
             }
             onChange={(event) => {
-              settings.update({ motion: event.target.value as MotionPreference });
+              const motion = event.target.value as MotionPreference;
+              settings.update({ motion });
+              telemetry.capture({
+                name: "setting-changed",
+                setting: "reduced-motion",
+                enabled: motion === "reduced",
+              });
             }}
             options={(["system", "reduced", "full"] as const).map((option) => ({
               value: option,

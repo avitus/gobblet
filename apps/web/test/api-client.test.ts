@@ -259,6 +259,57 @@ describe("ApiClient", () => {
     expect(signals).toEqual([undefined, controller.signal]);
   });
 
+  it("reads every administrative page without a signal when none is given", async () => {
+    const urls: string[] = [];
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const client = clientWith((input, init) => {
+      urls.push(input);
+      signals.push(init?.signal);
+      return Promise.resolve(jsonResponse(null));
+    });
+
+    await Promise.allSettled([
+      client.searchUsers({}),
+      client.getAdminUser("22222222-2222-4222-8222-222222222222"),
+      client.getActiveMatches(),
+      client.getAdminMatch("11111111-1111-4111-8111-111111111111"),
+      client.getAdminAchievements(),
+      client.getAdminMetrics(),
+      client.getAuditLog({}),
+    ]);
+
+    expect(urls).toEqual([
+      "http://server.test/v1/admin/users",
+      "http://server.test/v1/admin/users/22222222-2222-4222-8222-222222222222",
+      "http://server.test/v1/admin/matches",
+      "http://server.test/v1/admin/matches/11111111-1111-4111-8111-111111111111",
+      "http://server.test/v1/admin/achievements",
+      "http://server.test/v1/admin/metrics",
+      "http://server.test/v1/admin/audit",
+    ]);
+    expect(signals.every((signal) => signal === undefined)).toBe(true);
+  });
+
+  it("narrows the audit log to an action, a target and a page", async () => {
+    const urls: string[] = [];
+    const client = clientWith((input) => {
+      urls.push(input);
+      return Promise.resolve(jsonResponse({ entries: [], nextCursor: null }));
+    });
+
+    await client.getAuditLog({});
+    await client.getAuditLog({
+      action: "user-suspended",
+      targetId: "22222222-2222-4222-8222-222222222222",
+      cursor: "1784889600000.7",
+    });
+
+    expect(urls).toEqual([
+      "http://server.test/v1/admin/audit",
+      "http://server.test/v1/admin/audit?action=user-suspended&targetId=22222222-2222-4222-8222-222222222222&cursor=1784889600000.7",
+    ]);
+  });
+
   it("treats an empty body as no payload", async () => {
     const client = clientWith(() => Promise.resolve(new Response("", { status: 200 })));
 

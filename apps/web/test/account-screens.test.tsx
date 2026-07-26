@@ -376,6 +376,10 @@ describe("the settings screen", () => {
 
     expect(useSettingsStore.getState().renderTier).toBe("flat");
     expect(useSettingsStore.getState().motion).toBe("reduced");
+
+    // "auto" asks the machine to decide, so it is reported as a change with no tier.
+    await userEvent.selectOptions(screen.getByTestId("render-tier"), "auto");
+    expect(useSettingsStore.getState().renderTier).toBe("auto");
   });
 
   it("restores the defaults", async () => {

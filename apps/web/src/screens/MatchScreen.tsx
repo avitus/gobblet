@@ -21,6 +21,7 @@ import { useRematch } from "../match/use-rematch";
 import { useSessionStore } from "../session/store";
 import { useSettingsStore } from "../settings/store";
 import { useSoundEngine } from "../sound/provider";
+import { useTelemetry } from "../telemetry/provider";
 import styles from "./MatchScreen.module.css";
 
 const END_REASONS: Readonly<Record<MatchEndedEvent["reason"], string>> = Object.freeze({
@@ -76,6 +77,7 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
   const actor = useSessionStore((state) => state.actor);
   const renderTier = useSettingsStore((state) => state.renderTier);
   const engine = useSoundEngine();
+  const telemetry = useTelemetry();
 
   const { state } = channel;
   const actorId = actor?.actorId ?? null;
@@ -145,6 +147,9 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
           locked={channel.inputLocked || ended !== null}
           onSubmit={channel.submitMove}
           preference={renderTier}
+          onTierSelected={(tier, source) => {
+            telemetry.capture({ name: "render-tier-selected", tier, source });
+          }}
           onSelectionChange={(origin) => {
             if (origin !== null) {
               engine.play("piece-select");

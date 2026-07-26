@@ -17,6 +17,11 @@ export type BoardViewProps = Readonly<{
   orbit?: CameraOrbit;
   /** Called when the lifted piece changes, so a caller can play the select sound. */
   onSelectionChange?: (origin: Origin | null) => void;
+  /**
+   * Reports the tier this board settled on and whether the machine or the player
+   * decided it, so a caller can record the choice without asking how it was made.
+   */
+  onTierSelected?: (tier: RenderTier, source: "detected" | "chosen") => void;
   /** Injected in tests so tier selection needs no graphics context. */
   initialTier?: RenderTier;
 }>;
@@ -34,6 +39,7 @@ export function BoardView({
   preference = "auto",
   orbit,
   onSelectionChange,
+  onTierSelected,
   initialTier,
 }: BoardViewProps): React.JSX.Element {
   const [tier, setTier] = useState<RenderTier | null>(initialTier ?? null);
@@ -51,10 +57,13 @@ export function BoardView({
   useEffect(() => {
     if (initialTier !== undefined) {
       setTier(initialTier);
+      onTierSelected?.(initialTier, "chosen");
       return;
     }
-    setTier(resolveTier(detectCapabilities(), preference));
-  }, [initialTier, preference]);
+    const resolved = resolveTier(detectCapabilities(), preference);
+    setTier(resolved);
+    onTierSelected?.(resolved, preference === "auto" ? "detected" : "chosen");
+  }, [initialTier, preference, onTierSelected]);
 
   if (tier === null || tier === "flat") {
     return <FlatBoard interaction={interaction} seat={seat} />;
