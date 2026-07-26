@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { API_URL, SERVER_ENV, WEB_PORT, WEB_URL } from "./setup/environment";
+import { API_URL, SERVER_ENV, WEB_HOST, WEB_PORT, WEB_URL } from "./setup/environment";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const isCi = process.env.CI === "true" || process.env.CI === "1";
@@ -49,7 +49,9 @@ export default defineConfig({
       // The bundle carries the API address, so the build belongs to the suite.
       command: [
         "pnpm turbo run build --filter=@gobblet/web",
-        `pnpm --filter @gobblet/web exec vite preview --port ${String(WEB_PORT)} --strictPort`,
+        // The address is explicit: a host name can resolve to an interface the suite
+        // is not watching, which is how this first failed in continuous integration.
+        `pnpm --filter @gobblet/web exec vite preview --host ${WEB_HOST} --port ${String(WEB_PORT)} --strictPort`,
       ].join(" && "),
       cwd: repositoryRoot,
       url: WEB_URL,

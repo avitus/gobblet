@@ -6,10 +6,12 @@
 
 const DEFAULT_TEST_DATABASE_URL = "postgresql://gobblet@localhost:5432/gobblet_test";
 
+export const API_HOST = "127.0.0.1";
+export const WEB_HOST = "127.0.0.1";
 export const API_PORT = 4100;
 export const WEB_PORT = 4173;
-export const API_URL = `http://127.0.0.1:${String(API_PORT)}`;
-export const WEB_URL = `http://127.0.0.1:${String(WEB_PORT)}`;
+export const API_URL = `http://${API_HOST}:${String(API_PORT)}`;
+export const WEB_URL = `http://${WEB_HOST}:${String(WEB_PORT)}`;
 
 /**
  * A database of its own, named by the same suffix convention the Vitest suites use
@@ -28,7 +30,7 @@ export const SERVER_ENV: Readonly<Record<string, string>> = Object.freeze({
   APP_VERSION: "0.1.0-e2e",
   GIT_SHA: "e2e",
   LOG_LEVEL: "warn",
-  HOST: "127.0.0.1",
+  HOST: API_HOST,
   PORT: String(API_PORT),
   PUBLIC_WEB_URL: WEB_URL,
   CORS_ORIGINS: `${WEB_URL},http://localhost:${String(WEB_PORT)}`,
