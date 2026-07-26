@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Move, Player, SerializedGameState } from "@gobblet/game-core";
@@ -124,6 +124,25 @@ describe("the flat board", () => {
     await userEvent.keyboard("ss d{Enter}");
 
     expect(onSubmit).toHaveBeenCalledWith({ kind: "reserve", reserveStack: 0, to: "r2c0" });
+  });
+
+  it("lifts the focused reserve stack when the player presses Enter", async () => {
+    render(<Harness />);
+
+    screen.getByTestId("reserve-light-0").focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(screen.getByTestId("reserve-light-0")).toHaveAttribute("data-selected", "true");
+  });
+
+  it("keeps the board focused after a pointer gesture, as WebKit does not", () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByTestId("reserve-light-0"));
+    expect(screen.getByTestId("reserve-light-0")).toHaveFocus();
+
+    fireEvent.click(screen.getByTestId("square-r2c2"));
+    expect(screen.getByTestId("square-r2c2")).toHaveFocus();
   });
 
   it("moves the focus ring with the cursor", async () => {

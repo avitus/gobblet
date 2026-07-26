@@ -121,11 +121,18 @@ Every pull request must pass:
 3. `pnpm lint`, which includes the `@gobblet/game-core` purity and boundary rules
 4. `pnpm test:coverage`, with the 100 percent coverage gate on `@gobblet/game-core`
 5. `pnpm build`
-6. An ADR when the change is material or architectural (see [`adr/README.md`](adr/README.md))
+6. `pnpm test:e2e`, which plays a complete match in Chromium and WebKit and runs as its own job
+   ([ADR-0021](adr/0021-playwright-browser-end-to-end-tests.md))
+7. An ADR when the change is material or architectural (see [`adr/README.md`](adr/README.md))
+
+The browser suite builds the production client, points it at a server on port 4100 and uses a
+database of its own, `..._e2e`, derived from `TEST_DATABASE_URL`. It creates, migrates and empties
+that database itself, so no manual setup step is needed. Run `pnpm test:e2e:browsers` once to
+download the engines.
 
 Planned additions: database migration check against a disposable PostgreSQL instance (Phase 2),
-end-to-end match tests (Phase 5), nightly property suites (Phase 1 onwards), desktop build
-verification (Phase 8), load and soak runs (Phase 9).
+nightly property suites (Phase 1 onwards), desktop build verification (Phase 8), load and soak runs
+(Phase 9).
 
 ## 6. Database migration procedure
 

@@ -147,6 +147,16 @@ export function matchChannelReducer(
       return { ...state, phase: action.phase };
 
     case "snapshot": {
+      // Versions count within a match, so a snapshot for another match, as a rematch
+      // or a new pairing sends, replaces the channel instead of being compared to it.
+      if (state.snapshot && action.snapshot.matchId !== state.snapshot.matchId) {
+        return {
+          ...INITIAL_MATCH_CHANNEL,
+          phase: state.phase,
+          discarded: state.discarded,
+          snapshot: action.snapshot,
+        };
+      }
       if (state.snapshot && action.snapshot.version < state.snapshot.version) {
         return state;
       }

@@ -4,7 +4,7 @@ import type { Player } from "@gobblet/game-core";
 import type { BoardInteraction } from "../interaction/use-board-interaction";
 import type { Origin } from "../interaction/board-model";
 import { reserveLabel, squareLabel } from "../interaction/labels";
-import { handleBoardKey } from "../interaction/use-board-interaction";
+import { activatesItself, handleBoardKey } from "../interaction/use-board-interaction";
 import { useCursorFocus } from "../interaction/use-cursor-focus";
 import { placeCamera } from "./camera";
 import type { CameraOrbit } from "./camera";
@@ -55,7 +55,13 @@ export function BoardScene({
       data-testid="board-scene"
       data-tier={settings.tier}
       onKeyDown={(event) => {
-        if (handleBoardKey(interaction, { key: event.key, shiftKey: event.shiftKey })) {
+        if (
+          handleBoardKey(interaction, {
+            key: event.key,
+            shiftKey: event.shiftKey,
+            onControl: activatesItself(event.target),
+          })
+        ) {
           event.preventDefault();
         }
       }}
@@ -139,7 +145,10 @@ export function BoardScene({
                 interaction.focusSquare(square.square);
                 interaction.hover({ kind: "board", square: square.square });
               }}
-              onClick={() => interaction.chooseSquare(square.square)}
+              onClick={(event) => {
+                event.currentTarget.focus();
+                interaction.chooseSquare(square.square);
+              }}
             >
               <span className={styles.hidden}>{square.square}</span>
             </button>
@@ -166,7 +175,10 @@ export function BoardScene({
               }
               aria-label={reserveLabel(stack)}
               onFocus={() => interaction.hover(origin)}
-              onClick={() => interaction.choose(origin)}
+              onClick={(event) => {
+                event.currentTarget.focus();
+                interaction.choose(origin);
+              }}
             >
               <span className={styles.hidden}>{reserveLabel(stack)}</span>
             </button>

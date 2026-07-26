@@ -76,6 +76,33 @@ describe("match channel", () => {
     expect(state.snapshot?.version).toBe(4);
   });
 
+  it("replaces the channel when the snapshot names another match", () => {
+    const ended = matchChannelReducer(
+      matchChannelReducer(withSnapshot(), { type: "command-sent", command: pendingMove(0) }),
+      {
+        type: "ended",
+        event: {
+          matchId: MATCH_ID,
+          version: 7,
+          result: "light",
+          reason: "line",
+          ratings: null,
+        },
+      },
+    );
+
+    const rematch = matchChannelReducer(ended, {
+      type: "snapshot",
+      snapshot: makeSnapshot({ matchId: "11111111-2222-4333-8444-555555555555", version: 0 }),
+    });
+
+    expect(rematch.snapshot?.matchId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(rematch.snapshot?.version).toBe(0);
+    expect(rematch.ended).toBeNull();
+    expect(rematch.pending).toBeNull();
+    expect(rematch.phase).toBe("ready");
+  });
+
   it("applies a committed move that follows the held version", () => {
     const committed = committedFrom(1);
 

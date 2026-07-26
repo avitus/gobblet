@@ -26,7 +26,11 @@ export type {
   VisibleSquare,
 } from "./interaction/board-model";
 
-export { handleBoardKey, useBoardInteraction } from "./interaction/use-board-interaction";
+export {
+  activatesItself,
+  handleBoardKey,
+  useBoardInteraction,
+} from "./interaction/use-board-interaction";
 export type {
   BoardInteraction,
   BoardInteractionOptions,

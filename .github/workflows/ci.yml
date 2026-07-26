@@ -74,3 +74,55 @@ jobs:
             apps/*/coverage/
           if-no-files-found: ignore
           retention-days: 14
+
+  browsers:
+    name: Browser end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: gobblet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/gobblet_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only the two engines the suite runs, because the browsers are the slow part
+      # of this job (docs/adr/0021).
+      - name: Install browsers
+        run: pnpm --filter @gobblet/e2e exec playwright install --with-deps chromium webkit
+
+      - name: Play a match in Chromium and WebKit
+        run: pnpm test:e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 14

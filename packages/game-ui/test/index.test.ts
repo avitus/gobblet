@@ -25,6 +25,7 @@ describe("the package surface", () => {
         "SOUND_CUES",
         "SQUARE_PITCH",
         "UNKNOWN_CAPABILITIES",
+        "activatesItself",
         "animationDurationMs",
         "buildBoardModel",
         "catchUpDurationMs",

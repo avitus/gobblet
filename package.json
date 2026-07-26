@@ -20,6 +20,8 @@
     "test": "turbo run test",
     "test:coverage": "turbo run test:coverage",
     "test:properties:nightly": "turbo run test:properties:nightly",
+    "test:e2e": "pnpm --filter @gobblet/e2e run test:e2e",
+    "test:e2e:browsers": "pnpm --filter @gobblet/e2e run browsers",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:up": "docker compose up -d postgres",

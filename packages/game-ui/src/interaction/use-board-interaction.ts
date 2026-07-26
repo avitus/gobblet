@@ -163,7 +163,14 @@ export function useBoardInteraction(options: BoardInteractionOptions): BoardInte
 export type BoardKeyboardEvent = Readonly<{
   key: string;
   shiftKey?: boolean;
+  /** True when the focused element activates itself, as a button does on Enter. */
+  onControl?: boolean;
 }>;
+
+/** Every focus stop is a button, and a button is activated by the browser. */
+export function activatesItself(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest("button") !== null;
+}
 
 /**
  * The keyboard model of section 13.3, kept apart from React so it can be tested
@@ -194,6 +201,10 @@ export function handleBoardKey(interaction: BoardInteraction, event: BoardKeyboa
       return true;
     case "Enter":
     case " ":
+      if (event.onControl === true) {
+        // The browser is about to click the focused stop, which is the same gesture.
+        return false;
+      }
       interaction.confirmCursor();
       return true;
     case "Escape":

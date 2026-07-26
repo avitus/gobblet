@@ -3,7 +3,7 @@ import { useRef } from "react";
 import type { BoardInteraction } from "../interaction/use-board-interaction";
 import type { Origin, VisibleReserveStack, VisibleSquare } from "../interaction/board-model";
 import { reserveLabel, squareLabel } from "../interaction/labels";
-import { handleBoardKey } from "../interaction/use-board-interaction";
+import { activatesItself, handleBoardKey } from "../interaction/use-board-interaction";
 import { useCursorFocus } from "../interaction/use-cursor-focus";
 import styles from "./FlatBoard.module.css";
 
@@ -35,7 +35,13 @@ export function FlatBoard({ interaction, seat }: FlatBoardProps): React.JSX.Elem
       data-testid="flat-board"
       data-tier="flat"
       onKeyDown={(event) => {
-        if (handleBoardKey(interaction, { key: event.key, shiftKey: event.shiftKey })) {
+        if (
+          handleBoardKey(interaction, {
+            key: event.key,
+            shiftKey: event.shiftKey,
+            onControl: activatesItself(event.target),
+          })
+        ) {
           event.preventDefault();
         }
       }}
@@ -105,7 +111,12 @@ function ReserveRow({ label, stacks, interaction }: ReserveRowProps): React.JSX.
             aria-label={reserveLabel(stack)}
             onMouseEnter={() => interaction.hover(origin)}
             onMouseLeave={() => interaction.hover(null)}
-            onClick={() => interaction.choose(origin)}
+            onClick={(event) => {
+              // WebKit does not focus a button that was clicked, and the keyboard
+              // model needs the board to hold focus after a pointer gesture.
+              event.currentTarget.focus();
+              interaction.choose(origin);
+            }}
           >
             {stack.piece === null ? "" : String(stack.piece.size)}
           </button>
@@ -150,7 +161,10 @@ function SquareCell({ square, interaction, register }: SquareCellProps): React.J
       onMouseEnter={() => interaction.hover(origin)}
       onMouseLeave={() => interaction.hover(null)}
       onFocus={() => interaction.focusSquare(square.square)}
-      onClick={() => interaction.chooseSquare(square.square)}
+      onClick={(event) => {
+        event.currentTarget.focus();
+        interaction.chooseSquare(square.square);
+      }}
     >
       <span aria-hidden="true">{square.piece === null ? "" : String(square.piece.size)}</span>
     </button>
