@@ -48,6 +48,13 @@ const EMPTY = /empty$/;
 test("a pointer gesture on the canvas acts on the piece and square it points at", async ({
   browser,
 }) => {
+  // The runner has no GPU, so Chromium rasterises this scene in software: every hit
+  // test and every accessible name is read from a canvas drawn on the CPU, which took
+  // 66s, then 78s, then more than the default 90s as the suite grew. The engine is
+  // what is slow here, not the client, so the budget is tripled rather than the proof
+  // weakened.
+  test.slow();
+
   const match = await pairGuests(browser, ["Grace", "Alan"], { renderTier: "full" });
 
   try {
