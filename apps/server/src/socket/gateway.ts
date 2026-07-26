@@ -6,6 +6,7 @@ import {
   SERVER_TO_CLIENT_EVENTS,
   commandEnvelopeHeaderSchema,
   httpErrorDetails,
+  isClientVersionSupported,
   matchMoveCommandSchema,
   matchResignCommandSchema,
   matchSyncRequestSchema,
@@ -133,42 +134,6 @@ function toReportable(error: unknown): Readonly<{ name: string; message: string;
     };
   }
   return { name: "Error", message: String(error) };
-}
-
-type Version = Readonly<{ major: number; minor: number; patch: number }>;
-
-const VERSION_PATTERN = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$/;
-
-function parseVersion(value: string): Version | null {
-  const groups = VERSION_PATTERN.exec(value)?.groups;
-  if (!groups) {
-    return null;
-  }
-  return {
-    major: Number(groups.major),
-    minor: Number(groups.minor),
-    patch: Number(groups.patch),
-  };
-}
-
-/**
- * Compares dotted numeric versions. A version that cannot be parsed counts as
- * unsupported, because an unparsable version is a broken client.
- */
-export function isClientVersionSupported(clientVersion: string, minimum: string): boolean {
-  const client = parseVersion(clientVersion);
-  const floor = parseVersion(minimum);
-  if (!client || !floor) {
-    return false;
-  }
-
-  if (client.major !== floor.major) {
-    return client.major > floor.major;
-  }
-  if (client.minor !== floor.minor) {
-    return client.minor > floor.minor;
-  }
-  return client.patch >= floor.patch;
 }
 
 /**

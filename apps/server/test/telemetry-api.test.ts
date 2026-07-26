@@ -19,7 +19,7 @@ import { createPseudonymiser } from "../src/observability/pseudonym";
 import { TelemetryService } from "../src/observability/telemetry";
 import type { AnalyticsIdentity, AnalyticsPort } from "../src/observability/analytics";
 import type { ErrorContext, ErrorReportingPort } from "../src/observability/error-reporting";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -104,6 +104,7 @@ beforeEach(async () => {
       identity,
       leaderboards: new LeaderboardService({ db: handle.db, now: clock.now }),
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry,
@@ -160,6 +161,24 @@ describe("POST /v1/telemetry/events", () => {
     expect(captured).toHaveLength(2);
     expect(captured[0]?.identity).toMatch(/^[0-9a-f]{16}$/);
     expect(captured[0]?.identity).toBe(captured[1]?.identity);
+  });
+
+  it("counts how a desktop update ended, which the shell cannot report itself", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/telemetry/events",
+      payload: events({
+        name: "desktop-update-completed",
+        outcome: "success",
+        fromVersion: "1.2.0",
+        toVersion: "1.3.0",
+      }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(await telemetry.metrics.expose()).toContain(
+      'gobblet_desktop_update_outcomes_total{outcome="success"} 1',
+    );
   });
 
   it("refuses an event only the server may report", async () => {

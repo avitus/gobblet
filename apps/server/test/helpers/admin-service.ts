@@ -7,6 +7,7 @@ import type { MatchRuntime } from "../../src/match/runtime";
 import { MatchmakingService } from "../../src/matchmaking/service";
 import type { MatchmakingQueue } from "../../src/matchmaking/service";
 import { createSilentTelemetry } from "../../src/observability/telemetry";
+import { ReleaseService } from "../../src/releases/service";
 import type { TelemetryService } from "../../src/observability/telemetry";
 
 /**
@@ -37,5 +38,19 @@ export function adminServiceFixture(
     connectedSockets: options.connectedSockets ?? ((): number => 0),
     startedAt: now(),
     now,
+  });
+}
+
+/**
+ * A release service for a test that only needs the app to have one. Publishing and
+ * the update endpoint are exercised through the real thing in `releases-api.test.ts`.
+ */
+export function releaseServiceFixture(
+  options: Readonly<{ db: Database; now: () => number; telemetry?: TelemetryService }>,
+): ReleaseService {
+  return new ReleaseService({
+    db: options.db,
+    telemetry: options.telemetry ?? createSilentTelemetry(),
+    now: options.now,
   });
 }

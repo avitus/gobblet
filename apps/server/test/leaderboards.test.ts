@@ -23,7 +23,7 @@ import { readAllTimeRank } from "../src/leaderboard/rank";
 import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { createSilentTelemetry } from "../src/observability/telemetry";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -65,6 +65,7 @@ beforeEach(async () => {
       identity,
       leaderboards,
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry: createSilentTelemetry(),

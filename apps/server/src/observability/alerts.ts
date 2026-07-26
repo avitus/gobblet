@@ -47,8 +47,6 @@ export type AlertDefinition = Readonly<{
   summary: string;
   /** All of these must hold, rendered with `and`. */
   all: readonly Condition[];
-  /** Present when the series does not exist yet, and says when it will. */
-  pending?: string;
 }>;
 
 function selectorText(selector: Selector): string {
@@ -216,7 +214,6 @@ export const ALERT_DEFINITIONS: readonly AlertDefinition[] = Object.freeze([
     severity: "page",
     duration: "0m",
     summary: "A desktop artifact failed to sign, so an update must not be published.",
-    pending: "The series is written by the desktop release job of Phase 8 (appendix P7.10).",
     all: [
       {
         term: {
@@ -283,9 +280,6 @@ export function renderAlertRules(
     lines.push("        annotations:");
     lines.push(`          summary: ${JSON.stringify(definition.summary)}`);
     lines.push(`          condition: ${JSON.stringify(definition.condition)}`);
-    if (definition.pending !== undefined) {
-      lines.push(`          pending: ${JSON.stringify(definition.pending)}`);
-    }
   }
 
   return `${lines.join("\n")}\n`;

@@ -108,3 +108,16 @@ function holds(condition: Condition, range: Range): boolean {
 export function fires(definition: AlertDefinition, range: Range): boolean {
   return definition.all.every((condition) => holds(condition, range));
 }
+
+/**
+ * One counter's value from an exposition, matched by name and by the labels given.
+ * A series that is absent reads as zero, which is what a counter that has never
+ * been incremented means.
+ */
+export function sampleValue(
+  text: string,
+  metric: string,
+  labels: Readonly<Record<string, string>> = {},
+): number {
+  return total(parseExposition(text), { metric, labels });
+}

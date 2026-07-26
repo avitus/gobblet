@@ -25,7 +25,7 @@ import { TelemetryService } from "../src/observability/telemetry";
 import type { AnalyticsIdentity, AnalyticsPort } from "../src/observability/analytics";
 import type { ErrorContext, ErrorReportingPort } from "../src/observability/error-reporting";
 import { MatchGateway } from "../src/socket/gateway";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock, envelope } from "./helpers/match-fixtures";
 import { TestClient } from "./helpers/socket-client";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -119,6 +119,7 @@ beforeEach(async () => {
       identity,
       leaderboards: new LeaderboardService({ db: handle.db, now: clock.now }),
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry,
@@ -173,6 +174,7 @@ async function spawnGateway(gatewayRuntime: MatchRuntime): Promise<string> {
         identity,
         now: clock.now,
       }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry,

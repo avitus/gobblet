@@ -12,6 +12,7 @@ import { AttemptLimiter } from "./identity/rate-limit";
 import type { IdentityService } from "./identity/service";
 import type { LeaderboardService } from "./leaderboard/service";
 import type { MatchRuntime } from "./match/runtime";
+import type { ReleaseService } from "./releases/service";
 import { registerRequestObservability } from "./observability/http";
 import type { TelemetryService } from "./observability/telemetry";
 import { registerAdminRoutes } from "./routes/admin";
@@ -23,6 +24,7 @@ import { registerMatchRoutes } from "./routes/matches";
 import { registerMeRoutes } from "./routes/me";
 import { registerMetricsRoute } from "./routes/metrics";
 import { registerProfileRoutes } from "./routes/profiles";
+import { registerReleaseRoutes } from "./routes/releases";
 import { registerTelemetryRoutes } from "./routes/telemetry";
 import { registerUsernameRoutes } from "./routes/usernames";
 import { TIME_CONTROLS_SECONDS } from "./time-controls";
@@ -48,6 +50,7 @@ export type AppServices = Readonly<{
   identity: IdentityService;
   leaderboards: LeaderboardService;
   admin: AdminService;
+  releases: ReleaseService;
   db: Database;
 }>;
 
@@ -169,6 +172,7 @@ export async function buildApp({
     registerDevMatchRoutes(app, services.runtime, resolvers, config);
     registerTelemetryRoutes(app, telemetry, resolvers, telemetryLimiter);
     registerAdminRoutes(app, services.admin, { db: services.db, resolvers });
+    registerReleaseRoutes(app, services.releases, { db: services.db, resolvers });
   }
 
   return app;

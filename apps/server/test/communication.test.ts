@@ -27,7 +27,7 @@ import { MatchRuntime } from "../src/match/runtime";
 import { MatchGateway } from "../src/socket/gateway";
 import { ChannelMutes } from "../src/socket/communication";
 import { createSilentTelemetry } from "../src/observability/telemetry";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock, envelope } from "./helpers/match-fixtures";
 import { TestClient } from "./helpers/socket-client";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -73,6 +73,7 @@ beforeEach(async () => {
       identity,
       leaderboards: new LeaderboardService({ db: handle.db, now: clock.now }),
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry: createSilentTelemetry(),

@@ -38,10 +38,10 @@ import { RematchService } from "../src/matchmaking/rematch";
 import { MatchmakingService } from "../src/matchmaking/service";
 import type { MatchmakingQueue } from "../src/matchmaking/service";
 import { MatchRuntime } from "../src/match/runtime";
-import { MatchGateway, isClientVersionSupported } from "../src/socket/gateway";
+import { MatchGateway } from "../src/socket/gateway";
 import type { GatewayLogger } from "../src/socket/gateway";
 import { createSilentTelemetry } from "../src/observability/telemetry";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock, WINNING_SCRIPT, envelope } from "./helpers/match-fixtures";
 import { TestClient } from "./helpers/socket-client";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
@@ -96,6 +96,7 @@ beforeEach(async () => {
       identity,
       leaderboards,
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry: createSilentTelemetry(),
@@ -175,6 +176,7 @@ async function spawnGateway(
         identity,
         now: clock.now,
       }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry: createSilentTelemetry(),
@@ -313,22 +315,6 @@ async function seatedAccountMatch(): Promise<
     sessionToken: registered.value.session.sessionToken,
   };
 }
-
-describe("isClientVersionSupported", () => {
-  it.each([
-    ["0.1.0", "0.1.0", true],
-    ["1.0.0", "0.1.0", true],
-    ["0.2.0", "0.1.9", true],
-    ["0.1.1", "0.1.0", true],
-    ["0.0.9", "0.1.0", false],
-    ["0.1.0", "0.1.1", false],
-    ["0.1", "0.1.0", false],
-    ["banana", "0.1.0", false],
-    ["0.1.0", "not-a-version", false],
-  ])("compares %s against %s", (client, minimum, expected) => {
-    expect(isClientVersionSupported(client, minimum)).toBe(expected);
-  });
-});
 
 describe("session:authenticate", () => {
   it("accepts an account session and reports the actor as an account", async () => {

@@ -7,6 +7,9 @@ import type { AlertDefinition } from "../src/observability/alerts";
 import { MetricsRegistry } from "../src/observability/metrics";
 import type { GaugeSources } from "../src/observability/metrics";
 import { fires, parseExposition } from "./helpers/prometheus";
+
+/** Written by `pnpm db:backup` into a textfile collector, not by the server. */
+const BACKUP_METRIC = "gobblet_backup_last_success_timestamp_seconds";
 import type { Range, Sample } from "./helpers/prometheus";
 
 /**
@@ -98,11 +101,28 @@ describe("the alert rules file", () => {
     ]);
   });
 
-  it("names the series that do not exist yet, rather than pretending", () => {
-    const pending = ALERT_DEFINITIONS.filter((definition) => definition.pending !== undefined);
+  it("watches no series that the exposition does not have", async () => {
+    const exposition = await new MetricsRegistry(DEPLOYMENT).expose();
+    const named = new Set(
+      ALERT_DEFINITIONS.flatMap((definition) =>
+        definition.all.flatMap((condition) =>
+          condition.term.kind === "share"
+            ? [condition.term.part.metric, condition.term.whole.metric]
+            : [condition.term.selector.metric],
+        ),
+      ),
+    );
 
-    expect(pending.map((definition) => definition.alert)).toEqual(["GobbletDesktopSigningFailure"]);
-    expect(pending[0]?.pending).toContain("Phase 8");
+    for (const metric of named) {
+      if (metric === BACKUP_METRIC) {
+        // The one series the server does not write: the backup script's textfile.
+        continue;
+      }
+      expect(exposition, metric).toContain(metric);
+    }
+    expect(named.has(BACKUP_METRIC)).toBe(true);
+    // The last one to arrive was the signing failure, which Phase 8 made real.
+    expect(named.has("gobblet_desktop_signing_failures_total")).toBe(true);
   });
 
   it("renders each expression as PromQL over the exposition's own names", async () => {

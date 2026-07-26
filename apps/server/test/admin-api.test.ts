@@ -41,6 +41,7 @@ import { MetricsRegistry } from "../src/observability/metrics";
 import { NullAnalytics } from "../src/observability/analytics";
 import { NullErrorReporting } from "../src/observability/error-reporting";
 import { TelemetryService } from "../src/observability/telemetry";
+import { releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock, WINNING_SCRIPT, envelope } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -109,6 +110,7 @@ beforeEach(async () => {
         startedAt: clock.now() - 30_000,
         now: clock.now,
       }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry,

@@ -79,7 +79,6 @@ groups:
         annotations:
           summary: "A desktop artifact failed to sign, so an update must not be published."
           condition: "Desktop update-signing failure."
-          pending: "The series is written by the desktop release job of Phase 8 (appendix P7.10)."
       - alert: GobbletErrorRegressionAfterDeploy
         expr: |-
           sum(increase(gobblet_errors_total[10m])) > 10

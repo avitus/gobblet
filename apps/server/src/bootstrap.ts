@@ -16,6 +16,7 @@ import { LeaderboardService } from "./leaderboard/service";
 import { RematchService } from "./matchmaking/rematch";
 import { MatchmakingService } from "./matchmaking/service";
 import { MatchRuntime } from "./match/runtime";
+import { ReleaseService } from "./releases/service";
 import { MatchGateway } from "./socket/gateway";
 
 export type BootstrapOptions = Readonly<{
@@ -35,6 +36,7 @@ export type BootstrappedServer = Readonly<{
   rematch: RematchService;
   gateway: MatchGateway;
   admin: AdminService;
+  releases: ReleaseService;
   telemetry: TelemetryService;
   /** Matches whose clock expired while this process was down (spec section 7.5). */
   settledOnBoot: number;
@@ -98,9 +100,11 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     now,
   });
 
+  const releases = new ReleaseService({ db: database.db, telemetry, now });
+
   const app = await buildApp({
     config,
-    services: { runtime, guests, identity, leaderboards, admin, db: database.db },
+    services: { runtime, guests, identity, leaderboards, admin, releases, db: database.db },
     readiness,
     telemetry,
     now,
@@ -149,6 +153,7 @@ export async function bootstrapServer(options: BootstrapOptions): Promise<Bootst
     rematch,
     gateway,
     admin,
+    releases,
     telemetry,
     settledOnBoot: settled.length,
     close: async (): Promise<void> => {

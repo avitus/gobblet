@@ -18,7 +18,7 @@ import { IdentityService } from "../src/identity/service";
 import { LeaderboardService } from "../src/leaderboard/service";
 import { MatchRuntime } from "../src/match/runtime";
 import { createSilentTelemetry } from "../src/observability/telemetry";
-import { adminServiceFixture } from "./helpers/admin-service";
+import { adminServiceFixture, releaseServiceFixture } from "./helpers/admin-service";
 import { TestClock } from "./helpers/match-fixtures";
 import { setupTestDatabase, truncateAll } from "./helpers/test-database";
 
@@ -69,6 +69,7 @@ async function start(config: ServerConfig = localConfig): Promise<FastifyInstanc
       identity,
       leaderboards,
       admin: adminServiceFixture({ db: handle.db, config, runtime, identity, now: clock.now }),
+      releases: releaseServiceFixture({ db: handle.db, now: clock.now }),
       db: handle.db,
     },
     telemetry: createSilentTelemetry(),

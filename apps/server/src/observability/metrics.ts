@@ -66,6 +66,12 @@ export class MetricsRegistry {
 
   private readonly clockAnomalies: Counter<"kind">;
 
+  private readonly signingFailures: Counter<"target" | "step">;
+
+  private readonly updateChecks: Counter<"channel" | "target" | "offered">;
+
+  private readonly updateOutcomes: Counter<"outcome">;
+
   private sources: GaugeSources | null = null;
 
   constructor(
@@ -155,6 +161,25 @@ export class MetricsRegistry {
       name: "gobblet_clock_anomalies_total",
       help: "Stored clocks that cannot be true, by kind. A non-zero value is a defect.",
       labelNames: ["kind"],
+      registers: [this.registry],
+    });
+
+    this.signingFailures = new Counter({
+      name: "gobblet_desktop_signing_failures_total",
+      help: "Desktop artifacts that failed to sign or notarize, by platform and step.",
+      labelNames: ["target", "step"],
+      registers: [this.registry],
+    });
+    this.updateChecks = new Counter({
+      name: "gobblet_desktop_update_checks_total",
+      help: "Update checks by channel and platform, and whether one was offered.",
+      labelNames: ["channel", "target", "offered"],
+      registers: [this.registry],
+    });
+    this.updateOutcomes = new Counter({
+      name: "gobblet_desktop_update_outcomes_total",
+      help: "Desktop updates a client reported as finished, by outcome.",
+      labelNames: ["outcome"],
       registers: [this.registry],
     });
 
@@ -305,6 +330,23 @@ export class MetricsRegistry {
   /** A stored clock that cannot be true, which section 17.4 alerts on. */
   recordClockAnomaly(kind: string): void {
     this.clockAnomalies.inc({ kind });
+  }
+
+  /**
+   * A signing or notarization step that failed, reported by the release workflow
+   * before the job stops (docs/adr/0036-signing-is-a-workflow-step-that-fails-loudly.md).
+   */
+  recordSigningFailure(target: string, step: string): void {
+    this.signingFailures.inc({ target, step });
+  }
+
+  recordUpdateCheck(channel: string, target: string, offered: boolean): void {
+    this.updateChecks.inc({ channel, target, offered: offered ? "yes" : "no" });
+  }
+
+  /** What a desktop client reported about an update it tried to install. */
+  recordUpdateOutcome(outcome: string): void {
+    this.updateOutcomes.inc({ outcome });
   }
 
   /**

@@ -56,6 +56,9 @@ export class TelemetryService {
   }
 
   capture(actor: TelemetryActor, event: AnalyticsEvent): void {
+    if (event.name === "desktop-update-completed") {
+      this.metrics.recordUpdateOutcome(event.outcome);
+    }
     this.analytics.capture(this.pseudonym(actor), event);
   }
 
@@ -98,6 +101,21 @@ export class TelemetryService {
       },
     );
     this.recordFailure("client_error", request.route);
+  }
+
+  /**
+   * A step of a desktop release reporting how it ended. A failed signing step is an
+   * error in the operational sense even though no request failed, so it is recorded
+   * as one and reaches the dashboard's recent errors beside the metric
+   * (docs/adr/0036-signing-is-a-workflow-step-that-fails-loudly.md).
+   */
+  recordReleaseBuildEvent(
+    event: Readonly<{ step: string; target: string; outcome: string }>,
+  ): void {
+    if (event.outcome !== "failed") {
+      return;
+    }
+    this.recordFailure(`release_${event.step}_failed`, `release:${event.target}`);
   }
 
   recentFailures(limit?: number): ReturnType<RecentErrors["list"]> {
