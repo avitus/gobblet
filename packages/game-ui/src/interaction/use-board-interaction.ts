@@ -21,6 +21,8 @@ export type BoardInteraction = Readonly<{
   chooseSquare: (square: Square) => void;
   cancel: () => void;
   moveCursor: (delta: Readonly<{ rows?: number; columns?: number }>) => void;
+  /** Puts the cursor on a square, so browser focus and the cursor never disagree. */
+  focusSquare: (square: Square) => void;
   /** `Enter` on the cursor: select the piece under it, or submit there. */
   confirmCursor: () => void;
   focusNextOrigin: (direction: 1 | -1) => Origin | null;
@@ -117,6 +119,10 @@ export function useBoardInteraction(options: BoardInteractionOptions): BoardInte
     chooseSquare(cursor);
   }, [chooseSquare, cursor]);
 
+  const focusSquare = useCallback((square: Square) => {
+    setCursor(square);
+  }, []);
+
   const focusNextOrigin = useCallback(
     (direction: 1 | -1): Origin | null => {
       const origins = model.movableOrigins;
@@ -148,6 +154,7 @@ export function useBoardInteraction(options: BoardInteractionOptions): BoardInte
     chooseSquare,
     cancel,
     moveCursor,
+    focusSquare,
     confirmCursor,
     focusNextOrigin,
   };

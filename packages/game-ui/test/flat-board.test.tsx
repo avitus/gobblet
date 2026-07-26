@@ -126,6 +126,47 @@ describe("the flat board", () => {
     expect(onSubmit).toHaveBeenCalledWith({ kind: "reserve", reserveStack: 0, to: "r2c0" });
   });
 
+  it("moves the focus ring with the cursor", async () => {
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("reserve-light-0"));
+    screen.getByTestId("square-r0c0").focus();
+
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByTestId("square-r1c0")).toHaveFocus();
+    expect(screen.getByTestId("square-r1c0")).toHaveAttribute("data-cursor", "true");
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByTestId("square-r1c1")).toHaveFocus();
+  });
+
+  it("takes the cursor from the square the player tabbed to", async () => {
+    const onSubmit = vi.fn();
+    render(<Harness onSubmit={onSubmit} />);
+
+    await userEvent.click(screen.getByTestId("reserve-light-0"));
+    screen.getByTestId("square-r2c2").focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(onSubmit).toHaveBeenCalledWith({ kind: "reserve", reserveStack: 0, to: "r2c2" });
+  });
+
+  it("leaves the focus alone while nothing on the board holds it", async () => {
+    render(
+      <div>
+        <button type="button" data-testid="outside">
+          outside
+        </button>
+        <Harness />
+      </div>,
+    );
+
+    screen.getByTestId("outside").focus();
+    await userEvent.keyboard("{ArrowDown}");
+
+    expect(screen.getByTestId("outside")).toHaveFocus();
+  });
+
   it("refuses every input while a command is pending", async () => {
     const onSubmit = vi.fn();
     render(<Harness locked onSubmit={onSubmit} />);

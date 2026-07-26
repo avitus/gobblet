@@ -41,14 +41,18 @@ describe("the package surface", () => {
         "isLowTime",
         "lift",
         "nudgeOrbit",
+        "pieceLabel",
         "placeCamera",
+        "reserveLabel",
         "reservePosition",
         "resolveTier",
         "sameOrigin",
+        "squareLabel",
         "squarePosition",
         "tierSettings",
         "useBoardInteraction",
         "useClockDisplay",
+        "useCursorFocus",
       ].sort(),
     );
   });

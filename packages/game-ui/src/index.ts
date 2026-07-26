@@ -15,6 +15,9 @@ export { BoardScene } from "./scene/BoardScene";
 export type { BoardSceneProps } from "./scene/BoardScene";
 
 export { buildBoardModel, findDestination, sameOrigin } from "./interaction/board-model";
+export { pieceLabel, reserveLabel, squareLabel } from "./interaction/labels";
+export { useCursorFocus } from "./interaction/use-cursor-focus";
+export type { SquareElements } from "./interaction/use-cursor-focus";
 export type {
   BoardModel,
   Destination,

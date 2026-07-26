@@ -1,8 +1,11 @@
 import { Canvas } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { Player } from "@gobblet/game-core";
 import type { BoardInteraction } from "../interaction/use-board-interaction";
+import type { Origin } from "../interaction/board-model";
+import { reserveLabel, squareLabel } from "../interaction/labels";
 import { handleBoardKey } from "../interaction/use-board-interaction";
+import { useCursorFocus } from "../interaction/use-cursor-focus";
 import { placeCamera } from "./camera";
 import type { CameraOrbit } from "./camera";
 import { describeScene } from "./description";
@@ -42,9 +45,12 @@ export function BoardScene({
 }: BoardSceneProps): React.JSX.Element {
   const description = useMemo(() => describeScene(interaction), [interaction]);
   const camera = useMemo(() => placeCamera(seat ?? "light", orbit), [seat, orbit]);
+  const scene = useRef<HTMLDivElement>(null);
+  const squareRefs = useCursorFocus(scene, interaction.cursor);
 
   return (
     <div
+      ref={scene}
       className={styles.scene}
       data-testid="board-scene"
       data-tier={settings.tier}
@@ -108,21 +114,64 @@ export function BoardScene({
       </Canvas>
 
       <div className={styles.focusStops} aria-label="Board" role="grid">
-        {description.squares.map((square) => (
-          <button
-            key={square.square}
-            type="button"
-            role="gridcell"
-            className={styles.focusStop}
-            data-testid={`scene-square-${square.square}`}
-            data-highlight={square.highlight}
-            disabled={!square.focusable}
-            onFocus={() => interaction.hover({ kind: "board", square: square.square })}
-            onClick={() => interaction.chooseSquare(square.square)}
-          >
-            <span className={styles.hidden}>{square.square}</span>
-          </button>
-        ))}
+        {description.squares.map((square, index) => {
+          const visible = interaction.model.squares[index];
+          const destination = interaction.destinationAt(square.square);
+          return (
+            <button
+              key={square.square}
+              ref={(element) => {
+                squareRefs.current.set(square.square, element);
+              }}
+              type="button"
+              role="gridcell"
+              className={styles.focusStop}
+              data-testid={`scene-square-${square.square}`}
+              data-highlight={square.highlight}
+              data-cursor={interaction.cursor === square.square ? "true" : "false"}
+              disabled={!square.focusable}
+              aria-label={
+                visible === undefined
+                  ? square.square
+                  : squareLabel(visible, destination?.losesByReveal ?? false)
+              }
+              onFocus={() => {
+                interaction.focusSquare(square.square);
+                interaction.hover({ kind: "board", square: square.square });
+              }}
+              onClick={() => interaction.chooseSquare(square.square)}
+            >
+              <span className={styles.hidden}>{square.square}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={styles.reserveStops} aria-label="Reserves" role="group">
+        {interaction.model.reserves.map((stack) => {
+          const origin: Origin = {
+            kind: "reserve",
+            owner: stack.owner,
+            reserveStack: stack.reserveStack,
+          };
+          return (
+            <button
+              key={`${stack.owner}-${String(stack.reserveStack)}`}
+              type="button"
+              className={styles.focusStop}
+              data-testid={`scene-reserve-${stack.owner}-${String(stack.reserveStack)}`}
+              data-owner={stack.owner}
+              disabled={
+                stack.piece === null || !interaction.isMovable(origin) || interaction.locked
+              }
+              aria-label={reserveLabel(stack)}
+              onFocus={() => interaction.hover(origin)}
+              onClick={() => interaction.choose(origin)}
+            >
+              <span className={styles.hidden}>{reserveLabel(stack)}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

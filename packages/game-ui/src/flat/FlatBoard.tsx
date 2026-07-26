@@ -1,7 +1,10 @@
 import type { Player } from "@gobblet/game-core";
+import { useRef } from "react";
 import type { BoardInteraction } from "../interaction/use-board-interaction";
 import type { Origin, VisibleReserveStack, VisibleSquare } from "../interaction/board-model";
+import { reserveLabel, squareLabel } from "../interaction/labels";
 import { handleBoardKey } from "../interaction/use-board-interaction";
+import { useCursorFocus } from "../interaction/use-cursor-focus";
 import styles from "./FlatBoard.module.css";
 
 export type FlatBoardProps = Readonly<{
@@ -10,12 +13,6 @@ export type FlatBoardProps = Readonly<{
   seat: Player | null;
 }>;
 
-const SIZE_LABELS = Object.freeze({ 1: "smallest", 2: "small", 3: "large", 4: "largest" });
-
-function pieceLabel(owner: Player, size: 1 | 2 | 3 | 4): string {
-  return `${owner} ${SIZE_LABELS[size]}`;
-}
-
 /**
  * The tier that needs no WebGL (docs/adr/0023). It draws only the top piece of a
  * stack, so a covered piece is neither shown nor described (appendix P5.5), and it
@@ -23,6 +20,8 @@ function pieceLabel(owner: Player, size: 1 | 2 | 3 | 4): string {
  */
 export function FlatBoard({ interaction, seat }: FlatBoardProps): React.JSX.Element {
   const { model } = interaction;
+  const board = useRef<HTMLDivElement>(null);
+  const squareRefs = useCursorFocus(board, interaction.cursor);
   const rows = [0, 1, 2, 3].map((row) => model.squares.slice(row * 4, row * 4 + 4));
   const reservesFor = (owner: Player): readonly VisibleReserveStack[] =>
     model.reserves.filter((stack) => stack.owner === owner);
@@ -31,6 +30,7 @@ export function FlatBoard({ interaction, seat }: FlatBoardProps): React.JSX.Elem
 
   return (
     <div
+      ref={board}
       className={styles.board}
       data-testid="flat-board"
       data-tier="flat"
@@ -50,7 +50,14 @@ export function FlatBoard({ interaction, seat }: FlatBoardProps): React.JSX.Elem
         {rows.map((row, index) => (
           <div className={styles.row} role="row" key={`row-${String(index)}`}>
             {row.map((square) => (
-              <SquareCell key={square.square} square={square} interaction={interaction} />
+              <SquareCell
+                key={square.square}
+                square={square}
+                interaction={interaction}
+                register={(element) => {
+                  squareRefs.current.set(square.square, element);
+                }}
+              />
             ))}
           </div>
         ))}
@@ -95,11 +102,7 @@ function ReserveRow({ label, stacks, interaction }: ReserveRowProps): React.JSX.
             data-selected={selected ? "true" : "false"}
             data-hovered={interaction.isHovered(origin) ? "true" : "false"}
             disabled={stack.piece === null || !movable || interaction.locked}
-            aria-label={
-              stack.piece === null
-                ? `${stack.owner} reserve stack ${String(stack.reserveStack + 1)}, empty`
-                : `${pieceLabel(stack.owner, stack.piece.size)}, ${String(stack.remaining)} left`
-            }
+            aria-label={reserveLabel(stack)}
             onMouseEnter={() => interaction.hover(origin)}
             onMouseLeave={() => interaction.hover(null)}
             onClick={() => interaction.choose(origin)}
@@ -115,9 +118,10 @@ function ReserveRow({ label, stacks, interaction }: ReserveRowProps): React.JSX.
 type SquareCellProps = Readonly<{
   square: VisibleSquare;
   interaction: BoardInteraction;
+  register: (element: HTMLButtonElement | null) => void;
 }>;
 
-function SquareCell({ square, interaction }: SquareCellProps): React.JSX.Element {
+function SquareCell({ square, interaction, register }: SquareCellProps): React.JSX.Element {
   const origin: Origin = { kind: "board", square: square.square };
   const destination = interaction.destinationAt(square.square);
   const selected =
@@ -126,6 +130,7 @@ function SquareCell({ square, interaction }: SquareCellProps): React.JSX.Element
 
   return (
     <button
+      ref={register}
       type="button"
       role="gridcell"
       className={styles.square}
@@ -139,27 +144,15 @@ function SquareCell({ square, interaction }: SquareCellProps): React.JSX.Element
       data-destination={destination ? "true" : "false"}
       data-reveal-loss={destination?.losesByReveal ? "true" : "false"}
       data-cursor={interaction.cursor === square.square ? "true" : "false"}
-      aria-label={describeSquare(square, destination?.losesByReveal ?? false)}
+      aria-label={squareLabel(square, destination?.losesByReveal ?? false)}
       aria-pressed={selected}
       disabled={interaction.locked || (!movable && destination === null)}
       onMouseEnter={() => interaction.hover(origin)}
       onMouseLeave={() => interaction.hover(null)}
+      onFocus={() => interaction.focusSquare(square.square)}
       onClick={() => interaction.chooseSquare(square.square)}
     >
       <span aria-hidden="true">{square.piece === null ? "" : String(square.piece.size)}</span>
     </button>
   );
-}
-
-/**
- * Names only what is visible. The height of a stack is describable because a
- * player can see it, but the identity of a covered piece is not (appendix P5.5).
- */
-function describeSquare(square: VisibleSquare, losesByReveal: boolean): string {
-  const place = `Square ${square.square}`;
-  const content =
-    square.piece === null
-      ? "empty"
-      : `${pieceLabel(square.piece.owner, square.piece.size)}${square.height > 1 ? `, covering ${String(square.height - 1)}` : ""}`;
-  return losesByReveal ? `${place}, ${content}, loses by reveal` : `${place}, ${content}`;
 }

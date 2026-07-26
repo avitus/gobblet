@@ -22,6 +22,22 @@
   pointer-events: none;
 }
 
+/* The reserves sit under the board, in the order the flat tier lists them. */
+.reserveStops {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  pointer-events: none;
+}
+
+.reserveStops .focusStop {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+}
+
 .focusStop {
   appearance: none;
   background: transparent;
