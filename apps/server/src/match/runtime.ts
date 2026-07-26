@@ -12,7 +12,7 @@ import {
 } from "@gobblet/db";
 import type { Database, DatabaseExecutor, MatchRow, MatchStatePatch } from "@gobblet/db";
 import { applyMove, createInitialGame } from "@gobblet/game-core";
-import type { GameState, Move, Player } from "@gobblet/game-core";
+import type { GameState, LegalMoveEvaluation, Move, Player } from "@gobblet/game-core";
 import type {
   ColorAssignment,
   CommandEnvelopeMetadata,
@@ -25,6 +25,8 @@ import type {
   MovePayload,
   TimeControl,
 } from "@gobblet/protocol";
+import { awardAchievementsForCompletion } from "../achievements/service";
+import { winningLineIds } from "../achievements/lines";
 import { applyRatingsForCompletion, readSeatRatings } from "../rating/service";
 import { chargeActiveSide, readClocks, zeroActiveSide } from "./clock";
 import type { CommittedClocks } from "./clock";
@@ -315,6 +317,7 @@ export class MatchRuntime {
     }
 
     const nextState = result.state;
+    const evaluation = result.evaluation;
     const outcome = outcomeOfGameState(nextState);
     const version = row.stateVersion + 1;
 
@@ -327,6 +330,9 @@ export class MatchRuntime {
       actorId: actor.actorId,
       payload: outcome ? { move, outcome } : { move },
       stateHash: gameStateHash(nextState),
+      // Recorded where the engine computed it, because the resulting board no
+      // longer shows that a line was uncovered and closed again (appendix P6.5).
+      revealedAndBlocked: revealedAndBlocked(evaluation),
       createdAt: new Date(now),
     });
 
@@ -342,6 +348,7 @@ export class MatchRuntime {
         clocks: chargeActiveSide(row, now),
         moveCount: row.moveCount + 1,
         outcome,
+        winningLineIds: winningLineIds(evaluation.resultingWinningLines),
       }),
     );
 
@@ -466,6 +473,9 @@ export class MatchRuntime {
       return null;
     }
     const ratings = await applyRatingsForCompletion(tx, row);
+    // After the ratings, because "Contender" and "On a Roll" read the aggregate
+    // this completion has just moved.
+    await awardAchievementsForCompletion(tx, row);
     const ended: MatchEndedEvent = {
       matchId: row.id,
       version,
@@ -485,6 +495,7 @@ export class MatchRuntime {
       clocks: CommittedClocks;
       moveCount: number;
       outcome: RulesOutcome | null;
+      winningLineIds?: readonly string[];
     }>,
   ): MatchStatePatch {
     const committedAt = new Date(input.now);
@@ -502,12 +513,14 @@ export class MatchRuntime {
       return { ...base, turnStartedAt: committedAt, status: "active" };
     }
 
+    const lines = input.winningLineIds ?? [];
     return {
       ...base,
       turnStartedAt: null,
       status: "completed",
       result: input.outcome.outcome,
       endReason: input.outcome.reason,
+      ...(lines.length > 0 ? { winningLineIds: [...lines] } : {}),
       endedAt: committedAt,
     };
   }
@@ -533,6 +546,18 @@ export class MatchRuntime {
     const payload = event.payload as Readonly<{ move: Move }>;
     return { move: payload.move, version: event.sequence };
   }
+}
+
+/**
+ * A revealing move is only legal when the placement closes every line it exposed;
+ * an unclosed reveal loses at once (docs/rules.md section 9), so this is the whole
+ * of what "Uncovered" describes.
+ */
+function revealedAndBlocked(evaluation: LegalMoveEvaluation): boolean {
+  return (
+    evaluation.revealedOpponentLines.length > 0 &&
+    evaluation.blockedOpponentLines.length === evaluation.revealedOpponentLines.length
+  );
 }
 
 function rejection(

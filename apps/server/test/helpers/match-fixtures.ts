@@ -127,3 +127,39 @@ export const REPETITION_SCRIPT: readonly Move[] = Object.freeze([
   { kind: "board", from: "r0c1", to: "r0c0" },
   { kind: "board", from: "r3c1", to: "r3c0" },
 ] as const satisfies readonly Move[]);
+
+/**
+ * The eight opening moves leave dark with three visible in row 0 and a fourth dark
+ * piece hidden under a light one at r0c3, which is the only position from which a
+ * reveal can happen.
+ */
+const REVEAL_OPENING: readonly Move[] = Object.freeze([
+  { kind: "reserve", reserveStack: 0, to: "r2c0" },
+  { kind: "reserve", reserveStack: 0, to: "r0c0" },
+  { kind: "reserve", reserveStack: 1, to: "r2c1" },
+  { kind: "reserve", reserveStack: 1, to: "r0c1" },
+  { kind: "reserve", reserveStack: 2, to: "r2c2" },
+  { kind: "reserve", reserveStack: 0, to: "r0c3" },
+  { kind: "board", from: "r2c0", to: "r0c3" },
+  { kind: "reserve", reserveStack: 0, to: "r0c2" },
+] as const satisfies readonly Move[]);
+
+/**
+ * Light lifts the piece at r0c3, which completes dark's row 0, and lands on r0c2 to
+ * break it again in the same move. Light then wins with row 2, so the match is the
+ * one "Uncovered" describes (docs/product-spec.md section 11.4).
+ */
+export const UNCOVERED_SCRIPT: readonly Move[] = Object.freeze([
+  ...REVEAL_OPENING,
+  { kind: "board", from: "r0c3", to: "r0c2" },
+  { kind: "reserve", reserveStack: 2, to: "r1c0" },
+  { kind: "reserve", reserveStack: 1, to: "r2c0" },
+  { kind: "reserve", reserveStack: 2, to: "r1c1" },
+  { kind: "reserve", reserveStack: 2, to: "r2c3" },
+] as const satisfies readonly Move[]);
+
+/** The same reveal, landing where it blocks nothing, which loses at once. */
+export const REVEAL_LOSS_SCRIPT: readonly Move[] = Object.freeze([
+  ...REVEAL_OPENING,
+  { kind: "board", from: "r0c3", to: "r1c3" },
+] as const satisfies readonly Move[]);
