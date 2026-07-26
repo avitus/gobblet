@@ -36,6 +36,13 @@
       "when": 1785085057314,
       "tag": "0004_phase7_administration",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785108125879,
+      "tag": "0005_phase8_desktop_releases",
+      "breakpoints": true
     }
   ]
 }

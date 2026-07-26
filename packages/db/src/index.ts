@@ -27,6 +27,10 @@ export {
   ratingChanges,
   ratingOutcomeEnum,
   ratings,
+  releaseArtifacts,
+  releaseChannelEnum,
+  releases,
+  updateTargetEnum,
   userAchievements,
   userRoleEnum,
   userSessions,
@@ -52,6 +56,8 @@ export type {
   NewRatingAdjustmentRow,
   NewRatingChangeRow,
   NewRatingRow,
+  NewReleaseArtifactRow,
+  NewReleaseRow,
   NewUserAchievementRow,
   NewUserRow,
   NewUserSessionRow,
@@ -59,6 +65,8 @@ export type {
   RatingAdjustmentRow,
   RatingChangeRow,
   RatingRow,
+  ReleaseArtifactRow,
+  ReleaseRow,
   UserAchievementRow,
   UserRow,
   UserSessionRow,
@@ -113,6 +121,18 @@ export {
   listRatingAdjustmentsForUser,
   setRating,
 } from "./repositories/rating-adjustments";
+
+export {
+  findLatestRelease,
+  findReleaseById,
+  findReleaseByVersion,
+  insertRelease,
+  insertReleaseArtifacts,
+  listReleases,
+  promoteRelease,
+  setReleasePaused,
+} from "./repositories/releases";
+export type { ReleaseWithArtifacts } from "./repositories/releases";
 
 export { readLeaderboardPage } from "./repositories/leaderboards";
 export type {

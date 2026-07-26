@@ -53,7 +53,7 @@ export async function ensureTestDatabase(connectionString: string): Promise<void
 
 export async function truncateAllTables(executor: DatabaseExecutor): Promise<void> {
   await executor.execute(
-    sql`truncate table match_events, matches, guest_sessions, email_verification_tokens, user_sessions, profiles, users cascade`,
+    sql`truncate table match_events, matches, guest_sessions, email_verification_tokens, user_sessions, profiles, release_artifacts, releases, users cascade`,
   );
 }
 

@@ -52,8 +52,18 @@ export const auditActionEnum = pgEnum("audit_action", [
   "achievement-created",
   "achievement-updated",
   "role-granted",
+  "release-published",
+  "release-paused",
+  "release-resumed",
+  "release-promoted",
 ]);
-export const auditTargetTypeEnum = pgEnum("audit_target_type", ["user", "achievement"]);
+export const auditTargetTypeEnum = pgEnum("audit_target_type", ["user", "achievement", "release"]);
+export const releaseChannelEnum = pgEnum("release_channel", ["stable", "beta"]);
+export const updateTargetEnum = pgEnum("update_target", [
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "windows-x86_64",
+]);
 export const connectionEventKindEnum = pgEnum("connection_event_kind", ["attached", "detached"]);
 
 /**
@@ -430,6 +440,53 @@ export const matchConnectionEvents = pgTable(
   (table) => [index("match_connection_events_match_idx").on(table.matchId, table.id)],
 );
 
+/**
+ * A desktop release and its artifacts (docs/adr/0034-updates-are-asked-of-our-own-server.md).
+ * The bytes live in immutable release storage; these rows record where they are,
+ * what they weigh, what they hash to and the signature the updater verifies. A
+ * version is unique within a channel, and `paused` is what stops a rollout without
+ * deleting anything.
+ */
+export const releases = pgTable(
+  "releases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    version: text("version").notNull(),
+    channel: releaseChannelEnum("channel").notNull(),
+    notes: text("notes").notNull(),
+    paused: boolean("paused").notNull().default(false),
+    publishedBy: uuid("published_by").references(() => users.id, { onDelete: "set null" }),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("releases_channel_version_key").on(table.channel, table.version),
+    index("releases_channel_published_idx").on(table.channel, table.publishedAt),
+  ],
+);
+
+export const releaseArtifacts = pgTable(
+  "release_artifacts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    releaseId: uuid("release_id")
+      .notNull()
+      .references(() => releases.id, { onDelete: "cascade" }),
+    target: updateTargetEnum("target").notNull(),
+    /** The update bundle the updater downloads. */
+    url: text("url").notNull(),
+    /** The installer a person downloads from the download page. */
+    downloadUrl: text("download_url").notNull(),
+    signature: text("signature").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("release_artifacts_release_target_key").on(table.releaseId, table.target),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type ProfileRow = typeof profiles.$inferSelect;
@@ -458,3 +515,7 @@ export type RatingAdjustmentRow = typeof ratingAdjustments.$inferSelect;
 export type NewRatingAdjustmentRow = typeof ratingAdjustments.$inferInsert;
 export type MatchConnectionEventRow = typeof matchConnectionEvents.$inferSelect;
 export type NewMatchConnectionEventRow = typeof matchConnectionEvents.$inferInsert;
+export type ReleaseRow = typeof releases.$inferSelect;
+export type NewReleaseRow = typeof releases.$inferInsert;
+export type ReleaseArtifactRow = typeof releaseArtifacts.$inferSelect;
+export type NewReleaseArtifactRow = typeof releaseArtifacts.$inferInsert;
