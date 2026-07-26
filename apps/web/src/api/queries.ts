@@ -21,9 +21,22 @@ export const queryKeys = {
   me: ["me"] as const,
   matchHistory: ["me", "matches"] as const,
   achievements: ["me", "achievements"] as const,
+  leaderboards: ["leaderboard"] as const,
   leaderboard: (period: LeaderboardPeriod) => ["leaderboard", period] as const,
   profile: (username: string) => ["profile", username] as const,
 };
+
+/**
+ * What a finished match changes about the reader: their rating, their record, their
+ * rank, their history and their badges. A board is read at read time (ADR-0028), so
+ * the cached copies are dropped rather than patched.
+ */
+export const COMPLETED_MATCH_QUERY_KEYS: readonly (readonly string[])[] = Object.freeze([
+  queryKeys.me,
+  queryKeys.matchHistory,
+  queryKeys.achievements,
+  queryKeys.leaderboards,
+]);
 
 export function useServerConfig(): UseQueryResult<PublicServerConfig> {
   const api = useApi();

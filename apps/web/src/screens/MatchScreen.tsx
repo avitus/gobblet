@@ -7,8 +7,10 @@ import type {
   MatchSnapshot,
   Player,
 } from "@gobblet/protocol";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
+import { COMPLETED_MATCH_QUERY_KEYS } from "../api/queries";
 import { CommunicationPanel } from "../match/CommunicationPanel";
 import { opponentOf, seatOf } from "../match/seat";
 import { useCommunication } from "../match/use-communication";
@@ -70,6 +72,7 @@ type MatchBoardProps = Readonly<{
 /** Everything below here has a snapshot to draw, so nothing about it is optional. */
 function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const actor = useSessionStore((state) => state.actor);
   const renderTier = useSettingsStore((state) => state.renderTier);
   const engine = useSoundEngine();
@@ -104,6 +107,15 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
       void navigate(`/match/${rematch.nextMatchId}`);
     }
   }, [rematch.nextMatchId, navigate]);
+
+  useEffect(() => {
+    if (ended === null) {
+      return;
+    }
+    for (const queryKey of COMPLETED_MATCH_QUERY_KEYS) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [ended, queryClient]);
 
   const near = seat ?? "light";
   const far = opponentOf(near);

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SERVER_TO_CLIENT_EVENTS } from "@gobblet/protocol";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ApiProvider } from "../src/api/provider";
+import { COMPLETED_MATCH_QUERY_KEYS, queryKeys } from "../src/api/queries";
 import { SocketProvider } from "../src/match/provider";
 import { MatchSocket } from "../src/match/socket";
 import { MatchScreen } from "../src/screens/MatchScreen";
@@ -34,7 +35,7 @@ function mount(path = `/match/${MATCH_ID}`) {
     transport,
     now: () => SERVER_TIME,
   });
-  const { fetch: fetchImpl } = fakeFetch({});
+  const { fetch: fetchImpl, calls } = fakeFetch({});
   const client = new ApiClient({ baseUrl: "http://server.test", fetch: fetchImpl });
   const queryClient: QueryClient = testQueryClient();
 
@@ -52,7 +53,7 @@ function mount(path = `/match/${MATCH_ID}`) {
     </ApiProvider>,
   );
 
-  return { transport, socket };
+  return { transport, socket, queryClient, calls };
 }
 
 async function openMatch(
@@ -209,6 +210,31 @@ describe("the match screen", () => {
     await waitFor(() => {
       expect(transport.payloadsFor("match:rematch-request")).toHaveLength(1);
     });
+  });
+
+  it("drops the account's cached facts when the match ends", async () => {
+    const { transport, queryClient } = mount();
+    await openMatch(transport);
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    act(() => {
+      transport.fire(SERVER_TO_CLIENT_EVENTS.matchEnded, {
+        matchId: MATCH_ID,
+        version: 7,
+        result: "light",
+        reason: "line",
+      });
+    });
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledTimes(COMPLETED_MATCH_QUERY_KEYS.length);
+    });
+    expect(invalidate.mock.calls.map(([options]) => options?.queryKey)).toEqual([
+      queryKeys.me,
+      queryKeys.matchHistory,
+      queryKeys.achievements,
+      queryKeys.leaderboards,
+    ]);
   });
 
   it("shows the rating movement of a ranked result", async () => {
