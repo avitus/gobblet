@@ -217,9 +217,13 @@ export const AUDIT_ACTIONS = Object.freeze([
   "achievement-created",
   "achievement-updated",
   "role-granted",
+  "release-published",
+  "release-paused",
+  "release-resumed",
+  "release-promoted",
 ] as const);
 
-export const AUDIT_TARGET_TYPES = Object.freeze(["user", "achievement"] as const);
+export const AUDIT_TARGET_TYPES = Object.freeze(["user", "achievement", "release"] as const);
 
 /** Section 16 pages the administrative lists; a page may not exceed this. */
 export const ADMIN_PAGE_SIZE = 50;
@@ -253,6 +257,7 @@ export const CLIENT_ANALYTICS_EVENT_NAMES = Object.freeze([
   "app-launched",
   "render-tier-selected",
   "setting-changed",
+  "desktop-update-completed",
 ] as const);
 
 /** Where a client runs, for the desktop adoption figures of section 17.3. */
@@ -281,6 +286,37 @@ export const RENDER_TIER_SOURCES = Object.freeze(["detected", "chosen"] as const
 
 /** Whether a desktop update finished (Phase 8 emits these; the schema exists now). */
 export const UPDATE_OUTCOMES = Object.freeze(["success", "failure"] as const);
+
+/**
+ * The release channels of section 22.3: stable is what a download page offers, beta
+ * is the staged channel a release is proved in before it is promoted
+ * (docs/adr/0034-updates-are-asked-of-our-own-server.md).
+ */
+export const RELEASE_CHANNELS = Object.freeze(["stable", "beta"] as const);
+
+/**
+ * The platforms a desktop artifact is built for, spelled the way Tauri's updater
+ * asks for them, so the manifest is a translation of rows and not of names.
+ */
+export const UPDATE_TARGETS = Object.freeze([
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "windows-x86_64",
+] as const);
+
+/** The steps of a desktop release, in the order the workflow runs them. */
+export const RELEASE_BUILD_STEPS = Object.freeze([
+  "bundle",
+  "sign",
+  "notarize",
+  "publish",
+] as const);
+
+/** How a release step ended. A failure of `sign` or `notarize` is a paging alert. */
+export const BUILD_OUTCOMES = Object.freeze(["succeeded", "failed"] as const);
+
+/** Section 5.4 limits: notes are shown to a player, so they are bounded. */
+export const RELEASE_NOTES_MAX_LENGTH = 4000;
 
 /** Section 17.1 payload limits: a page may batch, but not without bound. */
 export const TELEMETRY_BATCH_MAX = 20;
@@ -357,6 +393,10 @@ export type ClientRenderTier = (typeof CLIENT_RENDER_TIERS)[number];
 export type ClientSettingName = (typeof CLIENT_SETTING_NAMES)[number];
 export type RenderTierSource = (typeof RENDER_TIER_SOURCES)[number];
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
+export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
+export type UpdateTarget = (typeof UPDATE_TARGETS)[number];
+export type ReleaseBuildStep = (typeof RELEASE_BUILD_STEPS)[number];
+export type BuildOutcome = (typeof BUILD_OUTCOMES)[number];
 export type UsernameUnavailableReason = (typeof USERNAME_UNAVAILABLE_REASONS)[number];
 export type QueueRejectionReason = (typeof QUEUE_REJECTION_REASONS)[number];
 export type RematchState = (typeof REMATCH_STATES)[number];

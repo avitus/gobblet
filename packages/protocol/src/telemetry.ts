@@ -47,13 +47,26 @@ const settingChangedSchema = z.strictObject({
 });
 
 /**
- * The subset a browser may report about itself. A client cannot announce a match it
+ * How an update ended, reported by the desktop that tried to install it: the shell
+ * carries no provider key, so this arrives through the relay like every other client
+ * event (appendix P8.10).
+ */
+const desktopUpdateCompletedSchema = z.strictObject({
+  name: z.literal("desktop-update-completed"),
+  outcome: z.enum(UPDATE_OUTCOMES),
+  fromVersion: z.string().min(1).max(32),
+  toVersion: z.string().min(1).max(32),
+});
+
+/**
+ * The subset a client may report about itself. A client cannot announce a match it
  * did not finish, because the server owns those events.
  */
 export const clientAnalyticsEventSchema = z.discriminatedUnion("name", [
   appLaunchedSchema,
   renderTierSelectedSchema,
   settingChangedSchema,
+  desktopUpdateCompletedSchema,
 ]);
 
 export const analyticsEventSchema = z.discriminatedUnion("name", [
@@ -98,13 +111,7 @@ export const analyticsEventSchema = z.discriminatedUnion("name", [
   }),
   z.strictObject({ name: z.literal("rematch-requested"), mode: z.enum(MATCH_MODES) }),
   z.strictObject({ name: z.literal("rematch-accepted"), mode: z.enum(MATCH_MODES) }),
-  z.strictObject({
-    name: z.literal("desktop-update-completed"),
-    outcome: z.enum(UPDATE_OUTCOMES),
-    /** Emitted from Phase 8 onwards; the schema exists so the sink is ready. */
-    fromVersion: z.string().min(1).max(32),
-    toVersion: z.string().min(1).max(32),
-  }),
+  desktopUpdateCompletedSchema,
 ]);
 
 export type AnalyticsEvent = z.infer<typeof analyticsEventSchema>;

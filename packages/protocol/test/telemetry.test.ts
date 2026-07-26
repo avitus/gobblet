@@ -53,6 +53,7 @@ describe("the analytics event list", () => {
       "app-launched",
       "render-tier-selected",
       "setting-changed",
+      "desktop-update-completed",
     ]);
     expect(clientAnalyticsEventSchema.parse(launched)).toEqual(launched);
     expect(

@@ -170,8 +170,12 @@ describe("the administrative vocabulary", () => {
       "achievement-created",
       "achievement-updated",
       "role-granted",
+      "release-published",
+      "release-paused",
+      "release-resumed",
+      "release-promoted",
     ]);
-    expect([...AUDIT_TARGET_TYPES]).toEqual(["user", "achievement"]);
+    expect([...AUDIT_TARGET_TYPES]).toEqual(["user", "achievement", "release"]);
   });
 
   it("requires a reason long enough to be one", () => {
