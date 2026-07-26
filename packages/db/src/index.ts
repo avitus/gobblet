@@ -4,6 +4,7 @@ export type { DatabaseExecutor, Transaction } from "./executor";
 export { MIGRATIONS_FOLDER, runMigrations } from "./migrate";
 
 export {
+  achievements,
   actorTypeEnum,
   colorAssignmentEnum,
   emailVerificationTokens,
@@ -20,15 +21,18 @@ export {
   ratingChanges,
   ratingOutcomeEnum,
   ratings,
+  userAchievements,
   userSessions,
   userStatusEnum,
   users,
 } from "./schema";
 export type {
+  AchievementRow,
   EmailVerificationTokenRow,
   GuestSessionRow,
   MatchEventRow,
   MatchRow,
+  NewAchievementRow,
   NewEmailVerificationTokenRow,
   NewGuestSessionRow,
   NewMatchEventRow,
@@ -36,26 +40,47 @@ export type {
   NewProfileRow,
   NewRatingChangeRow,
   NewRatingRow,
+  NewUserAchievementRow,
   NewUserRow,
   NewUserSessionRow,
   ProfileRow,
   RatingChangeRow,
   RatingRow,
+  UserAchievementRow,
   UserRow,
   UserSessionRow,
 } from "./schema";
 
 export {
+  awardAchievements,
+  listAchievementProgress,
+  listEnabledAchievements,
+} from "./repositories/achievements";
+export type { AchievementProgressRow } from "./repositories/achievements";
+
+export { readLeaderboardPage } from "./repositories/leaderboards";
+export type {
+  LeaderboardCursorRow,
+  LeaderboardPage,
+  LeaderboardQueryOptions,
+  LeaderboardRow,
+  LeaderboardWindow,
+} from "./repositories/leaderboards";
+
+export {
+  countCompletedMatchesForActor,
   findMatchById,
   findUnfinishedMatchForActor,
   insertMatch,
+  listCompletedMatchesForActor,
   listMatchesForActor,
   listUnfinishedMatches,
+  listWinningLineIdsForActorWins,
   lockMatchForUpdate,
   reassignMatchParticipation,
   updateMatchState,
 } from "./repositories/matches";
-export type { MatchStatePatch } from "./repositories/matches";
+export type { CompletedMatchCounts, MatchStatePatch } from "./repositories/matches";
 
 export {
   USERS_EMAIL_CONSTRAINT,
@@ -98,12 +123,14 @@ export {
   countMatchEvents,
   findEventByCommandId,
   findLatestMoveEvent,
+  hasRevealedAndBlockedMove,
   insertMatchEvent,
   listMatchEvents,
 } from "./repositories/match-events";
 
 export {
   findRating,
+  findRatingDeltasForMatches,
   insertRatingChanges,
   listRatingChangesForMatch,
   listRatingChangesForUser,

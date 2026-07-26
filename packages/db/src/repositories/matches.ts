@@ -15,6 +15,8 @@ export type MatchStatePatch = Readonly<{
   status?: MatchRow["status"];
   result?: MatchRow["result"];
   endReason?: MatchRow["endReason"];
+  /** The lines that ended it, recorded once so an achievement need not replay it. */
+  winningLineIds?: string[] | null;
   startedAt?: Date;
   endedAt?: Date | null;
 }>;
@@ -82,18 +84,7 @@ export async function findUnfinishedMatchForActor(
   const [row] = await executor
     .select()
     .from(matches)
-    .where(
-      and(
-        inArray(matches.status, ["queued", "active"]),
-        or(
-          and(
-            eq(matches.lightPlayerType, actor.actorType),
-            eq(matches.lightPlayerId, actor.actorId),
-          ),
-          and(eq(matches.darkPlayerType, actor.actorType), eq(matches.darkPlayerId, actor.actorId)),
-        ),
-      ),
-    )
+    .where(and(inArray(matches.status, ["queued", "active"]), participatedIn(actor)))
     .orderBy(matches.createdAt)
     .limit(1);
   return row;
@@ -142,12 +133,84 @@ export async function listMatchesForActor(
   return executor
     .select()
     .from(matches)
-    .where(
-      or(
-        and(eq(matches.lightPlayerType, actor.actorType), eq(matches.lightPlayerId, actor.actorId)),
-        and(eq(matches.darkPlayerType, actor.actorType), eq(matches.darkPlayerId, actor.actorId)),
-      ),
-    )
+    .where(participatedIn(actor))
     .orderBy(sql`${matches.createdAt} desc`)
     .limit(limit);
+}
+
+/** The finished matches a profile shows, newest first (appendix P6.12). */
+export async function listCompletedMatchesForActor(
+  executor: DatabaseExecutor,
+  actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+  limit: number,
+): Promise<MatchRow[]> {
+  return executor
+    .select()
+    .from(matches)
+    .where(and(eq(matches.status, "completed"), participatedIn(actor)))
+    .orderBy(sql`${matches.endedAt} desc`)
+    .limit(limit);
+}
+
+export type CompletedMatchCounts = Readonly<{ played: number; wins: number }>;
+
+/**
+ * Completed matches in both modes, and how many of them the actor won. Section
+ * 11.4 counts "matches" without qualifying the mode, and an aborted match counts
+ * for nothing (appendix P6.7).
+ */
+export async function countCompletedMatchesForActor(
+  executor: DatabaseExecutor,
+  actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+): Promise<CompletedMatchCounts> {
+  const result = await executor.execute<{ played: number; wins: number }>(sql`
+    select
+      count(*)::int as played,
+      count(*) filter (
+        where matches.result::text = case
+          when matches.light_player_type = ${actor.actorType}::actor_type
+            and matches.light_player_id = ${actor.actorId}::uuid then 'light'
+          else 'dark'
+        end
+      )::int as wins
+    from matches
+    where matches.status = 'completed'
+      and (
+        (matches.light_player_type = ${actor.actorType}::actor_type and matches.light_player_id = ${actor.actorId}::uuid)
+        or (matches.dark_player_type = ${actor.actorType}::actor_type and matches.dark_player_id = ${actor.actorId}::uuid)
+      )
+  `);
+
+  const [row] = result.rows;
+  return { played: row?.played ?? 0, wins: row?.wins ?? 0 };
+}
+
+/**
+ * The distinct lines the actor has ever won with, which is what "Four Ways" counts
+ * (appendix P6.6). The ids come from the match rows, so no game state is replayed.
+ */
+export async function listWinningLineIdsForActorWins(
+  executor: DatabaseExecutor,
+  actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>,
+): Promise<string[]> {
+  const result = await executor.execute<{ line_id: string }>(sql`
+    select distinct unnest(matches.winning_line_ids) as line_id
+    from matches
+    where matches.status = 'completed'
+      and matches.winning_line_ids is not null
+      and (
+        (matches.result = 'light' and matches.light_player_type = ${actor.actorType}::actor_type and matches.light_player_id = ${actor.actorId}::uuid)
+        or (matches.result = 'dark' and matches.dark_player_type = ${actor.actorType}::actor_type and matches.dark_player_id = ${actor.actorId}::uuid)
+      )
+    order by line_id
+  `);
+
+  return result.rows.map((row) => row.line_id);
+}
+
+function participatedIn(actor: Readonly<{ actorType: "user" | "guest"; actorId: string }>) {
+  return or(
+    and(eq(matches.lightPlayerType, actor.actorType), eq(matches.lightPlayerId, actor.actorId)),
+    and(eq(matches.darkPlayerType, actor.actorType), eq(matches.darkPlayerId, actor.actorId)),
+  );
 }

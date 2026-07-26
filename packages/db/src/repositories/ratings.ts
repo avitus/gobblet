@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ratingChanges, ratings } from "../schema";
 import type { NewRatingChangeRow, RatingChangeRow, RatingRow } from "../schema";
 import type { DatabaseExecutor } from "../executor";
@@ -93,6 +93,27 @@ export async function listRatingChangesForMatch(
     .from(ratingChanges)
     .where(eq(ratingChanges.matchId, matchId))
     .orderBy(ratingChanges.side);
+}
+
+/**
+ * The rating movement an account saw in each of the given matches, which is the
+ * "Elo change if ranked" field of a match summary (spec section 11.2). A match with
+ * no audit row is simply absent from the map.
+ */
+export async function findRatingDeltasForMatches(
+  executor: DatabaseExecutor,
+  userId: string,
+  matchIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (matchIds.length === 0) {
+    return new Map();
+  }
+  const rows = await executor
+    .select({ matchId: ratingChanges.matchId, delta: ratingChanges.delta })
+    .from(ratingChanges)
+    .where(and(eq(ratingChanges.userId, userId), inArray(ratingChanges.matchId, [...matchIds])));
+
+  return new Map(rows.map((row) => [row.matchId, row.delta]));
 }
 
 export async function listRatingChangesForUser(

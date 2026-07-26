@@ -52,6 +52,31 @@ export async function listMatchEvents(
     .orderBy(matchEvents.sequence);
 }
 
+/**
+ * Whether the actor played a move in this match that revealed an opponent line and
+ * blocked it at once, which is the fact the "Uncovered" achievement needs
+ * (appendix P6.5). The flag was written when the engine computed it, so nothing is
+ * recomputed here.
+ */
+export async function hasRevealedAndBlockedMove(
+  executor: DatabaseExecutor,
+  matchId: string,
+  actorId: string,
+): Promise<boolean> {
+  const [row] = await executor
+    .select({ matchId: matchEvents.matchId })
+    .from(matchEvents)
+    .where(
+      and(
+        eq(matchEvents.matchId, matchId),
+        eq(matchEvents.actorId, actorId),
+        eq(matchEvents.revealedAndBlocked, true),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 export async function countMatchEvents(
   executor: DatabaseExecutor,
   matchId: string,

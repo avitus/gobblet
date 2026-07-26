@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   findMatchById,
   findRating,
+  findRatingDeltasForMatches,
   insertMatch,
   insertRatingChanges,
   insertUser,
@@ -218,6 +219,33 @@ describe("rating_changes", () => {
 
     expect(history.map((row) => row.matchId)).toEqual([newer.id, older.id]);
     expect(await listRatingChangesForUser(handle.db, light.id, 1)).toHaveLength(1);
+  });
+
+  it("answers the rating movement of specific matches, and omits the unrated ones", async () => {
+    const light = await createUser();
+    const dark = await createUser();
+    const rated = await createRankedMatch(light, dark);
+    const casual = await createRankedMatch(light, dark);
+    await insertRatingChanges(handle.db, [
+      {
+        matchId: rated.id,
+        userId: light.id,
+        side: "light",
+        ratingBefore: 1200,
+        ratingAfter: 1216,
+        delta: 16,
+        opponentRatingBefore: 1200,
+        outcome: "win",
+        formulaVersion: 1,
+      },
+    ]);
+
+    const deltas = await findRatingDeltasForMatches(handle.db, light.id, [rated.id, casual.id]);
+
+    expect(deltas.get(rated.id)).toBe(16);
+    expect(deltas.has(casual.id)).toBe(false);
+    expect(await findRatingDeltasForMatches(handle.db, light.id, [])).toEqual(new Map());
+    expect(await findRatingDeltasForMatches(handle.db, dark.id, [rated.id])).toEqual(new Map());
   });
 });
 

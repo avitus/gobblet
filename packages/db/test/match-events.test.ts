@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   countMatchEvents,
   findEventByCommandId,
+  hasRevealedAndBlockedMove,
   insertMatch,
   insertMatchEvent,
   listMatchEvents,
@@ -109,5 +110,36 @@ describe("match event log", () => {
 
     expect(await countMatchEvents(handle.db, other.id)).toBe(0);
     expect(await listMatchEvents(handle.db, other.id)).toEqual([]);
+  });
+
+  it("marks no move as a reveal and block unless it was one", async () => {
+    await insertMatchEvent(handle.db, eventFixture(1, randomUUID()));
+
+    expect(await hasRevealedAndBlockedMove(handle.db, match.id, match.lightPlayerId)).toBe(false);
+  });
+
+  it("remembers a move that revealed an opponent line and blocked it, per actor", async () => {
+    await insertMatchEvent(handle.db, {
+      ...eventFixture(1, randomUUID()),
+      actorId: match.lightPlayerId,
+      revealedAndBlocked: true,
+    });
+    await insertMatchEvent(handle.db, {
+      ...eventFixture(2, randomUUID()),
+      actorId: match.darkPlayerId,
+    });
+
+    expect(await hasRevealedAndBlockedMove(handle.db, match.id, match.lightPlayerId)).toBe(true);
+    expect(await hasRevealedAndBlockedMove(handle.db, match.id, match.darkPlayerId)).toBe(false);
+  });
+
+  it("does not carry the fact across matches", async () => {
+    const other = await insertMatch(handle.db, matchFixture());
+    await insertMatchEvent(handle.db, {
+      ...eventFixture(1, randomUUID()),
+      revealedAndBlocked: true,
+    });
+
+    expect(await hasRevealedAndBlockedMove(handle.db, other.id, match.lightPlayerId)).toBe(false);
   });
 });

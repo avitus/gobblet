@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -15,10 +16,9 @@ import {
 import { sql } from "drizzle-orm";
 
 /**
- * Tables from docs/product-spec.md section 15. Achievement and audit tables arrive
- * with the phases that own them (6 and 7); match participants are polymorphic
- * (`actor_type` plus `actor_id`) and carry no foreign key, because a participant
- * may be a guest.
+ * Tables from docs/product-spec.md section 15. The audit table arrives with the
+ * phase that owns it (7); match participants are polymorphic (`actor_type` plus
+ * `actor_id`) and carry no foreign key, because a participant may be a guest.
  */
 
 export const actorTypeEnum = pgEnum("actor_type", ["user", "guest"]);
@@ -167,6 +167,13 @@ export const matches = pgTable(
     turnStartedAt: timestamp("turn_started_at", { withTimezone: true }),
     lastClockCommitAt: timestamp("last_clock_commit_at", { withTimezone: true }),
     moveCount: integer("move_count").notNull().default(0),
+    /**
+     * The lines that ended the match, written as it completes. Recording them here
+     * is what lets the "Four Ways" achievement be one aggregate query rather than a
+     * replay of every match an account has played
+     * (docs/adr/0027-achievements-awarded-in-the-completion-transaction.md).
+     */
+    winningLineIds: text("winning_line_ids").array(),
     /** How the seats were decided, which section 9.4 requires to be auditable. */
     colorAssignment: colorAssignmentEnum("color_assignment").notNull().default("random"),
     /** The match this one alternates colours from, for a rematch (section 4.5). */
@@ -189,21 +196,29 @@ export const matches = pgTable(
  * a ranked match, so an account that has never played ranked has no rating rather
  * than a fictional one.
  */
-export const ratings = pgTable("ratings", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  rating: integer("rating").notNull(),
-  gamesPlayed: integer("games_played").notNull().default(0),
-  wins: integer("wins").notNull().default(0),
-  losses: integer("losses").notNull().default(0),
-  draws: integer("draws").notNull().default(0),
-  /** Positive while winning, negative while losing, zero after a draw. */
-  currentStreak: integer("current_streak").notNull().default(0),
-  bestStreak: integer("best_streak").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const ratings = pgTable(
+  "ratings",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    rating: integer("rating").notNull(),
+    gamesPlayed: integer("games_played").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    /** Positive while winning, negative while losing, zero after a draw. */
+    currentStreak: integer("current_streak").notNull().default(0),
+    bestStreak: integer("best_streak").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The moment the rating last moved, which is the final leaderboard tie-breaker. */
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** The leading edge of every leaderboard sort (docs/adr/0028-leaderboards-are-read-time-queries.md). */
+    index("ratings_leaderboard_idx").on(table.rating.desc(), table.updatedAt),
+  ],
+);
 
 /**
  * The append-only audit section 10 requires: what each player's rating was, what
@@ -233,6 +248,8 @@ export const ratingChanges = pgTable(
   (table) => [
     uniqueIndex("rating_changes_match_user_key").on(table.matchId, table.userId),
     index("rating_changes_user_idx").on(table.userId),
+    /** Period leaderboards select their members by when a rating moved (appendix P6.9). */
+    index("rating_changes_created_at_idx").on(table.createdAt),
   ],
 );
 
@@ -250,6 +267,12 @@ export const matchEvents = pgTable(
     actorId: uuid("actor_id"),
     payload: jsonb("payload").notNull(),
     stateHash: text("state_hash").notNull(),
+    /**
+     * True for a move that exposed an opponent line and blocked it in the same
+     * placement, which is the fact the "Uncovered" achievement needs and the only
+     * one the engine computes but the board state does not keep (appendix P6.5).
+     */
+    revealedAndBlocked: boolean("revealed_and_blocked").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -257,6 +280,50 @@ export const matchEvents = pgTable(
     uniqueIndex("match_events_match_command_key")
       .on(table.matchId, table.commandId)
       .where(sql`${table.commandId} is not null`),
+  ],
+);
+
+/**
+ * The catalogue of section 15.7. Rows are seeded from `ACHIEVEMENT_CATALOGUE` in
+ * `@gobblet/protocol`, and `enabled` is what the Phase 7 admin surface toggles;
+ * `badge_asset` holds a tier code rather than an image path (appendix P6.8).
+ */
+export const achievements = pgTable(
+  "achievements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    badgeAsset: text("badge_asset").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    ruleVersion: integer("rule_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("achievements_code_key").on(table.code)],
+);
+
+/**
+ * One row per achievement an account has earned. The composite primary key is what
+ * makes awarding idempotent: a repeated completion inserts nothing
+ * (docs/adr/0027-achievements-awarded-in-the-completion-transaction.md).
+ */
+export const userAchievements = pgTable(
+  "user_achievements",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    achievementId: uuid("achievement_id")
+      .notNull()
+      .references(() => achievements.id, { onDelete: "cascade" }),
+    earnedAt: timestamp("earned_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The match that earned it, kept null when the match is later deleted. */
+    sourceMatchId: uuid("source_match_id").references(() => matches.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.achievementId] }),
+    index("user_achievements_user_idx").on(table.userId),
   ],
 );
 
@@ -278,3 +345,7 @@ export type RatingRow = typeof ratings.$inferSelect;
 export type NewRatingRow = typeof ratings.$inferInsert;
 export type RatingChangeRow = typeof ratingChanges.$inferSelect;
 export type NewRatingChangeRow = typeof ratingChanges.$inferInsert;
+export type AchievementRow = typeof achievements.$inferSelect;
+export type NewAchievementRow = typeof achievements.$inferInsert;
+export type UserAchievementRow = typeof userAchievements.$inferSelect;
+export type NewUserAchievementRow = typeof userAchievements.$inferInsert;
