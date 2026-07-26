@@ -6,7 +6,7 @@ export type Player = Readonly<{ context: BrowserContext; page: Page }>;
 
 export type ContextOptions = Readonly<{
   /** `flat` by default: a DOM square is addressable in every engine (docs/adr/0023). */
-  renderTier?: "auto" | "flat";
+  renderTier?: "auto" | "full" | "reduced" | "flat";
 }>;
 
 /**
