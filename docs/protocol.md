@@ -219,20 +219,20 @@ server answers right now.
 
 ### 8.1 Client to server
 
-| Event                   | Purpose                                      | Payload sketch                             | Ack | Phase                   | Implemented today |
-| ----------------------- | -------------------------------------------- | ------------------------------------------ | --- | ----------------------- | ----------------- |
-| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }` | Yes | 2 (guest), 3 (accounts) | Yes               |
-| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`             | Yes | 4                       | Yes               |
-| `queue:leave`           | Leave the current queue                      | `{}`                                       | Yes | 4                       | Yes               |
-| `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                              | Yes | 2                       | Yes               |
-| `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`      | Yes | 2                       | Yes               |
-| `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`            | Yes | 2                       | Yes               |
-| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                              | Yes | 4                       | Yes               |
-| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                      | Yes | 4                       | Yes               |
-| `match:preset-message`  | Send one preset phrase                       | `{ matchId, messageKey }`                  | Yes | 6                       | No                |
-| `match:reaction`        | Send one preset reaction                     | `{ matchId, reactionKey }`                 | Yes | 6                       | No                |
-| `match:mute-state`      | Mute or unmute the opponent's communication  | `{ matchId, muted }`                       | Yes | 6                       | No                |
-| `presence:heartbeat`    | Keep the session marked present              | `{}`                                       | No  | 4                       | No                |
+| Event                   | Purpose                                      | Payload sketch                                     | Ack | Phase                   | Implemented today |
+| ----------------------- | -------------------------------------------- | -------------------------------------------------- | --- | ----------------------- | ----------------- |
+| `session:authenticate`  | Bind a socket to a session or guest identity | `{ clientVersion, appEnv, sessionToken? }`         | Yes | 2 (guest), 3 (accounts) | Yes               |
+| `queue:join`            | Enter a matchmaking queue                    | `{ mode, timeControlSeconds }`                     | Yes | 4                       | Yes               |
+| `queue:leave`           | Leave the current queue                      | `{}`                                               | Yes | 4                       | Yes               |
+| `match:sync`            | Request the authoritative snapshot           | `{ matchId }`                                      | Yes | 2                       | Yes               |
+| `match:move`            | Submit a move                                | envelope with `{ payload: { move } }`              | Yes | 2                       | Yes               |
+| `match:resign`          | Resign the match                             | envelope with `{ payload: {} }`                    | Yes | 2                       | Yes               |
+| `match:rematch-request` | Offer a rematch after a match ends           | `{ matchId }`                                      | Yes | 4                       | Yes               |
+| `match:rematch-respond` | Accept or decline a rematch offer            | `{ matchId, accept }`                              | Yes | 4                       | Yes               |
+| `match:preset-message`  | Send one preset phrase                       | `{ matchId, messageKey }`                          | Yes | 6                       | Yes               |
+| `match:reaction`        | Send one preset reaction                     | `{ matchId, reactionKey }`                         | Yes | 6                       | Yes               |
+| `match:mute-state`      | Mute or unmute each channel separately       | `{ matchId, presetMessagesMuted, reactionsMuted }` | Yes | 6                       | Yes               |
+| `presence:heartbeat`    | Keep the session marked present              | `{}`                                               | No  | 4                       | No                |
 
 `match:move` payload sketch, where board coordinates and reserve stacks follow
 [`rules.md`](rules.md):
@@ -257,8 +257,8 @@ server answers right now.
 | `match:clock-sync`     | Authoritative clock reading                            | `{ matchId, version, activePlayer, lightRemainingMs, darkRemainingMs, serverTime }` | 2                      | Yes               |
 | `match:ended`          | Terminal outcome, including rating change              | `{ matchId, version, result, reason, ratings? }`                                    | 2 (result), 4 (rating) | Yes               |
 | `match:rematch-status` | Rematch offer lifecycle                                | `{ matchId, state, requestedBy, expiresAt, nextMatchId }`                           | 4                      | Yes               |
-| `match:preset-message` | Opponent preset phrase delivered                       | `{ matchId, from, messageKey }`                                                     | 6                      | No                |
-| `match:reaction`       | Opponent reaction delivered                            | `{ matchId, from, reactionKey }`                                                    | 6                      | No                |
+| `match:preset-message` | A preset phrase relayed, sender included               | `{ matchId, from, actorId, sentAt, messageKey }`                                    | 6                      | Yes               |
+| `match:reaction`       | A reaction relayed, sender included                    | `{ matchId, from, actorId, sentAt, reactionKey }`                                   | 6                      | Yes               |
 | `error:recoverable`    | The session continues, the last action did not succeed | `{ code, message, retryable: true, context? }`                                      | 2                      | Yes               |
 | `error:fatal`          | The session cannot continue                            | `{ code, message, action }`                                                         | 2                      | Yes               |
 
@@ -278,6 +278,11 @@ server answers right now.
   a different answer.
 - `match:rematch-request` and `match:rematch-respond` acknowledge `{ ok: true, status }` with the
   same status both players receive on `match:rematch-status`, or `{ ok: false, reason }`.
+- `match:preset-message`, `match:reaction` and `match:mute-state` acknowledge `{ ok: true }` or
+  `{ ok: false, reason }`, where the reason is `invalid-payload`, `not-authorized` or
+  `not-participant`. A relayed phrase or reaction always reaches its sender, and reaches the
+  opponent unless that opponent has muted the channel; nothing is stored either way
+  ([ADR-0026](adr/0026-communication-is-relayed-never-stored.md)).
 - Broadcasts go to the match room, which means both seats receive `match:move-committed`,
   `match:clock-sync`, `match:ended` and every corrective `match:snapshot`, including the
   player who sent the command.
@@ -344,7 +349,7 @@ lives for 30 seconds.
 | GET    | `/health/live`           | none | Process liveness                                                      | 0     | Yes               |
 | GET    | `/health/ready`          | none | Dependency readiness, including the database                          | 0     | Yes               |
 | GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits                        | 0     | Yes               |
-| GET    | `/v1/leaderboards`       | none | Global rating leaderboards                                            | 6     | No                |
+| GET    | `/v1/leaderboards`       | none | Ranked board for one period, paged by cursor                          | 6     | Yes               |
 | GET    | `/v1/profiles/:username` | none | Public profile: username, avatar, country, member since, both records | 3     | Yes               |
 
 ### 9.2 Session and user
@@ -362,7 +367,7 @@ lives for 30 seconds.
 | GET    | `/v1/me`                | user    | Current account, verification state, casual record  | 3     | Yes               |
 | PATCH  | `/v1/me/profile`        | user    | Update profile fields                               | 3     | Yes               |
 | GET    | `/v1/me/matches`        | session | Own match history, newest first                     | 3     | Yes               |
-| GET    | `/v1/me/achievements`   | user    | Own achievement progress                            | 6     | No                |
+| GET    | `/v1/me/achievements`   | user    | Own achievement progress                            | 6     | Yes               |
 | POST   | `/v1/usernames/check`   | none    | Check username availability                         | 3     | Yes               |
 | POST   | `/v1/usernames/claim`   | session | Claim an immutable username                         | 3     | Not delivered     |
 
@@ -380,6 +385,24 @@ sign-in and verify-email are throttled per address and route; over the limit the
 `POST /v1/guests/claim` answers the same body plus `claimedMatches`, the number of matches moved
 to the new account. The guest token itself becomes an account session token, so a client holding
 it, mid-match included, keeps acting as the account it just created rather than losing its seat.
+
+`GET /v1/me` answers `{ account, profile, casual, ranked, rank }`, where `rank` is the account's
+position on the all-time board or `null` for an account with no ranked result.
+
+`GET /v1/me/achievements` answers `{ achievements }`: the whole catalogue, each entry carrying
+`{ code, name, description, badge, ruleVersion, earnedAt, matchId }`, with `earnedAt` and
+`matchId` `null` for one not yet earned.
+
+`GET /v1/leaderboards?period=<all-time|daily|weekly|monthly>&cursor=<cursor>` answers
+`{ period, periodStart, periodEnd, generatedAt, entries, nextCursor, you }`. An entry is
+`{ rank, username, avatarUrl, countryCode, rating, wins, games }`, `you` is the reader's own
+entry or `null`, and paging follows `nextCursor` rather than an offset so a rating that moves
+between requests cannot make a page skip or repeat an account
+([ADR-0028](adr/0028-leaderboards-are-read-time-queries.md)).
+
+`GET /v1/profiles/:username` also carries `rank`, `badges` and `recentMatches`: the earned
+achievements and the last five completed matches, each with the seat the player held, the move
+count, the result from that seat and the rating change.
 
 ### 9.3 Match recovery
 
@@ -567,7 +590,7 @@ account that no longer exists, and it answers with the seat and the reason
 
 ## 14. Limits and payload constraints
 
-Status: planned (Phase 2 for envelope limits, Phase 6 for communication limits).
+Status: implemented for communication (Phase 6); the envelope rate limits remain planned.
 
 | Constraint                         | Value                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -576,6 +599,10 @@ Status: planned (Phase 2 for envelope limits, Phase 6 for communication limits).
 | Command rate limit                 | Per session, enforced server side, exceeding yields `error:recoverable` with `rate_limited` |
 | Free-text player to player content | Not supported at all                                                                        |
 | Communication payloads             | Enum keys only (`messageKey`, `reactionKey`) from a server-known set                        |
+| Preset phrases                     | 8 keys; reactions: 5 keys                                                                   |
+| Communication retention            | None: relayed to the two sockets and stored nowhere                                         |
+| Leaderboard page size              | 100 entries, paged by cursor                                                                |
+| Achievement catalogue              | 8 codes, one rule version, evaluated in the completing transaction                          |
 | Unknown fields                     | Rejected by Zod strict object parsing                                                       |
 | Unknown enum members               | Rejected on input, ignorable on output                                                      |
 

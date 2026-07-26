@@ -401,7 +401,7 @@ rewrite:
 | ----------------- | ------------------------------------ | -------------------------------------------------- | ----------------------- |
 | Matchmaking queue | In-process queue behind an interface | Shared queue (Redis or database backed)            | Implemented (Phase 4)   |
 | Rematch offers    | In-process offers with a deadline    | Shared store, if offers must cross processes       | Implemented (Phase 4)   |
-| Presence          | In-process session registry          | Shared presence store                              | Planned (Phase 6)       |
+| Presence          | In-process session registry          | Shared presence store                              | In process (Phase 2)    |
 | Socket fan-out    | In-process Socket.IO rooms           | Socket.IO Redis adapter across containers          | Planned (Phase 9)       |
 | Transport         | Socket.IO over one origin            | Additional origins behind sticky routing           | Planned (Phase 9)       |
 | Region            | Single region                        | Additional read-local edges, matches stay regional | Not planned for the MVP |
@@ -434,8 +434,8 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Socket.IO gateway: sync, move, resign, clock cadence      | Implemented | Phase 2      |
 | First-party authentication, guests, profiles              | Implemented | Phase 3      |
 | Matchmaking, Elo, rematch                                 | Implemented | Phase 4      |
-| 3D client and shared game UI                              | Planned     | Phase 5      |
-| Social surface and progression                            | Planned     | Phase 6      |
+| 3D client and shared game UI                              | Implemented | Phase 5      |
+| Social surface and progression                            | Implemented | Phase 6      |
 | Admin API, audit log, metrics, alerting                   | Planned     | Phase 7      |
 | Desktop shell, signing, auto-update                       | Planned     | Phase 8      |
 | Load, soak and launch hardening                           | Planned     | Phase 9      |
