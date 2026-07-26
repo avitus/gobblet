@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import * as gameUi from "../src/index";
+
+describe("the package surface", () => {
+  it("exports the board, the interaction layer, the clock and the tiers", () => {
+    expect(Object.keys(gameUi).sort()).toEqual(
+      [
+        "ANIMATIONS",
+        "BOARD_THICKNESS",
+        "BoardScene",
+        "BoardView",
+        "CAMERA_AZIMUTH_LIMIT_DEGREES",
+        "CAMERA_BASE_DISTANCE",
+        "CAMERA_MAX_ZOOM",
+        "CAMERA_MIN_ZOOM",
+        "CAMERA_POLAR_DEGREES",
+        "DEFAULT_ORBIT",
+        "FlatBoard",
+        "LOW_TIME_THRESHOLD_MS",
+        "PIECE_DIMENSIONS",
+        "REDUCED_MOTION_CROSSFADE_MS",
+        "RENDER_TIERS",
+        "SELECTION_LIFT",
+        "SILENT_ENGINE",
+        "SOUND_CUES",
+        "SQUARE_PITCH",
+        "UNKNOWN_CAPABILITIES",
+        "animationDurationMs",
+        "buildBoardModel",
+        "catchUpDurationMs",
+        "clampOrbit",
+        "createSoundEngine",
+        "describeScene",
+        "detectCapabilities",
+        "displayedClocks",
+        "downgradeTier",
+        "easeProgress",
+        "findDestination",
+        "formatClock",
+        "handleBoardKey",
+        "isLowTime",
+        "lift",
+        "nudgeOrbit",
+        "placeCamera",
+        "reservePosition",
+        "resolveTier",
+        "sameOrigin",
+        "squarePosition",
+        "tierSettings",
+        "useBoardInteraction",
+      ].sort(),
+    );
+  });
+});
