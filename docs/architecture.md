@@ -102,7 +102,7 @@ endpoints and `GET /v1/config`. All other interactions are planned.
 
 | Component                | Responsibility                                                          | Status                                              |
 | ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
-| `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Skeleton (Phase 0), gameplay planned (Phase 5)      |
+| `apps/web`               | All player-facing UI, optimistic feedback, socket client                | Implemented (Phase 5)                               |
 | `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates  | Planned (Phase 8)                                   |
 | `apps/server`            | Authoritative HTTP API and real-time runtime                            | Implemented (Phase 4), gameplay surface grows later |
 | `apps/admin`             | Administration surface, may start as protected routes inside `apps/web` | Planned (Phase 7)                                   |
@@ -112,8 +112,8 @@ endpoints and `GET /v1/config`. All other interactions are planned.
 | `packages/config`        | Typed environment parsing and validation                                | Implemented (Phase 0)                               |
 | `packages/auth`          | Password hashing and verification, opaque session token helpers         | Implemented (Phase 3)                               |
 | `packages/observability` | Pino logging, metrics registry, error reporting helpers                 | Planned (Phase 7)                                   |
-| `packages/design-system` | CSS custom property tokens and shared primitives                        | Planned (Phase 5)                                   |
-| `packages/game-ui`       | Shared React game UI reused by web and desktop                          | Planned (Phase 5)                                   |
+| `packages/design-system` | CSS custom property tokens and shared primitives                        | Implemented (Phase 5)                               |
+| `packages/game-ui`       | Shared React game UI reused by web and desktop                          | Implemented (Phase 5)                               |
 | `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites                | Grows with each phase's suites                      |
 
 The server runs HTTP and real-time transport in one Node process (see
@@ -171,6 +171,7 @@ Topology decisions and their consequences are recorded in
 apps/        web/, desktop/, server/, admin/
 packages/    game-core/, protocol/, game-ui/, design-system/, db/, auth/,
              observability/, config/, test-utils/
+e2e/         Playwright browser suite: helpers/, setup/, tests/
 assets/      brand/, models/, textures/, audio/, licenses/
 infra/       docker/, deployment/, monitoring/, backup/
 docs/        Specification, rules, architecture, protocol, operations, ADRs
