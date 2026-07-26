@@ -46,6 +46,29 @@ versioning for desktop releases; the web client tracks the same version number.
   record shown on a profile.
 - Phase 4 rematches: a thirty second offer after a match ends, which creates a new
   match with the colours alternated and remembers the match it followed.
+- Phase 5 client: the 3D board with three render tiers and a flat fallback, hidden
+  piece rendering that never leaks what a cover conceals, keyboard play, synthesised
+  sounds, the sign-in, registration, verification, profile, history and settings
+  screens, and a Playwright suite that plays a complete match in Chromium and WebKit.
+- Phase 5 packages: `@gobblet/design-system` for the tokens and primitives and
+  `@gobblet/game-ui` for the board, both shared by the web client and the future
+  desktop shell.
+- Phase 6 social and progression: the eight preset messages and five reactions,
+  relayed and never stored, each channel muted independently, achievements awarded in
+  the transaction that completes a match, and daily, weekly, monthly and all-time
+  leaderboards computed at read time.
+- Phase 7 administration: the `admin` role on an account, a dashboard of gated routes
+  in the player client, user search and detail, suspension and reinstatement, match
+  inspection with its event log, corrective rating adjustment, achievement management,
+  an operational summary, and an append-only audit log that every mutation writes to in
+  the same transaction as the change.
+- Phase 7 observability: structured logs carrying a pseudonym, Sentry and PostHog
+  behind ports that stay inert without keys, client reports relayed through the server,
+  and a Prometheus exposition on `GET /metrics` when a deployment asks for one.
+- Phase 7 operations: `pnpm db:backup`, `pnpm db:restore` and `pnpm db:export-critical`
+  with a manifest and a restore proved on every build, alert conditions defined once and
+  rendered to `ops/alerts/gobblet.rules.yml`, and a deploy workflow with staging, an
+  approval gate, production and the drain that keeps active matches.
 
 ### Notes
 
@@ -65,3 +88,13 @@ versioning for desktop releases; the web client tracks the same version number.
 - Phase 4 holds queues and rematch offers in the server process rather than in the
   database, so a restart discards both on purpose (ADR-0018); leaderboards remain
   Phase 6. Appendix P4 of `docs/product-spec.md` records each Phase 4 decision.
+- Phase 5 runs the browser suite in Chromium and WebKit; Firefox is a manual pass until
+  a runner is available, and the packaged shells are Phase 8. Appendix P5 records the
+  render tier decisions and the synthesised sounds.
+- Phase 6 stores no communication at all and computes every leaderboard at read time,
+  so nothing has to be rebuilt after a rating correction. Appendix P6 records each
+  Phase 6 decision.
+- Phase 7 delivers the conditions, the scripts and the workflow, not the hosting: paging
+  a human, managed daily backups, point-in-time recovery, retention and the encrypted
+  upload wait for the host deferred by ADR-0015, and each is named as deferred in
+  `docs/operations.md` section 10. Appendix P7 records each Phase 7 decision.
