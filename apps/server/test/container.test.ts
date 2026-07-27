@@ -50,7 +50,7 @@ describe("the server image", () => {
   it("copies the manifest and the build of every workspace package it needs", () => {
     const missing = workspaceDependenciesOfServer().filter(
       (directory) =>
-        !dockerfile.includes(`COPY ${directory}/package.json ${directory}/`) ||
+        !dockerfile.includes(`${directory}/package.json ${directory}/`) ||
         !dockerfile.includes(`/repo/${directory}/dist ${directory}/dist`),
     );
 
@@ -64,6 +64,18 @@ describe("the server image", () => {
 
   it("runs as a user that is not root", () => {
     expect(dockerfile).toContain("USER node");
+  });
+
+  it("gives that user ownership of everything the running stage copies", () => {
+    // COPY keeps the build context's file modes and makes root the owner. A repository
+    // checked out under a restrictive umask therefore produces an image whose manifests
+    // the unprivileged user cannot read, and Node reports an unreadable package.json as
+    // a missing package: "Cannot find package '.../@gobblet/config/index.js'".
+    const runningStage = dockerfile.slice(dockerfile.lastIndexOf("FROM "));
+    const copies = runningStage.match(/^COPY .*/gm) ?? [];
+
+    expect(copies.length).toBeGreaterThan(0);
+    expect(copies.filter((line) => !line.includes("--chown=node:node"))).toEqual([]);
   });
 
   it("installs without development dependencies in the stage that runs", () => {

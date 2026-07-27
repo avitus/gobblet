@@ -91,6 +91,13 @@ repository root, this repository has one per service, and without the path set t
 back to the default builder and fails with `No start command detected`. There is no start script,
 on purpose: the image says how to start it.
 
+Deploying by hand, with `railway up --ci --service gobblet-server`, uploads the working tree as
+the build context, including its file modes. The image copies everything as the unprivileged user
+it runs as, so a tree checked out under a restrictive umask still produces a working container
+([`apps/server/Dockerfile`](../apps/server/Dockerfile)); without that, the manifests arrive
+root-owned and unreadable, and Node reports an unreadable `package.json` as a missing package
+rather than as a permission problem.
+
 #### Service variables
 
 Each service's Variables tab has a raw editor that accepts `.env` text. Paste the block for that

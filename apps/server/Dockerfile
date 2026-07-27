@@ -20,22 +20,27 @@ ENV NODE_ENV=production
 RUN corepack enable
 WORKDIR /repo
 
+# Every copy hands ownership to the user this image runs as. COPY keeps the file modes of
+# the build context and makes root the owner, so a manifest that happens to be 0600 on the
+# machine that built the context is unreadable to that user, and Node reports an unreadable
+# package.json as the package not existing at all.
+#
 # The manifests and the lockfile first, so a code change does not reinstall anything.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY apps/server/package.json apps/server/
-COPY packages/auth/package.json packages/auth/
-COPY packages/config/package.json packages/config/
-COPY packages/db/package.json packages/db/
-COPY packages/game-core/package.json packages/game-core/
-COPY packages/protocol/package.json packages/protocol/
+COPY --chown=node:node pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY --chown=node:node apps/server/package.json apps/server/
+COPY --chown=node:node packages/auth/package.json packages/auth/
+COPY --chown=node:node packages/config/package.json packages/config/
+COPY --chown=node:node packages/db/package.json packages/db/
+COPY --chown=node:node packages/game-core/package.json packages/game-core/
+COPY --chown=node:node packages/protocol/package.json packages/protocol/
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter "@gobblet/server..."
 
-COPY --from=build /repo/apps/server/dist apps/server/dist
-COPY --from=build /repo/packages/auth/dist packages/auth/dist
-COPY --from=build /repo/packages/config/dist packages/config/dist
-COPY --from=build /repo/packages/db/dist packages/db/dist
-COPY --from=build /repo/packages/game-core/dist packages/game-core/dist
-COPY --from=build /repo/packages/protocol/dist packages/protocol/dist
+COPY --from=build --chown=node:node /repo/apps/server/dist apps/server/dist
+COPY --from=build --chown=node:node /repo/packages/auth/dist packages/auth/dist
+COPY --from=build --chown=node:node /repo/packages/config/dist packages/config/dist
+COPY --from=build --chown=node:node /repo/packages/db/dist packages/db/dist
+COPY --from=build --chown=node:node /repo/packages/game-core/dist packages/game-core/dist
+COPY --from=build --chown=node:node /repo/packages/protocol/dist packages/protocol/dist
 
 # Nothing here needs to be root.
 USER node

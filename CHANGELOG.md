@@ -113,6 +113,12 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, the server image hands every copy to the user it runs as. `COPY` keeps the build
+  context's file modes and makes root the owner, so a tree checked out under a restrictive umask
+  produced an image whose workspace manifests the `node` user could not read; Node reports an
+  unreadable `package.json` as `Cannot find package '.../@gobblet/config/index.js'`, which reads
+  like a missing build rather than a permission. A test now requires `--chown` on every copy in
+  the stage that runs.
 - Launch B1, the region is `us-west2`, beside the database rather than across the country from
   it: a split would have paid a cross-country round trip inside every persisted move
   ([ADR-0044](docs/adr/0044-the-deployment-runs-in-us-west.md)). A test now asserts both service
