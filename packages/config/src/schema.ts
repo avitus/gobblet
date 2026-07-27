@@ -39,6 +39,13 @@ export const serverEnvSchema = z.object({
   CORS_ORIGINS: commaSeparatedList.default(["http://localhost:5173"]),
   MIN_SUPPORTED_CLIENT_VERSION: z.string().min(1).default("0.1.0"),
 
+  /**
+   * How long a shutdown waits for active matches to settle after it has stopped
+   * matchmaking. The platform's own kill delay has to be longer than this, or the
+   * drain is decoration (docs/adr/0043-railway-hosts-the-deployment.md).
+   */
+  SHUTDOWN_DRAIN_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
+
   // Required from Phase 2 onwards, when match state is persisted.
   DATABASE_URL: absoluteUrl.optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),

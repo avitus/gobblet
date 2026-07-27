@@ -102,6 +102,20 @@ versioning for desktop releases; the web client tracks the same version number.
   the run released.
 - Phase 9 launch checklist in `docs/operations.md` section 17, including the scripted route
   list for the visual review and the blocked items with what unblocks each.
+- Launch B1, hosting: Railway, one region and one replica per service, with the unit of
+  deployment a container this repository defines. A Dockerfile per service, a Caddyfile so a
+  reloaded deep link still resolves, and a `railway.json` per service holding the region, the
+  health probe and a draining period longer than the server's own drain window.
+- Launch B1, the drain window is real configuration: `SHUTDOWN_DRAIN_SECONDS` closes
+  matchmaking on `SIGTERM`, gives matches in flight that long to settle, and only then closes
+  the sockets and the pool. The image starts `node` directly, because a package manager as PID 1
+  swallows the signal.
+- Launch B1, a deploy now ends when the release serves rather than when the build finishes:
+  `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
+  released is the one answering, and the workflow smokes only after that.
+- Launch B1, production can be released without a staging rehearsal, because staging does not
+  exist yet: `skip-staging` stands the staging jobs down and the approval gate records the
+  release as untried instead of passing it off as rehearsed.
 
 ### Fixed
 

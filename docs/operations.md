@@ -8,8 +8,10 @@ Related documents: [`architecture.md`](architecture.md), [`protocol.md`](protoco
 ## 1. Implementation status
 
 The local development runbook, the continuous integration gates and the local database
-migration procedure are executable today. Nothing is deployed and there is no staging or
-production environment, so the runbooks that end at a host stop there and say so. Every runbook
+migration procedure are executable today. Nothing is deployed yet: the host is decided and its
+configuration is in this repository ([ADR-0043](adr/0043-railway-hosts-the-deployment.md)), but
+the account, the project and the two services do not exist until someone creates them, which is
+[B1](launch-blockers.md). Runbooks that end at that account stop there and say so. Every runbook
 below is labelled with the phase that delivers it. Do not attempt a runbook marked planned.
 
 | Runbook                        | Status                                                                                      |
@@ -17,8 +19,8 @@ below is labelled with the phase that delivers it. Do not attempt a runbook mark
 | Local development              | Executable (Phase 0)                                                                        |
 | CI gates                       | Executable (Phase 0)                                                                        |
 | Database migrations            | Executable locally (Phase 2)                                                                |
-| Staging deploy                 | Workflow written and ordered (Phase 7); the release commands wait for a host                |
-| Production deploy and rollback | Workflow written with its approval gate and drain (Phase 7); the same commands wait         |
+| Staging deploy                 | Deferred until production exists (section 2.1); run **Deploy** with `skip-staging`          |
+| Production deploy and rollback | Workflow, images and service configuration complete (B1); waiting on the Railway account    |
 | Backup and restore             | Executable (Phase 7); the round trip runs in CI, the managed schedule waits for a host      |
 | Incident response              | Alert conditions and the catalogue are executable (Phase 7); paging waits for a host        |
 | Desktop release                | Workflow written and its logic tested (Phase 8); signing waits for two identities           |
@@ -35,8 +37,8 @@ below is labelled with the phase that delivers it. Do not attempt a runbook mark
 | Environment | `APP_ENV`    | Purpose                                             | Status              |
 | ----------- | ------------ | --------------------------------------------------- | ------------------- |
 | Local       | `local`      | Development on a workstation, Docker PostgreSQL     | Available (Phase 0) |
-| Staging     | `staging`    | Pre-production verification, production-shaped data | Planned (Phase 2)   |
-| Production  | `production` | Player-facing single-region deployment              | Planned (Phase 7)   |
+| Staging     | `staging`    | Pre-production verification, production-shaped data | Deferred (see 2.1)  |
+| Production  | `production` | Player-facing single-region deployment              | Awaiting an account |
 
 Configuration and secret handling:
 
@@ -52,6 +54,59 @@ Configuration and secret handling:
   behind a `VITE_` name.
 - Every environment records `APP_VERSION` and `GIT_SHA` so a running process can be traced to a
   commit.
+
+### 2.1 Creating the environments on Railway
+
+Status: the repository side is complete and tested; the account side is [B1](launch-blockers.md).
+The host is Railway, one region, one replica per service
+([ADR-0043](adr/0043-railway-hosts-the-deployment.md)). Production is created first and staging
+later, which is why **Deploy** takes a `skip-staging` input: a release with no rehearsal is
+allowed, but it is recorded as untried at the approval gate rather than passed off as rehearsed.
+
+In the Railway dashboard, once per environment:
+
+1. Create a project, and inside it an environment named `production` (later, `staging`).
+2. Add PostgreSQL to the project. Its `DATABASE_URL` is private to the project; the public proxy
+   URL is the one CI needs, because migrations run from GitHub.
+3. Create a service from this repository for the server. In its settings, set the config file
+   path to `/apps/server/railway.json`; everything else about the build and the deploy comes from
+   that file. Note the service name.
+4. Create a second service from the same repository for the client, with the config file path
+   `/apps/web/railway.json`. Note its name.
+5. Generate a domain for each service. The server's domain is the API origin.
+6. Create a project token, which is what CI authenticates with.
+
+Service variables, set on the service in Railway:
+
+| Service | Variable                         | Value                                                             |
+| ------- | -------------------------------- | ----------------------------------------------------------------- |
+| Server  | `DATABASE_URL`                   | `${{Postgres.DATABASE_URL}}`, the project-private reference       |
+| Server  | `APP_ENV`, `NODE_ENV`            | `production` and `production`                                     |
+| Server  | `PUBLIC_WEB_URL`, `CORS_ORIGINS` | the client domain; `CORS_ORIGINS` also carries the desktop origin |
+| Server  | `HOST`                           | `::` so the container accepts traffic from the platform           |
+| Server  | everything optional in section 3 | metrics, Sentry and PostHog only if that account exists           |
+| Client  | `VITE_API_BASE_URL`              | the server's domain; baked into the bundle at build time          |
+| Client  | `VITE_APP_ENV`                   | `production`                                                      |
+
+`APP_VERSION` and `GIT_SHA` are not set by hand: the deploy workflow sets them on the server
+service for each release, which is what makes the smoke check able to tell one release from
+another.
+
+In GitHub, on the `production` environment (later also `staging`):
+
+| Kind     | Name                     | Value                                                      |
+| -------- | ------------------------ | ---------------------------------------------------------- |
+| Secret   | `RAILWAY_TOKEN`          | the project token from step 6                              |
+| Secret   | `DATABASE_URL`           | the **public** PostgreSQL proxy URL, for the migration job |
+| Variable | `RAILWAY_SERVER_SERVICE` | the server service name from step 3                        |
+| Variable | `RAILWAY_WEB_SERVICE`    | the client service name from step 4                        |
+| Variable | `PRODUCTION_URL`         | the server's domain, which is what the smoke check calls   |
+
+Add the required reviewers to the GitHub `production` environment at the same time; the approval
+gate is only a gate if someone other than the workflow has to press it.
+
+The deploy workflow refuses to start without any of these and names the missing one, so a
+half-configured environment fails before it touches anything.
 
 ## 3. Environment variable reference
 
@@ -82,6 +137,7 @@ Configuration and secret handling:
 | `POSTHOG_HOST`                 | No              | `https://eu.i.posthog.com`     | 7                    | PostHog ingestion host                                  |
 | `TELEMETRY_PSEUDONYM_SECRET`   | No              | unset                          | 7                    | Key that turns an actor id into the shared pseudonym    |
 | `TELEMETRY_ATTEMPT_LIMIT`      | No              | `60`                           | 7                    | Client telemetry reports per address per minute         |
+| `SHUTDOWN_DRAIN_SECONDS`       | No              | `30`                           | 9                    | How long a stopping process lets matches finish         |
 
 Every Phase 7 variable is optional and every transport is inert without it, so a workstation
 and the test suites run with none of them set
@@ -164,8 +220,8 @@ hardware.
 
 ## 6. Database migration procedure
 
-Status: executable locally (Phase 2); the deploy steps stay planned until an environment
-exists. Locally, `pnpm db:generate` writes a migration from the Drizzle schema and
+Status: executable locally (Phase 2); against a deployed environment it runs from the deploy
+workflow, over the public PostgreSQL proxy URL held as the `DATABASE_URL` secret (section 2.1). Locally, `pnpm db:generate` writes a migration from the Drizzle schema and
 `pnpm db:migrate` applies it. `pnpm dev` applies pending migrations before the server starts,
 and the test suites apply them to their own databases.
 
@@ -180,18 +236,21 @@ and the test suites apply them to their own databases.
 
 ## 7. Staging deploy runbook
 
-Status: the workflow exists and is ordered (Phase 7); the two release commands wait for a host
-([ADR-0015](adr/0015-single-region-deployment.md), [appendix P7.16](product-spec.md#appendix-p7--phase-7-decisions-and-deviations-recorded-not-silently-decided)).
-It is [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), run from the Actions tab
-against a commit that is already green on CI.
+Status: the workflow is complete (Phase 9); the staging environment itself is deferred until
+production exists ([ADR-0043](adr/0043-railway-hosts-the-deployment.md), section 2.1). Until then,
+run **Deploy** with `skip-staging` and read this section as what will happen once staging is
+created. It is [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), run from the
+Actions tab against a commit that is already green on CI.
 
 1. `build` checks the commit out, builds every workspace with `APP_VERSION` and `GIT_SHA` set,
    and fails if `ops/alerts/gobblet.rules.yml` is not what the definitions render.
 2. `staging-migrate` takes a backup first, then applies pending migrations, and keeps the
    pre-migration archive as a workflow artefact. A migration that cannot be applied stops the
    deploy here, with the previous container still serving.
-3. `staging-deploy` releases the build. This is one of the two steps waiting for a provider; it
-   fails loudly rather than reporting a deployment that did not happen.
+3. `staging-deploy` releases both services with `railway up --ci`, then waits until the version
+   it released is the version answering `GET /health/live`. The platform's own command returns
+   when the build finishes, which is not the same thing as serving, so the wait is a separate
+   step that fails the run rather than reporting a deployment that did not happen.
 4. `staging-smoke` runs `pnpm --filter @gobblet/server smoke` against `STAGING_URL`: liveness,
    readiness, the configuration document, and the assertion a deploy actually cares about, which
    is that the version now serving is the version just released.
@@ -203,24 +262,28 @@ in `apps/server/test/phase7-exit-criteria.test.ts`, which is what section 7.6 ac
 
 ## 8. Production deploy runbook
 
-Status: the workflow exists with its approval gate and drain step (Phase 7); the release commands
-wait for a host.
+Status: complete except for the account it releases to (Phase 9, [B1](launch-blockers.md)).
 
 Preconditions: staging smoke test passed, migrations applied to staging, no open Sev1 or Sev2
 incident, and manual approval recorded in the release workflow. The `production-approval` job is
 that gate: reviewers are configured on the GitHub `production` environment, and no job that
 touches production runs until one of them approves.
 
-Drain-and-reconnect procedure:
+Drain-and-reconnect procedure. Steps 2 to 5 are configuration rather than commands: they are
+`healthcheckPath`, `overlapSeconds` and `drainingSeconds` in
+[`apps/server/railway.json`](../apps/server/railway.json) and `SHUTDOWN_DRAIN_SECONDS` on the
+service, and `drainingSeconds` is deliberately longer than the drain window so the platform never
+kills a process that is still draining.
 
 1. Apply pending database migrations, after taking the backup the workflow keeps as an artefact.
-2. Start the new container. Wait for `GET /health/ready` to succeed.
-3. Stop routing new matchmaking to the old container. Existing sockets stay connected.
-4. Let the old container drain: existing matches continue until they finish or the maximum
-   drain period elapses.
-5. When the drain period elapses, stop the old container. Remaining clients reconnect, call
-   `match:sync` and re-synchronise from PostgreSQL.
-6. Watch error rate, readiness and match transaction failures for the post-deploy observation
+2. The platform starts the new container and waits for `GET /health/ready` to succeed.
+3. Traffic moves to the new container. The old one keeps the sockets it already has.
+4. The old container receives `SIGTERM` and drains: the queue closes at once, and existing
+   matches continue until they finish or `SHUTDOWN_DRAIN_SECONDS` elapses.
+5. The old container exits. Remaining clients reconnect, call `match:sync` and re-synchronise
+   from PostgreSQL.
+6. The workflow waits for the released version to be the one serving, smokes it, and then you
+   watch error rate, readiness and match transaction failures for the post-deploy observation
    window.
 
 Because match state is persisted and clocks are derived from `turn_started_at`, a drained
@@ -235,9 +298,12 @@ rematch offer is cancelled, so nobody is paired into a match this process is abo
 serving. Nothing requeues a player automatically; the client must send `queue:join` again, which
 is what section 7.5 of the specification requires. Matches in progress are untouched.
 
-`BootstrappedServer.close` performs the drain in that order: the queue closes, every open rematch
-offer is cancelled, then sockets close, then the HTTP server, then buffered telemetry is flushed,
-then the pool. `apps/server/test/phase7-exit-criteria.test.ts` plays a move, drains, replaces the
+`SIGTERM` reaches the process directly, because the image starts `node` rather than a package
+manager ([`apps/server/Dockerfile`](../apps/server/Dockerfile)); a package manager as PID 1 would
+swallow the signal and every word of this runbook would be decoration.
+`drainAndClose` then waits out the window, and `BootstrappedServer.close` performs the drain in
+this order: the queue closes, every open rematch offer is cancelled, then sockets close, then the
+HTTP server, then buffered telemetry is flushed, then the pool. `apps/server/test/phase7-exit-criteria.test.ts` plays a move, drains, replaces the
 process and re-synchronises the same match on a second instance, which is the deploy this runbook
 describes with the container substitution taken out.
 
@@ -246,7 +312,8 @@ describes with the container substitution taken out.
 Status: the procedure is an input to the deploy workflow (Phase 9). What is tested is the part
 that makes a rollback verifiable rather than hopeful: the smoke check refuses a deployment whose
 serving version is not the version the run released, which is proved in
-`apps/server/test/phase9-exit-criteria.test.ts`. The release command itself waits for a host.
+`apps/server/test/phase9-exit-criteria.test.ts`. A rollback is an ordinary release of an older
+commit, so it uses the same command as a deploy.
 
 To roll back:
 
@@ -706,8 +773,8 @@ covers a strictly smaller piece, lifting a piece that reveals an opponent line o
 unless the destination breaks it, three of a colour visible in a line lets the opponent enter
 from the reserve onto that line, and the clock only runs for the player to move.
 
-**Production readiness review is signed off.** Blocked: the review covers a deployment, and there
-is no host ([ADR-0015](adr/0015-single-region-deployment.md)). The checklist it will use is section
+**Production readiness review is signed off.** Blocked: the review covers a deployment, and
+nothing is deployed until the Railway account exists ([B1](launch-blockers.md)). The checklist it will use is section
 17.1 above plus the deferred items in section 17.3.
 
 ### 17.3 Blocked at launch, with what unblocks each
@@ -715,18 +782,18 @@ is no host ([ADR-0015](adr/0015-single-region-deployment.md)). The checklist it 
 Each of these is expanded in [`launch-blockers.md`](launch-blockers.md), with what "done" looks
 like and which repository secret or variable it fills.
 
-| Item                                        | Blocked by                                                            |
-| ------------------------------------------- | --------------------------------------------------------------------- |
-| Staging and production deploys              | A hosting provider ([ADR-0015](adr/0015-single-region-deployment.md)) |
-| Managed backup schedule and off-site copies | The same provider                                                     |
-| Paging a human                              | A monitoring service and an on-call rotation                          |
-| macOS binary signed and notarized           | An Apple Developer Program membership and a Developer ID              |
-| Windows binary signed                       | A code-signing certificate                                            |
-| Auto-update from a prior public version     | A published prior version, on a clean machine                         |
-| Load target at its stated scale             | A host that can carry a thousand clients                              |
-| Safari, packaged web views, discrete GPUs   | A person on the hardware ([`compatibility.md`](compatibility.md))     |
-| Screen reader pass                          | A person with VoiceOver and NVDA (defect D-0002)                      |
-| Email delivery, so an account can verify    | A mail sender ([appendix P3](product-spec.md))                        |
+| Item                                        | Blocked by                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| Staging and production deploys              | A Railway account ([ADR-0043](adr/0043-railway-hosts-the-deployment.md)) |
+| Managed backup schedule and off-site copies | The same account                                                         |
+| Paging a human                              | A monitoring service and an on-call rotation                             |
+| macOS binary signed and notarized           | An Apple Developer Program membership and a Developer ID                 |
+| Windows binary signed                       | A code-signing certificate                                               |
+| Auto-update from a prior public version     | A published prior version, on a clean machine                            |
+| Load target at its stated scale             | A host that can carry a thousand clients                                 |
+| Safari, packaged web views, discrete GPUs   | A person on the hardware ([`compatibility.md`](compatibility.md))        |
+| Screen reader pass                          | A person with VoiceOver and NVDA (defect D-0002)                         |
+| Email delivery, so an account can verify    | A mail sender ([appendix P3](product-spec.md))                           |
 
 ### 17.4 On the day
 

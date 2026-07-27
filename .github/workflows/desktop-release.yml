@@ -132,7 +132,7 @@ jobs:
           HOST: ${{ vars.PRODUCTION_URL }}
         run: |
           if [ -z "${HOST}" ]; then
-            echo "::error::No production host is configured, so the updater would have nowhere to ask. See docs/adr/0015-defer-hosting-choice.md."
+            echo "::error::No production host is configured, so the updater would have nowhere to ask. See docs/operations.md section 2.1."
             exit 1
           fi
           case "${HOST}" in

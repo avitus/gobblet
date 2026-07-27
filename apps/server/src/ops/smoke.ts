@@ -7,7 +7,7 @@ import { publicServerConfigSchema } from "@gobblet/protocol";
  * build now serving is the build that was just released.
  *
  * `fetch` is injected so the checks are proved in a test instead of against a host
- * that does not exist yet (docs/adr/0015-defer-hosting-choice.md). The scripted match
+ * that does not exist yet (docs/launch-blockers.md B1). The scripted match
  * of step 5 is the browser suite, which needs the same host and is deferred with it;
  * a match that plays a move, drops its socket and re-synchronises is covered against
  * the runtime in `test/phase7-exit-criteria.test.ts`.

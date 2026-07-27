@@ -533,3 +533,15 @@ The Phase 9 deliverables, and what holds each one:
 | Section 21.2: no secret committed                     | `apps/server/src/ops/secret-scan.ts` over every tracked file, run by `pnpm ops:secrets` and by the `Secret scan` CI step; `secret-scan.test.ts`; every allowlist entry carries its reason; appendix P9.11                                                                              |
 | Section 17.3: error monitoring release marker         | `release` and `environment` on the reporter in `apps/server/src/bootstrap.ts`, and the version on `GET /v1/config`; `phase9-exit-criteria.test.ts` > the release-marker suite; appendix P9.10                                                                                          |
 | Section 18.4: no cookies beyond the session           | The client stores its session in `localStorage` and sets no cookie; `apps/web/test/legal-pages.test.tsx` asserts the privacy page says so and that nothing sets `document.cookie`; appendix P9.6                                                                                       |
+
+## 29. Launch preparation (appendix L)
+
+The phases are delivered; these are the requirements that only became executable once the host
+was chosen. What still waits on an account is listed in
+[`launch-blockers.md`](launch-blockers.md).
+
+| Launch requirement                                                  | Where held                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section 22.2: build an immutable image, deploy, drain and reconnect | `apps/server/Dockerfile` and `apps/web/Dockerfile` with `apps/server/railway.json` and `apps/web/railway.json`; `container.test.ts` keeps the image in step with the workspace it copies and with the drain window; [ADR-0043](adr/0043-railway-hosts-the-deployment.md); appendix L1 and L2 |
+| Section 22.2: a deploy is not done until the release serves         | `apps/server/src/ops/release.ts`, run by the deploy workflow between releasing and smoking; `release-wait.test.ts`; `deploy-workflow.test.ts` holds the two jobs to the same address they smoke; appendix L3                                                                                 |
+| Section 7.6: a stopping process gives matches time to finish        | `SHUTDOWN_DRAIN_SECONDS` applied by `apps/server/src/shutdown.ts` on `SIGTERM`; `shutdown.test.ts`; [`operations.md` section 8](operations.md); appendix L2                                                                                                                                  |

@@ -1,0 +1,16 @@
+# The build context is the whole workspace, so keep out everything the images build
+# for themselves or must never contain.
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+.git
+.github
+apps/desktop/src-tauri/target
+apps/e2e/playwright-report
+apps/e2e/test-results
+.env
+.env.*
+!.env.example
+*.log

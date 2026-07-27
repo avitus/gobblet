@@ -16,6 +16,7 @@ export type ServerConfig = Readonly<{
   publicWebUrl: string;
   corsOrigins: readonly string[];
   minSupportedClientVersion: string;
+  shutdownDrainSeconds: number;
   databaseUrl: string | null;
   databasePoolMax: number;
   guestSessionTtlDays: number;
@@ -74,6 +75,7 @@ export function loadServerConfig(env: EnvSource = process.env): ServerConfig {
     publicWebUrl: values.PUBLIC_WEB_URL,
     corsOrigins: Object.freeze([...values.CORS_ORIGINS]),
     minSupportedClientVersion: values.MIN_SUPPORTED_CLIENT_VERSION,
+    shutdownDrainSeconds: values.SHUTDOWN_DRAIN_SECONDS,
     databaseUrl: values.DATABASE_URL ?? null,
     databasePoolMax: values.DATABASE_POOL_MAX,
     guestSessionTtlDays: values.GUEST_SESSION_TTL_DAYS,

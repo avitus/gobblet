@@ -1,12 +1,15 @@
 name: Deploy
 
 # The ordered jobs of specification section 22.2 and the runbooks of
-# docs/operations.md sections 7 and 8. There is no host yet
-# (docs/adr/0015-defer-hosting-choice.md), so the deploy steps refuse to guess: each
-# one requires the connection secrets of its environment and fails loudly when they
-# are absent, rather than reporting a deployment that did not happen. The order, the
-# approval gate and the drain are what this file fixes now; the commands inside the
-# two deploy jobs are the only part waiting on a provider.
+# docs/operations.md sections 7 and 8. The host is Railway
+# (docs/adr/0043-railway-hosts-the-deployment.md) and each job still requires the
+# connection details of its environment, failing loudly when they are absent rather
+# than reporting a deployment that did not happen.
+#
+# The drain is not a step here: it is drainingSeconds and overlapSeconds in
+# apps/server/railway.json, matched to SHUTDOWN_DRAIN_SECONDS on the server. What this
+# file owns is the order, the approval gate, and the refusal to call a release
+# successful before the released version is the one answering.
 
 on:
   workflow_dispatch:
@@ -17,6 +20,13 @@ on:
         default: main
       skip-production:
         description: Deploy to staging only.
+        type: boolean
+        default: false
+      skip-staging:
+        description: >-
+          Deploy straight to production, because no staging environment exists yet
+          (docs/launch-blockers.md B1). The approval records that no rehearsal
+          happened.
         type: boolean
         default: false
       rollback:
@@ -94,11 +104,13 @@ jobs:
   staging-migrate:
     name: Migrate staging
     needs: build
+    # Two reasons to stand down: a rollback runs against the schema already there,
+    # and staging may not exist yet.
     # A rollback runs against the schema that is already there. Migrations are
     # written to be backward compatible for exactly this reason
     # (docs/operations.md section 9), so rolling the code back never rolls the
     # schema back; a schema that has to move backward is a restore, not a rollback.
-    if: ${{ !inputs.rollback }}
+    if: ${{ !inputs.rollback && !inputs.skip-staging }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -123,7 +135,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           if [ -z "${DATABASE_URL}" ]; then
-            echo "::error::No staging database is configured. See docs/adr/0015-defer-hosting-choice.md."
+            echo "::error::No staging database is configured. See docs/operations.md section 2.1."
             exit 1
           fi
 
@@ -147,7 +159,7 @@ jobs:
   staging-deploy:
     name: Deploy staging
     needs: [build, staging-migrate]
-    if: ${{ always() && needs.build.result == 'success' && (needs.staging-migrate.result == 'success' || inputs.rollback) }}
+    if: ${{ always() && !inputs.skip-staging && needs.build.result == 'success' && (needs.staging-migrate.result == 'success' || inputs.rollback) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -157,20 +169,75 @@ jobs:
       - name: Require a host
         env:
           HOST: ${{ vars.STAGING_URL }}
+          SERVER_SERVICE: ${{ vars.RAILWAY_SERVER_SERVICE }}
+          WEB_SERVICE: ${{ vars.RAILWAY_WEB_SERVICE }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          if [ -z "${HOST}" ]; then
-            echo "::error::No staging host is configured. See docs/adr/0015-defer-hosting-choice.md."
+          missing=""
+          [ -z "${HOST}" ] && missing="${missing} STAGING_URL"
+          [ -z "${SERVER_SERVICE}" ] && missing="${missing} RAILWAY_SERVER_SERVICE"
+          [ -z "${WEB_SERVICE}" ] && missing="${missing} RAILWAY_WEB_SERVICE"
+          [ -z "${RAILWAY_TOKEN}" ] && missing="${missing} RAILWAY_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::The staging environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
             exit 1
           fi
 
-      - name: Release the build
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install the Railway CLI
         run: |
-          echo "::error::The provider command belongs here, and is the only step this workflow is missing."
-          exit 1
+          npm install --global @railway/cli
+          railway --version
+
+      # The version and the commit are read by the server at runtime and reported on
+      # /health/live, which is what the wait and the smoke check compare against.
+      # --skip-deploys because the release below is the deploy.
+      - name: Record what this release is
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway variable set \
+            "APP_VERSION=${{ needs.build.outputs.version }}" \
+            "GIT_SHA=${{ needs.build.outputs.sha }}" \
+            --service "${{ vars.RAILWAY_SERVER_SERVICE }}" --skip-deploys
+
+      # --ci returns when the build finishes, not when the container serves, which is
+      # why the wait below exists. The platform starts the new container, waits for
+      # /health/ready, moves traffic, then drains the old one per apps/server/railway.json.
+      - name: Release the server
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "${{ vars.RAILWAY_SERVER_SERVICE }}"
+
+      - name: Release the client
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "${{ vars.RAILWAY_WEB_SERVICE }}"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for the released version to be the one serving
+        env:
+          RELEASE_BASE_URL: ${{ vars.STAGING_URL }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+        run: pnpm --filter @gobblet/server await-release
 
   staging-smoke:
     name: Smoke staging
     needs: [build, staging-deploy]
+    if: ${{ always() && needs.staging-deploy.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -205,7 +272,7 @@ jobs:
   production-approval:
     name: Approve production
     needs: [build, staging-smoke]
-    if: ${{ !inputs.skip-production }}
+    if: ${{ always() && needs.build.result == 'success' && !inputs.skip-production && (needs.staging-smoke.result == 'success' || inputs.skip-staging) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # The gate itself. Reviewers are configured on the environment in repository
@@ -215,7 +282,11 @@ jobs:
       - name: Record the approval
         run: |
           echo "Approved ${{ needs.build.outputs.version }} at ${{ needs.build.outputs.sha }}"
-          echo "Preconditions: staging smoke passed, migrations applied to staging, no open Sev1 or Sev2."
+          if [ "${{ inputs.skip-staging }}" = "true" ]; then
+            echo "::warning::No staging rehearsal: this release goes to production untried. See docs/launch-blockers.md B1."
+          else
+            echo "Preconditions: staging smoke passed, migrations applied to staging, no open Sev1 or Sev2."
+          fi
 
   production-migrate:
     name: Migrate production
@@ -245,7 +316,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           if [ -z "${DATABASE_URL}" ]; then
-            echo "::error::No production database is configured. See docs/adr/0015-defer-hosting-choice.md."
+            echo "::error::No production database is configured. See docs/operations.md section 2.1."
             exit 1
           fi
 
@@ -279,9 +350,17 @@ jobs:
       - name: Require a host
         env:
           HOST: ${{ vars.PRODUCTION_URL }}
+          SERVER_SERVICE: ${{ vars.RAILWAY_SERVER_SERVICE }}
+          WEB_SERVICE: ${{ vars.RAILWAY_WEB_SERVICE }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          if [ -z "${HOST}" ]; then
-            echo "::error::No production host is configured. See docs/adr/0015-defer-hosting-choice.md."
+          missing=""
+          [ -z "${HOST}" ] && missing="${missing} PRODUCTION_URL"
+          [ -z "${SERVER_SERVICE}" ] && missing="${missing} RAILWAY_SERVER_SERVICE"
+          [ -z "${WEB_SERVICE}" ] && missing="${missing} RAILWAY_WEB_SERVICE"
+          [ -z "${RAILWAY_TOKEN}" ] && missing="${missing} RAILWAY_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::The production environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
             exit 1
           fi
 
@@ -290,17 +369,56 @@ jobs:
       # finish or SHUTDOWN_DRAIN_SECONDS elapses. A client that is cut off calls
       # match:sync and loses nothing, which apps/server/test/phase7-exit-criteria.test.ts
       # proves against the runtime rather than against a deployment.
-      - name: Start the new container and wait for readiness
-        run: |
-          echo "::error::The provider command belongs here, and is the only step this workflow is missing."
-          exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
-      - name: Drain the old container
-        if: success()
+      - name: Install the Railway CLI
         run: |
-          echo "Stop routing new matchmaking, then wait out SHUTDOWN_DRAIN_SECONDS."
-          echo "::error::The provider command belongs here."
-          exit 1
+          npm install --global @railway/cli
+          railway --version
+
+      # The version and the commit are read by the server at runtime and reported on
+      # /health/live, which is what the wait and the smoke check compare against.
+      # --skip-deploys because the release below is the deploy.
+      - name: Record what this release is
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway variable set \
+            "APP_VERSION=${{ needs.build.outputs.version }}" \
+            "GIT_SHA=${{ needs.build.outputs.sha }}" \
+            --service "${{ vars.RAILWAY_SERVER_SERVICE }}" --skip-deploys
+
+      # --ci returns when the build finishes, not when the container serves, which is
+      # why the wait below exists. The platform starts the new container, waits for
+      # /health/ready, moves traffic, then drains the old one per apps/server/railway.json.
+      - name: Release the server
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "${{ vars.RAILWAY_SERVER_SERVICE }}"
+
+      - name: Release the client
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --ci --service "${{ vars.RAILWAY_WEB_SERVICE }}"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for the released version to be the one serving
+        env:
+          RELEASE_BASE_URL: ${{ vars.PRODUCTION_URL }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+        run: pnpm --filter @gobblet/server await-release
 
       - name: Watch the post-deploy window
         if: success()

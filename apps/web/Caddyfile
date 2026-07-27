@@ -1,0 +1,22 @@
+# The client is a single-page application: every route the router owns has to be
+# answered with index.html, or a reload of /match/<id> would be a 404
+# (docs/adr/0043-railway-hosts-the-deployment.md).
+#
+# The platform chooses the port and terminates TLS in front of this.
+:{$PORT:8080} {
+	root * /srv
+	encode gzip zstd
+
+	# Hashed asset names, so they can be cached for a year. index.html cannot.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+
+	log {
+		output stdout
+		format console
+	}
+}

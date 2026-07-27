@@ -102,6 +102,7 @@ Superseding a decision:
 | 0040   | [Legal and support pages are routes in the client](0040-legal-and-support-pages-are-routes-in-the-client.md)                       | Accepted               | 2026-07-27 |
 | 0041   | [Compatibility matrices are executed where a runner exists](0041-the-compatibility-matrices-are-executed-where-a-runner-exists.md) | Accepted               | 2026-07-27 |
 | 0042   | [Launch dashboards are rendered from one definition](0042-launch-dashboards-are-rendered-from-one-definition.md)                   | Accepted               | 2026-07-27 |
+| 0043   | [Railway hosts the deployment, as a container we define](0043-railway-hosts-the-deployment.md)                                     | Accepted               | 2026-07-27 |
 
 Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
 [`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents

@@ -1,5 +1,6 @@
 import { loadServerConfig } from "@gobblet/config";
 import { bootstrapServer } from "./bootstrap";
+import { drainAndClose, sleep } from "./shutdown";
 
 const SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
@@ -10,7 +11,16 @@ async function main(): Promise<void> {
   for (const signal of SHUTDOWN_SIGNALS) {
     process.once(signal, () => {
       server.app.log.info({ signal }, "shutting down");
-      server.close().then(
+      drainAndClose({
+        gateway: server.gateway,
+        close: server.close,
+        windowMs: config.shutdownDrainSeconds * 1000,
+        now: () => Date.now(),
+        wait: sleep,
+        log: (context, message) => {
+          server.app.log.info(context, message);
+        },
+      }).then(
         () => {
           process.exit(0);
         },

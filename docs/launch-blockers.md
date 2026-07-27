@@ -15,7 +15,7 @@ Related: [`operations.md` section 17](operations.md) is the launch checklist,
 
 | #   | Item                                | Kind     | Unblocks                                   | Where the repository expects it                     |
 | --- | ----------------------------------- | -------- | ------------------------------------------ | --------------------------------------------------- |
-| B1  | Hosting provider and environments   | Host     | 11 items, including the whole deploy path  | [ADR-0015](adr/0015-single-region-deployment.md)    |
+| B1  | Railway account and one environment | Host     | 11 items, including the whole deploy path  | [`operations.md` section 2.1](operations.md)        |
 | B2  | Domain name and TLS                 | Purchase | Public URLs, CORS, the desktop update feed | `PUBLIC_WEB_URL`, `CORS_ORIGINS`                    |
 | B3  | Managed PostgreSQL                  | Host     | Backups, retention, point-in-time recovery | [`operations.md` section 10](operations.md)         |
 | B4  | Monitoring and paging               | Host     | Alerts reaching a human, the dashboards    | [`operations.md` sections 11 and 12](operations.md) |
@@ -35,25 +35,35 @@ Related: [`operations.md` section 17](operations.md) is the launch checklist,
 
 ## 2. The host, and everything waiting on it
 
-### B1. Hosting provider and environments
+### B1. Railway account and one environment
 
-[ADR-0015](adr/0015-single-region-deployment.md) fixed the shape (single region, one process
-serving both HTTP and sockets, stateless behind a managed database) and deliberately left the
-provider open. Choosing one is a new ADR that supersedes that deferral, not a change of design.
+Decided and prepared. The provider is Railway
+([ADR-0043](adr/0043-railway-hosts-the-deployment.md), superseding the deferral in
+[ADR-0015](adr/0015-single-region-deployment.md)), one region, one replica per service, and the
+unit of deployment is a container this repository defines. Production is created first and staging
+when it earns its cost, which is why **Deploy** takes a `skip-staging` input that records a
+release as untried rather than rehearsed.
 
-What the deployment must give us, because the code already assumes it:
+What is already in the repository:
 
-- Two environments, `staging` and `production`, each with its own database.
-- A long-lived process, not a per-request function: matches hold sockets and in-process clocks.
-- Sticky routing is not needed today, because there is one process
-  ([`architecture.md` section 12](architecture.md)).
-- `SIGTERM` then a drain window: the server stops matchmaking, lets active matches settle and
-  tells clients to reconnect ([`architecture.md` section 11](architecture.md)).
-- Health probes on `GET /health/live` and `GET /health/ready`.
+- [`apps/server/Dockerfile`](../apps/server/Dockerfile) and
+  [`apps/web/Dockerfile`](../apps/web/Dockerfile), with
+  [`apps/web/Caddyfile`](../apps/web/Caddyfile) serving the client so a deep link survives a
+  reload. `apps/server/test/container.test.ts` keeps both honest.
+- [`apps/server/railway.json`](../apps/server/railway.json) and
+  [`apps/web/railway.json`](../apps/web/railway.json): the region, the single replica, the health
+  probe and a draining period longer than the server's own drain window.
+- `SHUTDOWN_DRAIN_SECONDS`, applied on `SIGTERM` by `apps/server/src/shutdown.ts`.
+- The release steps in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), which
+  release both services and then wait for the released version to be the one answering
+  `GET /health/live` before smoking it.
 
-Done when: `pnpm --filter @gobblet/server smoke` passes against both environments, and the
-GitHub environment variables `STAGING_URL` and `PRODUCTION_URL` and the secret `DATABASE_URL`
-are set. The deploy workflow's release commands are the only steps still marked as placeholders.
+What only an account can supply: the project, the managed PostgreSQL, the two services, their
+domains, a project token, and the GitHub environment variables and secrets. The click-path and
+every name to set are in [`operations.md` section 2.1](operations.md).
+
+Done when: **Deploy** runs green with `skip-staging` and `pnpm --filter @gobblet/server smoke`
+passes against `PRODUCTION_URL`.
 
 Waiting on it: B3, B4, B9, B10, the staging and production runbooks
 ([`operations.md` sections 7, 8 and 9](operations.md)), the paging half of incident response,

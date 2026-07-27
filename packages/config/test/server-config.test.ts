@@ -18,6 +18,7 @@ describe("loadServerConfig", () => {
       publicWebUrl: "http://localhost:5173",
       corsOrigins: ["http://localhost:5173"],
       minSupportedClientVersion: "0.1.0",
+      shutdownDrainSeconds: 30,
       databaseUrl: null,
       databasePoolMax: 10,
       guestSessionTtlDays: 30,
@@ -47,6 +48,7 @@ describe("loadServerConfig", () => {
       PUBLIC_WEB_URL: "https://play.example.com",
       CORS_ORIGINS: "https://play.example.com, tauri://localhost ,",
       MIN_SUPPORTED_CLIENT_VERSION: "1.0.0",
+      SHUTDOWN_DRAIN_SECONDS: "45",
       DATABASE_URL: "postgresql://db.internal.example.com:5432/gobblet",
       DATABASE_POOL_MAX: "25",
       GUEST_SESSION_TTL_DAYS: "7",
@@ -65,6 +67,7 @@ describe("loadServerConfig", () => {
     expect(config.appEnv).toBe("staging");
     expect(config.port).toBe(8080);
     expect(config.corsOrigins).toEqual(["https://play.example.com", "tauri://localhost"]);
+    expect(config.shutdownDrainSeconds).toBe(45);
     expect(config.databaseUrl).toBe("postgresql://db.internal.example.com:5432/gobblet");
     expect(config.databasePoolMax).toBe(25);
     expect(config.guestSessionTtlDays).toBe(7);

@@ -152,7 +152,8 @@ and administration). Nothing is deployed today.
 ```
 
 Topology decisions and their consequences are recorded in
-[ADR-0015](adr/0015-single-region-deployment.md):
+[ADR-0015](adr/0015-single-region-deployment.md), and the provider that realises them in
+[ADR-0043](adr/0043-railway-hosts-the-deployment.md):
 
 - One region only. "Global" means globally reachable from that region, not uniform worldwide
   latency. Distant players see higher round-trip times, which matters because clocks are not
@@ -373,8 +374,10 @@ effective_remaining = stored_remaining_ms - (server_now - turn_started_at)
 ## 11. Restart, recovery and deploy draining
 
 Status: restart recovery implemented (Phase 2) in `apps/server/src/bootstrap.ts`; draining
-implemented (Phase 7) in `BootstrappedServer.close`, and the deploy workflow that calls for it is
-[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), waiting only on a host.
+implemented (Phase 7) in `BootstrappedServer.close` and applied on `SIGTERM` by
+`apps/server/src/shutdown.ts` for `SHUTDOWN_DRAIN_SECONDS`; the workflow that releases is
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), waiting only on the account of
+[ADR-0043](adr/0043-railway-hosts-the-deployment.md).
 
 On process start:
 
@@ -384,10 +387,12 @@ On process start:
    outcome and rating change, before accepting new commands for it.
 4. Only then start accepting matchmaking and match commands.
 
-On deploy (drain-and-reconnect): start the new container and wait for `GET /health/ready`, stop
-routing new matchmaking to the old container, let existing sockets drain until their matches
-finish or the maximum drain period elapses, then let remaining clients reconnect to the new
-container and re-synchronise from PostgreSQL. Because match state lives in the database and
+On deploy (drain-and-reconnect): the platform starts the new container and waits for
+`GET /health/ready`, moves traffic, and sends the old container `SIGTERM`; the old container stops
+matchmaking at once and lets its matches run until they finish or `SHUTDOWN_DRAIN_SECONDS`
+elapses, then remaining clients reconnect to the new container and re-synchronise from PostgreSQL.
+The signal reaches the process because the image starts `node` and not a package manager
+([ADR-0043](adr/0043-railway-hosts-the-deployment.md)). Because match state lives in the database and
 clocks are derived, a drained client loses no progress. The full procedure is in
 [`operations.md`](operations.md).
 
@@ -447,6 +452,8 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | Legal and support pages                                   | Implemented | Phase 9      |
 | Rollback as a workflow input, proved by the smoke check   | Implemented | Phase 9      |
 | The three launch approvals a person signs                 | Deferred    | Phase 9      |
+| Container images and the hosting configuration            | Implemented | Launch (B1)  |
+| A deploy that waits for the release to serve              | Implemented | Launch (B1)  |
 
 This table is the single place to update when a phase completes. Any document that disagrees
 with it is out of date.
