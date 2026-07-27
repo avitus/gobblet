@@ -121,6 +121,12 @@ export const SECRET_ALLOWLIST: readonly AllowEntry[] = Object.freeze([
     reason: "The fixtures this scanner is tested against.",
   },
   {
+    path: "apps/server/src/ops/secret-scan.ts",
+    rule: "minisign-secret-key",
+    reason:
+      "The rule that recognises a minisign key, which has to contain the header it looks for. No key is here, only the shape of one.",
+  },
+  {
     path: "packages/protocol/test/release.test.ts",
     rule: "high-entropy-literal",
     reason: "A sample update signature, which is a public artifact of a signed build.",

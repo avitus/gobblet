@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   SECRET_ALLOWLIST,
   SECRET_RULES,
@@ -201,6 +204,16 @@ describe("the report", () => {
 });
 
 describe("the rules themselves", () => {
+  it("do not trip the scanner, so the command it backs can be run", () => {
+    const path = "apps/server/src/ops/secret-scan.ts";
+    const contents = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../src/ops/secret-scan.ts"),
+      "utf8",
+    );
+
+    expect(scanForSecrets([{ path, contents }])).toEqual([]);
+  });
+
   it("gives every rule a global pattern, so a second match on a line is not missed", () => {
     for (const rule of SECRET_RULES) {
       expect(rule.pattern.global).toBe(true);

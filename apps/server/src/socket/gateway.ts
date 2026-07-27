@@ -173,10 +173,16 @@ export class MatchGateway {
   /** Actors that left a match, so their return can be counted as a reconnection. */
   private readonly detached = new Set<string>();
 
-  /** Connection history still being written, which a shutdown waits for. */
-  private readonly pendingWrites = new Set<Promise<void>>();
+  /**
+   * Work a socket frame started that nothing waits on: the handlers themselves, and
+   * the connection history they write. A shutdown settles it, so no command is
+   * abandoned half-written when the pool closes.
+   */
+  private readonly inFlight = new Set<Promise<unknown>>();
 
   private ticker: NodeJS.Timeout | undefined;
+
+  private closing = false;
 
   constructor(options: GatewayOptions) {
     this.config = options.config;
@@ -209,23 +215,59 @@ export class MatchGateway {
     }, TICK_INTERVAL_MS).unref();
   }
 
+  /**
+   * False once a shutdown has begun. A socket frame that arrives during a drain is
+   * dropped rather than run against a database that is about to close: the socket is
+   * being disconnected in the same breath, and the client reconnects to whichever
+   * process is serving next (docs/architecture.md section 11).
+   */
+  accepts(): boolean {
+    return !this.closing;
+  }
+
+  /** How much started-and-unawaited work the gateway is holding for a shutdown. */
+  workInFlight(): number {
+    return this.inFlight.size;
+  }
+
   async close(): Promise<void> {
+    this.closing = true;
     if (this.ticker) {
       clearInterval(this.ticker);
       this.ticker = undefined;
     }
     await this.io.close();
-    await this.settleConnectionHistory();
+    await this.settleInFlightWork();
   }
 
   /**
-   * Waits for the connection history a closing socket started to be written. Without
-   * it a shutdown would race its own writes, and a test would race the next one.
+   * Waits for the work a closing socket started. Without it a shutdown would race its
+   * own writes, and a test would race the next one.
    */
-  async settleConnectionHistory(): Promise<void> {
-    while (this.pendingWrites.size > 0) {
-      await Promise.allSettled([...this.pendingWrites]);
+  async settleInFlightWork(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight]);
     }
+  }
+
+  /**
+   * Starts handler work unless a shutdown has begun, and keeps hold of it so the
+   * shutdown can wait for it. Both halves are needed: without the first a late frame
+   * queries a closed pool, and without the second an early one is abandoned mid-write.
+   */
+  private accept(work: () => Promise<unknown>): void {
+    if (this.closing) {
+      return;
+    }
+    this.track(work());
+  }
+
+  /** Keeps hold of work nobody awaits, so a shutdown can. */
+  private track(work: Promise<unknown>): void {
+    const tracked = work.finally(() => {
+      this.inFlight.delete(tracked);
+    });
+    this.inFlight.add(tracked);
   }
 
   /**
@@ -284,12 +326,12 @@ export class MatchGateway {
     socket.on(
       IN.sessionAuthenticate,
       (payload: unknown, ack: Acknowledge<SessionAuthenticateAck>) => {
-        void this.handleAuthenticate(socket, payload, ack);
+        this.accept(() => this.handleAuthenticate(socket, payload, ack));
       },
     );
 
     socket.on(IN.queueJoin, (payload: unknown, ack: Acknowledge<QueueJoinAck>) => {
-      void this.handleQueueJoin(socket, payload, ack);
+      this.accept(() => this.handleQueueJoin(socket, payload, ack));
     });
 
     socket.on(IN.queueLeave, (payload: unknown, ack: Acknowledge<QueueLeaveAck>) => {
@@ -301,35 +343,35 @@ export class MatchGateway {
     });
 
     socket.on(IN.matchSync, (payload: unknown, ack: Acknowledge<MatchSyncAck>) => {
-      void this.handleSync(socket, payload, ack);
+      this.accept(() => this.handleSync(socket, payload, ack));
     });
 
     socket.on(IN.matchMove, (payload: unknown, ack: Acknowledge<CommandAck>) => {
-      void this.handleMove(socket, payload, ack);
+      this.accept(() => this.handleMove(socket, payload, ack));
     });
 
     socket.on(IN.matchResign, (payload: unknown, ack: Acknowledge<CommandAck>) => {
-      void this.handleResign(socket, payload, ack);
+      this.accept(() => this.handleResign(socket, payload, ack));
     });
 
     socket.on(IN.matchRematchRequest, (payload: unknown, ack: Acknowledge<RematchAck>) => {
-      void this.handleRematchRequest(socket, payload, ack);
+      this.accept(() => this.handleRematchRequest(socket, payload, ack));
     });
 
     socket.on(IN.matchRematchRespond, (payload: unknown, ack: Acknowledge<RematchAck>) => {
-      void this.handleRematchRespond(socket, payload, ack);
+      this.accept(() => this.handleRematchRespond(socket, payload, ack));
     });
 
     socket.on(IN.matchPresetMessage, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
-      void this.handlePresetMessage(socket, payload, ack);
+      this.accept(() => this.handlePresetMessage(socket, payload, ack));
     });
 
     socket.on(IN.matchReaction, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
-      void this.handleReaction(socket, payload, ack);
+      this.accept(() => this.handleReaction(socket, payload, ack));
     });
 
     socket.on(IN.matchMuteState, (payload: unknown, ack: Acknowledge<CommunicationAck>) => {
-      void this.handleMuteState(socket, payload, ack);
+      this.accept(() => this.handleMuteState(socket, payload, ack));
     });
   }
 
@@ -971,9 +1013,9 @@ export class MatchGateway {
         });
       })
       .finally(() => {
-        this.pendingWrites.delete(write);
+        this.inFlight.delete(write);
       });
-    this.pendingWrites.add(write);
+    this.inFlight.add(write);
     return write;
   }
 

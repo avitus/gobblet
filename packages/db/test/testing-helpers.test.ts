@@ -181,19 +181,20 @@ describe("the rows a suite needs to make itself", () => {
   it("holds a lock for the length of the work, so two suites take turns rather than collide", async () => {
     const order: string[] = [];
     const key = Number(BigInt.asIntN(32, BigInt(Date.now())));
+    const hold = (name: string): Promise<void> =>
+      withAdvisoryLock(TEST_DATABASE_URL, key, async () => {
+        order.push(`${name} in`);
+        await new Promise((settle) => setImmediate(settle));
+        order.push(`${name} out`);
+      });
 
-    const first = withAdvisoryLock(TEST_DATABASE_URL, key, async () => {
-      order.push("first in");
-      await new Promise((settle) => setImmediate(settle));
-      order.push("first out");
-    });
-    const second = withAdvisoryLock(TEST_DATABASE_URL, key, () => {
-      order.push("second in");
-      return Promise.resolve();
-    });
-    await Promise.all([first, second]);
+    await Promise.all([hold("one"), hold("two")]);
 
-    expect(order).toEqual(["first in", "first out", "second in"]);
+    // Which of the two connects first is the network's business; that neither runs
+    // inside the other is the lock's.
+    const winner = order[0] === "one in" ? "one" : "two";
+    const waiter = winner === "one" ? "two" : "one";
+    expect(order).toEqual([`${winner} in`, `${winner} out`, `${waiter} in`, `${waiter} out`]);
   });
 
   it("lets the work commit while the lock is held, rather than hiding it in a transaction", async () => {

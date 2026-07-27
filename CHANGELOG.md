@@ -115,6 +115,17 @@ versioning for desktop releases; the web client tracks the same version number.
 - The load harness could pair one match's client with another's, because the queue pairs
   whoever is waiting. Pairing is now serialised and a pair split across two matches fails
   the run instead of measuring rejections.
+- A socket frame arriving while the server was shutting down could reach the database
+  after the pool had closed. The gateway now refuses work once a shutdown has begun, and
+  waits for the handlers already running, so no command is abandoned half-written.
+- `.env.example` was missing five variables the configuration schema accepts, including
+  the telemetry pseudonym secret. It is now checked against the schema in both directions
+  by a test.
+- The secret scanner reported its own rule definitions, which failed `pnpm ops:secrets`
+  for anyone who ran it. The rules file is exempt from that one rule, with the reason
+  next to it, and a test keeps the scanner quiet about itself.
+- A database helper test asserted which of two connections won a lock rather than that
+  neither ran inside the other, and failed when the loser connected first.
 
 ### Notes
 

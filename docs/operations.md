@@ -712,6 +712,9 @@ is no host ([ADR-0015](adr/0015-single-region-deployment.md)). The checklist it 
 
 ### 17.3 Blocked at launch, with what unblocks each
 
+Each of these is expanded in [`launch-blockers.md`](launch-blockers.md), with what "done" looks
+like and which repository secret or variable it fills.
+
 | Item                                        | Blocked by                                                            |
 | ------------------------------------------- | --------------------------------------------------------------------- |
 | Staging and production deploys              | A hosting provider ([ADR-0015](adr/0015-single-region-deployment.md)) |

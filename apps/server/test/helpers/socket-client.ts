@@ -62,6 +62,14 @@ export class TestClient {
     this.socket.emit(event, payload);
   }
 
+  /**
+   * Emits with an acknowledgement nobody waits for, for a frame the test is about to
+   * close the socket under. The callback exists so the handler still has one.
+   */
+  emitIgnoringAck(event: string, payload: unknown): void {
+    this.socket.emit(event, payload, () => {});
+  }
+
   async next<T>(event: string, timeoutMs = 2_000): Promise<T> {
     const buffered = this.received.get(event);
     if (buffered && buffered.length > 0) {

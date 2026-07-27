@@ -12,6 +12,7 @@ lifecycle.
 - Decision records: [`docs/adr/`](docs/adr/)
 - Rule/scenario to test traceability: [`docs/traceability-matrix.md`](docs/traceability-matrix.md)
 - Known defects: [`docs/defects.md`](docs/defects.md)
+- What stands between this and a public launch: [`docs/launch-blockers.md`](docs/launch-blockers.md)
 - Compatibility matrix: [`docs/compatibility.md`](docs/compatibility.md)
 
 ## Current delivery status

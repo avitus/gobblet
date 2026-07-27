@@ -340,7 +340,7 @@ describe("the connection history of a match", () => {
     match.lightClient.close();
 
     await vi.waitFor(async () => {
-      await gateway.settleConnectionHistory();
+      await gateway.settleInFlightWork();
       const events = await listMatchConnectionEvents(handle.db, match.matchId);
       const detached = events.filter((event) => event.kind === "detached");
       expect(detached).toHaveLength(1);
