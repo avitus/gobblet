@@ -78,6 +78,15 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Section 21.1: the two gates that are about the repository rather than the code.
+      # Their names are asserted by apps/server/test/gates.test.ts against the gate
+      # definitions, so a renamed step cannot quietly stop being a gate.
+      - name: Dependency advisories
+        run: pnpm audit --audit-level high --prod
+
+      - name: Secret scan
+        run: pnpm ops:secrets
+
       - name: Tests with coverage gates
         run: pnpm test:coverage
 

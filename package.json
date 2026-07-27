@@ -22,6 +22,8 @@
     "test:properties:nightly": "turbo run test:properties:nightly",
     "test:e2e": "pnpm --filter @gobblet/e2e run test:e2e",
     "test:e2e:browsers": "pnpm --filter @gobblet/e2e run browsers",
+    "test:e2e:firefox": "pnpm --filter @gobblet/e2e run test:e2e:firefox",
+    "test:e2e:browsers:firefox": "pnpm --filter @gobblet/e2e run browsers:firefox",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:up": "docker compose up -d postgres",
@@ -34,6 +36,11 @@
     "db:export-critical": "pnpm --filter @gobblet/db db:export-critical",
     "admin:grant": "pnpm --filter @gobblet/server admin:grant",
     "ops:alerts": "pnpm --filter @gobblet/server ops:alerts",
+    "ops:dashboards": "pnpm --filter @gobblet/server ops:dashboards",
+    "ops:defects": "pnpm --filter @gobblet/server ops:defects",
+    "ops:secrets": "pnpm --filter @gobblet/server ops:secrets",
+    "gates": "pnpm --filter @gobblet/server gates",
+    "load": "pnpm --filter @gobblet/server load",
     "verify": "turbo run typecheck lint test:coverage build"
   },
   "devDependencies": {
@@ -41,6 +48,7 @@
     "eslint": "^9.31.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.8.0",
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
     "turbo": "^2.5.5",

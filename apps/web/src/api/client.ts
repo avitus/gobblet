@@ -14,6 +14,7 @@ import {
   claimGuestResponseSchema,
   createGuestResponseSchema,
   httpErrorBodySchema,
+  latestReleasesResponseSchema,
   leaderboardResponseSchema,
   matchHistoryResponseSchema,
   matchSnapshotSchema,
@@ -44,6 +45,7 @@ import type {
   ClaimGuestResponse,
   ClientAnalyticsEvent,
   CreateGuestResponse,
+  LatestReleasesResponse,
   LeaderboardPeriod,
   LeaderboardResponse,
   MatchHistoryResponse,
@@ -370,6 +372,11 @@ export class ApiClient {
       `/v1/admin/audit${suffix}`,
       signal ? { signal } : {},
     );
+  }
+
+  /** What the download page offers, which is what the updater is offered (ADR-0035). */
+  getLatestReleases(signal?: AbortSignal): Promise<LatestReleasesResponse> {
+    return this.send(latestReleasesResponseSchema, "/v1/releases/latest", signal ? { signal } : {});
   }
 
   /**

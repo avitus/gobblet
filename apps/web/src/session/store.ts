@@ -85,7 +85,28 @@ export function createSessionStore(
   }));
 }
 
-export const useSessionStore = createSessionStore();
+/**
+ * The singleton reads through one indirection so the desktop can swap `localStorage`
+ * for the credential store before the first render (ADR-0033) without every screen
+ * having to be handed a store.
+ */
+let backing: KeyValueStore = createLocalStore();
+
+export const useSessionStore = createSessionStore({
+  get: (key) => backing.get(key),
+  set: (key, value) => {
+    backing.set(key, value);
+  },
+  remove: (key) => {
+    backing.remove(key);
+  },
+});
+
+/** Takes the given store as the session's home, and adopts what it already holds. */
+export function adoptSessionStorage(store: KeyValueStore): void {
+  backing = store;
+  useSessionStore.setState({ session: readStored(store) });
+}
 
 export function sessionToken(): string | null {
   return useSessionStore.getState().session?.token ?? null;

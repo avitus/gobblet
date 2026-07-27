@@ -8,24 +8,27 @@ Related documents: [`architecture.md`](architecture.md), [`protocol.md`](protoco
 ## 1. Implementation status
 
 The local development runbook, the continuous integration gates and the local database
-migration procedure are executable today. Nothing is deployed, there is no staging or
-production environment and no desktop release pipeline exists. Every runbook below is labelled
-with the phase that delivers it. Do not attempt a runbook marked planned.
+migration procedure are executable today. Nothing is deployed and there is no staging or
+production environment, so the runbooks that end at a host stop there and say so. Every runbook
+below is labelled with the phase that delivers it. Do not attempt a runbook marked planned.
 
-| Runbook                        | Status                                                                                 |
-| ------------------------------ | -------------------------------------------------------------------------------------- |
-| Local development              | Executable (Phase 0)                                                                   |
-| CI gates                       | Executable (Phase 0)                                                                   |
-| Database migrations            | Executable locally (Phase 2)                                                           |
-| Staging deploy                 | Workflow written and ordered (Phase 7); the release commands wait for a host           |
-| Production deploy and rollback | Workflow written with its approval gate and drain (Phase 7); the same commands wait    |
-| Backup and restore             | Executable (Phase 7); the round trip runs in CI, the managed schedule waits for a host |
-| Incident response              | Alert conditions and the catalogue are executable (Phase 7); paging waits for a host   |
-| Desktop release                | Planned (Phase 8)                                                                      |
-| Secret and key rotation        | Planned (Phase 3 onwards)                                                              |
-| Account moderation             | Executable through the admin API and dashboard (Phase 7)                               |
-| Matchmaking observation        | Readable from the log, the exposition and the dashboard (Phase 7)                      |
-| Browser end-to-end suite       | Executable locally and in CI (Phase 5); the packaged shells are Phase 8                |
+| Runbook                        | Status                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| Local development              | Executable (Phase 0)                                                                        |
+| CI gates                       | Executable (Phase 0)                                                                        |
+| Database migrations            | Executable locally (Phase 2)                                                                |
+| Staging deploy                 | Workflow written and ordered (Phase 7); the release commands wait for a host                |
+| Production deploy and rollback | Workflow written with its approval gate and drain (Phase 7); the same commands wait         |
+| Backup and restore             | Executable (Phase 7); the round trip runs in CI, the managed schedule waits for a host      |
+| Incident response              | Alert conditions and the catalogue are executable (Phase 7); paging waits for a host        |
+| Desktop release                | Workflow written and its logic tested (Phase 8); signing waits for two identities           |
+| Secret and key rotation        | Planned (Phase 3 onwards)                                                                   |
+| Account moderation             | Executable through the admin API and dashboard (Phase 7)                                    |
+| Matchmaking observation        | Readable from the log, the exposition and the dashboard (Phase 7)                           |
+| Browser end-to-end suite       | Executable locally and in CI (Phase 5); the packaged shell is built by the release workflow |
+| Quality gates                  | Executable (Phase 9); four of twenty-five are deferred and each names what it waits for     |
+| Load target                    | Executable (Phase 9) at the scale the runner carries; the stated scale waits for a host     |
+| Launch checklist               | Written (Phase 9); the three items a person signs wait for that person                      |
 
 ## 2. Environments
 
@@ -145,9 +148,16 @@ database of its own, `..._e2e`, derived from `TEST_DATABASE_URL`. It creates, mi
 that database itself, so no manual setup step is needed. Run `pnpm test:e2e:browsers` once to
 download the engines.
 
-Planned additions: database migration check against a disposable PostgreSQL instance (Phase 2),
-nightly property suites (Phase 1 onwards), desktop build verification (Phase 8), load and soak runs
-(Phase 9).
+Since Phase 9 every pull request also runs `pnpm audit --audit-level high --prod` and the secret
+scan of `pnpm ops:secrets`. The full list of gates, including the release-candidate set and the
+four that are deferred, is one typed definition in `apps/server/src/ops/gates.ts`; run it with
+`pnpm gates pull-request` or `pnpm gates release-candidate`
+([ADR-0038](adr/0038-quality-gates-are-a-definition-not-a-checklist.md)). Nightly, the browser suite also runs
+in Firefox and the desktop shell is built on macOS and Windows.
+
+The browser and platform results those jobs produce are collected in
+[`compatibility.md`](compatibility.md), together with the rows that still need a person on the
+hardware.
 
 ## 6. Database migration procedure
 
@@ -168,7 +178,7 @@ and the test suites apply them to their own databases.
 ## 7. Staging deploy runbook
 
 Status: the workflow exists and is ordered (Phase 7); the two release commands wait for a host
-([ADR-0015](adr/0015-defer-hosting-choice.md), [appendix P7.16](product-spec.md#appendix-p7--phase-7-decisions-and-deviations-recorded-not-silently-decided)).
+([ADR-0015](adr/0015-single-region-deployment.md), [appendix P7.16](product-spec.md#appendix-p7--phase-7-decisions-and-deviations-recorded-not-silently-decided)).
 It is [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), run from the Actions tab
 against a commit that is already green on CI.
 
@@ -230,13 +240,25 @@ describes with the container substitution taken out.
 
 ## 9. Rollback procedure
 
-Status: the procedure is the deploy workflow run against the previous commit (Phase 7).
+Status: the procedure is an input to the deploy workflow (Phase 9). What is tested is the part
+that makes a rollback verifiable rather than hopeful: the smoke check refuses a deployment whose
+serving version is not the version the run released, which is proved in
+`apps/server/test/phase9-exit-criteria.test.ts`. The release command itself waits for a host.
 
-1. Redeploy the previous immutable image using the same drain-and-reconnect steps.
-2. Never roll back a database migration automatically. If the previous image is incompatible
-   with the applied schema, roll forward with a fix instead.
-3. If the incident is caused by data corruption rather than code, follow the restore runbook.
-4. Record the rollback in the changelog and open a follow-up with the root cause.
+To roll back:
+
+1. Run the **Deploy** workflow with `ref` set to the last good commit and `rollback` set to true.
+2. The workflow skips both migration jobs. Migrations are written to be backward compatible for
+   exactly this reason: rolling the code back never rolls the schema back.
+3. The staging and production smoke jobs assert that the version now serving is the version of
+   the commit you named. A rollback that did not take effect fails the run rather than reporting
+   success.
+4. If the previous image is genuinely incompatible with the applied schema, do not roll back:
+   roll forward with a fix, or follow the restore runbook if the cause is corrupted data.
+5. Record the rollback in the changelog and open a follow-up with the root cause.
+
+The observation window afterwards is the same as a deploy: error rate, readiness and match
+transaction failures, against `ops/alerts/gobblet.rules.yml`.
 
 ## 10. Backup and restore
 
@@ -316,7 +338,7 @@ the last success, which is a backup that stopped happening rather than a backup 
 ## 11. Incident response
 
 Status: the severities, the checklist and the alert catalogue are in force (Phase 7); routing an
-alert to a person needs the hosted monitoring of [ADR-0015](adr/0015-defer-hosting-choice.md).
+alert to a person needs the hosted monitoring of [ADR-0015](adr/0015-single-region-deployment.md).
 
 Severity levels:
 
@@ -357,10 +379,12 @@ catalogue and the rules cannot drift apart.
 
 Every rule is driven into its failing state by `apps/server/test/alert-rules.test.ts`, which
 evaluates the expression over a real exposition, and each is checked to stay quiet on a healthy
-one. `GobbletDesktopSigningFailure` is the one rule whose series does not exist yet: the release
-job that would emit `gobblet_desktop_signing_failures_total` is Phase 8, and the rule says so
-rather than being left out. Delivering any of these to a human needs the hosted monitoring of
-[ADR-0015](adr/0015-defer-hosting-choice.md) and is deferred with it; the conditions are not.
+one. Every series a rule names is now emitted by the running server, including
+`gobblet_desktop_signing_failures_total`, which a failing signing step of the desktop release
+workflow reports through `POST /v1/admin/releases/build-events`. The one exception is
+`gobblet_backup_last_success_timestamp_seconds`, which the backup script writes into a textfile
+collector rather than the server. Delivering any of these to a human needs the hosted monitoring of
+[ADR-0015](adr/0015-single-region-deployment.md) and is deferred with it; the conditions are not.
 
 Production targets that these alerts protect: 99.9 percent API availability, better than 99.9
 percent crash-free sessions, zero accepted illegal moves, zero duplicate rating applications,
@@ -418,9 +442,18 @@ What the exposition publishes, and the alert or question each one answers:
 | `gobblet_errors_total`                                   | Counter   | Errors by code and route                                |
 | `gobblet_backup_last_success_timestamp_seconds`          | Gauge     | When a backup last succeeded (textfile collector)       |
 
-The dashboard of section 16 reads the same numbers over SQL rather than over the exposition, so
+The administrative dashboard of [`product-spec.md` section 16](product-spec.md) reads the same
+numbers over SQL rather than over the exposition, so
 an administrator sees the deployment as a whole rather than one instance
 ([appendix P7.13](product-spec.md#appendix-p7--phase-7-decisions-and-deviations-recorded-not-silently-decided)).
+
+Three launch dashboards are defined once in `apps/server/src/observability/dashboards.ts` and
+rendered to `ops/dashboards` by `pnpm ops:dashboards`: service health, gameplay, and clients.
+`apps/server/test/dashboards.test.ts` asserts that every series a panel names is one the running
+server actually emits, so a dashboard cannot quietly point at a metric that was renamed. Importing
+the JSON into an instance needs the hosted monitoring of
+[ADR-0015](adr/0015-single-region-deployment.md) and is deferred with it
+([ADR-0042](adr/0042-launch-dashboards-are-rendered-from-one-definition.md)).
 
 The server also logs one line per pairing, `paired two waiting players`, carrying the match id,
 mode, time control, the wait the pairing ended and the depth of every queue that still holds
@@ -430,36 +463,89 @@ which is what the tests assert against
 
 ## 13. Desktop release runbook
 
-Status: planned (Phase 8).
+Status: executable (Phase 8) except for the two signing identities nobody has bought yet. It is
+[`.github/workflows/desktop-release.yml`](../.github/workflows/desktop-release.yml), triggered by
+a `v*` tag or run from the Actions tab. The steps that are not YAML live in
+`apps/server/src/ops/desktop-release.ts` and are covered by `test/desktop-release.test.ts`, so a
+release runs code that has been proved rather than shell that has only ever been read.
 
-1. Tag the release. The tagged workflow builds the web bundle once and reuses it for both
-   platforms.
-2. On a macOS runner: build the app, sign with the Developer ID certificate, notarize with
-   Apple, staple the ticket, produce the DMG.
-3. On a Windows runner: build the app, sign the executable and the NSIS installer.
-4. Publish installers (DMG, NSIS exe) to GitHub Releases or object storage.
-5. Publish signed update bundles plus the update manifest to the internal beta channel.
-6. Install the previous stable version, then verify the update applies, the signature verifies,
-   and the app relaunches with the new version.
-7. Promote the manifest to the stable channel.
-8. Update the download page and the changelog.
+1. Set `apps/desktop/package.json` to the version being released and tag the commit `vX.Y.Z`.
+   The `identify` job refuses a tag that disagrees with the manifest.
+2. `bundle` runs three times: macOS on Apple silicon, macOS on Intel, Windows on x64. Each one
+   builds `@gobblet/web` once, rewrites the updater endpoint to the deployment's host, checks
+   for its signing secrets, and hands the result to the Tauri bundler, which signs, notarizes
+   and staples where the platform asks for it
+   ([ADR-0033](adr/0033-the-desktop-application-is-the-web-build-in-a-window.md)).
+3. `tauri-action` uploads the installers and the signed update bundles to the GitHub Release for
+   the tag ([ADR-0035](adr/0035-artifacts-live-in-github-releases.md)). The release is public, so
+   a download needs no credentials.
+4. `publish` records those artifacts against a release row on the `beta` channel through
+   `POST /v1/admin/releases`, then asks `GET /v1/updates/beta` what a client on an older version
+   would be offered and fails if the answer is not this release
+   ([ADR-0034](adr/0034-updates-are-asked-of-our-own-server.md)).
+5. `promote` waits on the GitHub `desktop-stable` environment. When a reviewer approves, it moves
+   the same row to `stable`. Nothing is rebuilt and nothing is resigned: what beta tested is what
+   stable receives.
+6. Add the release to `CHANGELOG.md`. The download page at `/download` needs no edit; it reads
+   the release rows.
 
-Channels and controls:
+### Secrets and variables the workflow needs
 
-| Control                  | Behaviour                                                                   |
-| ------------------------ | --------------------------------------------------------------------------- |
-| Channels                 | `stable` plus an optional internal `beta`                                   |
-| Rollout pause            | Revert the stable manifest to the previous version so clients stop updating |
-| Minimum supported client | `MIN_SUPPORTED_CLIENT_VERSION` on the server forces an update prompt        |
-| Signing requirement      | Updates are always signed. An unsigned artifact is never published          |
+| Name                                 | Kind     | Needed by            | How to obtain it                                                                                                              |
+| ------------------------------------ | -------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `PRODUCTION_URL`                     | Variable | Every job            | The deployment's https origin. Until a host exists the workflow stops here ([ADR-0015](adr/0015-single-region-deployment.md)) |
+| `RELEASE_ADMIN_TOKEN`                | Secret   | `publish`, `promote` | A session token for an account holding the `admin` role, granted with `pnpm admin:grant`                                      |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Secret   | Every bundle         | `pnpm --filter @gobblet/desktop exec tauri signer generate`. The public half is in `tauri.conf.json`                          |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Secret   | Every bundle         | The passphrase chosen when the key was generated                                                                              |
+| `APPLE_CERTIFICATE`                  | Secret   | macOS bundles        | A Developer ID Application certificate exported as a base64 `.p12`. Needs an Apple Developer Program membership               |
+| `APPLE_CERTIFICATE_PASSWORD`         | Secret   | macOS bundles        | The password used for the `.p12` export                                                                                       |
+| `APPLE_SIGNING_IDENTITY`             | Secret   | macOS bundles        | The certificate's common name, `Developer ID Application: ...`                                                                |
+| `APPLE_ID`, `APPLE_TEAM_ID`          | Secrets  | macOS notarization   | The Apple ID that owns the team, and the ten-character team identifier                                                        |
+| `APPLE_APP_SPECIFIC_PASSWORD`        | Secret   | macOS notarization   | Generated at appleid.apple.com for that Apple ID                                                                              |
+| `WINDOWS_CERTIFICATE`                | Secret   | Windows bundle       | An organisation-validated or extended-validation code-signing certificate, base64 encoded                                     |
+| `WINDOWS_CERTIFICATE_PASSWORD`       | Secret   | Windows bundle       | The password for that certificate                                                                                             |
 
-Failed update recovery:
+Each of these has a step that checks for it and stops the release naming what is missing
+([ADR-0036](adr/0036-signing-is-a-workflow-step-that-fails-loudly.md)). A failing signing step
+also reports a build event to `POST /v1/admin/releases/build-events`, which is what makes
+`gobblet_desktop_signing_failures_total` a real series and the `GobbletDesktopSigningFailure`
+rule of section 12 something that can actually fire.
 
-1. Pause the rollout by restoring the previous stable manifest.
-2. Confirm affected clients can still launch the installed version and still connect.
-3. If the installed version is below `MIN_SUPPORTED_CLIENT_VERSION`, publish a fixed build
-   before raising the minimum, so players are never locked out without a path forward.
-4. Direct affected players to the download page for a full reinstall as the last resort.
+Two exit criteria are deferred with this, not waived
+([appendix P8.6](product-spec.md#appendix-p8--phase-8-decisions-and-deviations-recorded-not-silently-decided)):
+that a clean macOS machine installs without a security warning, and that a clean Windows machine
+installs without a SmartScreen warning. The first needs the Apple identity above; the second
+needs the Windows certificate and then reputation, which accrues with downloads and cannot be
+tested before publication.
+
+For a developer package, run the workflow with `allow-unsigned` set and `publish` cleared. It
+produces installers nobody should distribute and refuses to record them as a release.
+
+### Channels and controls
+
+| Control                  | Behaviour                                                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Channels                 | `stable` and `beta`. A tagged build enters `beta`; promotion is a separate, approved job                                            |
+| Rollout pause            | `POST /v1/admin/releases/:releaseId/pause` with a reason. The endpoint immediately offers the previous unpaused release, or nothing |
+| Promotion                | `POST /v1/admin/releases/:releaseId/promote` with a reason. The artifacts are untouched                                             |
+| Minimum supported client | `MIN_SUPPORTED_CLIENT_VERSION` on the server refuses the handshake of anything older                                                |
+| Signing requirement      | The publish schema requires a signature per artifact, so an unsigned build cannot be recorded                                       |
+
+Every one of those mutations is an audited administrative action visible at `/admin/audit`.
+
+### Failed update recovery
+
+1. Pause the rollout with a reason. Clients on the previous version are offered nothing on their
+   next check, which is at most six hours away.
+2. Confirm players can still launch what they have. A failed update never touches the installed
+   application: the bundle is verified against the public key before Tauri replaces anything, and
+   a failure is dismissed and reported
+   ([appendix P8.8](product-spec.md#appendix-p8--phase-8-decisions-and-deviations-recorded-not-silently-decided)).
+3. Watch `gobblet_desktop_update_outcomes_total{outcome="failure"}` fall back to its baseline.
+4. Publish the fixed build to `beta`, check the manifest, then promote. Raise
+   `MIN_SUPPORTED_CLIENT_VERSION` only after a fixed build is available on `stable`, so nobody is
+   locked out without a path forward.
+5. Direct anyone still stuck to `/download` for a full reinstall.
 
 ## 14. Secret and key rotation
 
@@ -531,3 +617,117 @@ Status: planned (Phase 7).
   only then proceeds.
 - Every operational change that alters behaviour or topology is recorded in
   [`CHANGELOG.md`](../CHANGELOG.md) and, if material, in an ADR.
+
+## 16. Load runbook
+
+Status: executable (Phase 9), at whatever scale the machine running it can carry. The target of
+[`product-spec.md` section 20.8](product-spec.md) is a thousand connected clients in five hundred
+concurrent matches with a p95 acknowledgement latency under a hundred milliseconds. That scale
+needs a host; the harness does not
+([ADR-0037](adr/0037-the-load-harness-is-ours.md)).
+
+The harness drives real sessions: a guest for each seat, a socket each, the casual queue, and
+legal moves chosen by the same engine the server uses. It measures acknowledgement latency, moves
+the server rejected, committed moves lost to a version that skipped, and matches that ended twice.
+
+```bash
+# No host named: the run starts a server of its own, against a database of its own,
+# and stops it afterwards. This is what the release gate runs.
+pnpm load
+
+# Against a host, at the scale section 20.8 asks for.
+LOAD_MATCHES=500 LOAD_MOVES_PER_MATCH=20 LOAD_WAVE_SIZE=50 pnpm load https://gobblet.example
+```
+
+| Variable                    | Default    | What it changes                                                                         |
+| --------------------------- | ---------- | --------------------------------------------------------------------------------------- |
+| `LOAD_MATCHES`              | `25`       | Concurrent matches. Two clients are connected for each.                                 |
+| `LOAD_MOVES_PER_MATCH`      | `12`       | Moves each match attempts before it is torn down.                                       |
+| `LOAD_WAVE_SIZE`            | `25`       | How many matches start together, so a run ramps.                                        |
+| `LOAD_SEED`                 | `20260727` | Makes a run reproducible: the same seed picks the same moves.                           |
+| `LOAD_TIME_CONTROL_SECONDS` | `300`      | The queue the clients join.                                                             |
+| `LOAD_BASE_URL`             | none       | A host, when one is not given as an argument. Without it the run starts its own server. |
+
+The report always states the scale it ran at, as a share of the target, and says plainly when a
+run does not prove the target. A run that loses a move, has one rejected, or sees a match complete
+twice fails regardless of how fast it was: latency is only meaningful when nothing was dropped.
+
+Reading a failing run:
+
+| Line                                   | What it means                                                                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `matches never started`                | Pairing or connection failed. Look at queue depth and socket connections first.          |
+| `legal moves were rejected`            | The server refused a move the engine says is legal. This is a correctness bug, not load. |
+| `committed moves were lost`            | A version skipped. Persist-before-acknowledge is not holding; stop and investigate.      |
+| `matches completed more than once`     | A client was told twice that its match ended. Check the completion transaction.          |
+| `p95 acknowledgement latency ... over` | The latency target. Check database transaction duration and pool waiting first.          |
+
+## 17. Launch checklist
+
+Status: written (Phase 9). Every item is executable, or blocked and named as blocked. The three
+items a person signs are the Phase 9 exit criteria that no test can assert
+([appendix P9.12 and P9.13](product-spec.md)).
+
+### 17.1 Before the release candidate
+
+| Item                                                     | How                                                          | State                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| Every pull-request gate passes                           | `pnpm gates pull-request`                                    | Executable                                |
+| Every release-candidate gate passes or is named deferred | `pnpm gates release-candidate`                               | Executable; four gates deferred           |
+| No open critical or high-severity defect                 | `pnpm ops:defects`                                           | Executable                                |
+| No secret in a tracked file                              | `pnpm ops:secrets`                                           | Executable                                |
+| Dashboards match the definitions                         | `pnpm ops:dashboards && git diff --exit-code ops/dashboards` | Executable                                |
+| Alert rules match the definitions                        | `pnpm ops:alerts && git diff --exit-code ops/alerts`         | Executable                                |
+| Browser suite green in Chromium and WebKit               | `pnpm test:e2e`                                              | Executable                                |
+| Browser suite green in Firefox                           | `pnpm test:e2e:firefox`                                      | Executable, nightly in CI                 |
+| Compatibility matrix rows dated                          | [`compatibility.md`](compatibility.md)                       | Executable rows green; manual rows open   |
+| Load target run and reported at its scale                | `pnpm load`                                                  | Executable; the stated scale needs a host |
+| Backup restores                                          | `pnpm --filter @gobblet/db run test`                         | Executable                                |
+
+### 17.2 The three signatures
+
+These are judgements, not assertions. What is prepared for each is named so the review is the
+same review every time.
+
+**Product owner approves visual quality.** Walk these routes at 1280x800 and at 1024x640, in a
+light and a dark system theme, signed out and then signed in:
+
+`/`, `/play`, a live `/match/:id` in each rendering tier, `/history`, `/leaderboard`,
+`/profile`, `/settings`, `/download`, `/privacy`, `/terms`, `/support`, `/sign-in`, `/register`,
+and, as an administrator, `/admin` and each of its pages.
+
+**Product owner approves official-rule behavior.** The rules are stated in
+[`rules.md`](rules.md) and each one is asserted by the `@gobblet/game-core` suite. Play a match
+against yourself in two browser windows and confirm the four rules a player feels: a gobble only
+covers a strictly smaller piece, lifting a piece that reveals an opponent line of four loses
+unless the destination breaks it, three of a colour visible in a line lets the opponent enter
+from the reserve onto that line, and the clock only runs for the player to move.
+
+**Production readiness review is signed off.** Blocked: the review covers a deployment, and there
+is no host ([ADR-0015](adr/0015-single-region-deployment.md)). The checklist it will use is section
+17.1 above plus the deferred items in section 17.3.
+
+### 17.3 Blocked at launch, with what unblocks each
+
+| Item                                        | Blocked by                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------- |
+| Staging and production deploys              | A hosting provider ([ADR-0015](adr/0015-single-region-deployment.md)) |
+| Managed backup schedule and off-site copies | The same provider                                                     |
+| Paging a human                              | A monitoring service and an on-call rotation                          |
+| macOS binary signed and notarized           | An Apple Developer Program membership and a Developer ID              |
+| Windows binary signed                       | A code-signing certificate                                            |
+| Auto-update from a prior public version     | A published prior version, on a clean machine                         |
+| Load target at its stated scale             | A host that can carry a thousand clients                              |
+| Safari, packaged web views, discrete GPUs   | A person on the hardware ([`compatibility.md`](compatibility.md))     |
+| Screen reader pass                          | A person with VoiceOver and NVDA (defect D-0002)                      |
+| Email delivery, so an account can verify    | A mail sender ([appendix P3](product-spec.md))                        |
+
+### 17.4 On the day
+
+1. Tag the release and run the **Deploy** workflow against the tag.
+2. Watch the service health dashboard for the observation window. The alert that matters most is
+   `GobbletErrorRegressionAfterDeploy`.
+3. Publish the desktop release to the beta channel first, then promote it once the update
+   outcomes on the clients dashboard show installs rather than failures.
+4. If anything on the dashboards is worse than before the deploy, roll back with section 9. A
+   rollback is cheap and does not need a meeting.

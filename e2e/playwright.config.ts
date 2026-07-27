@@ -9,6 +9,10 @@ const isCi = process.env.CI === "true" || process.env.CI === "1";
  * Browser proof of the Phase 5 exit criteria (docs/adr/0021). The suite runs the
  * production client build against a real server and a real database, in Chromium
  * and WebKit: the two engines the desktop shells will use.
+ *
+ * Firefox is a third project, run nightly rather than on every push
+ * (docs/adr/0041). It is a rendering matrix row that a runner can execute, so it is
+ * executed; the rows no runner can execute stay manual in docs/compatibility.md.
  */
 export default defineConfig({
   testDir: "./tests",
@@ -29,6 +33,7 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
   ],
   webServer: [
     {

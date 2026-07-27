@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useApi } from "../api/provider";
 import { clientConfig } from "../config";
+import { hostPlatform } from "../desktop/host";
 import { createTelemetryReporter, type TelemetryReporter } from "./reporter";
 import { routePattern } from "./route-pattern";
 
@@ -37,7 +38,7 @@ export function TelemetryProvider({
   useEffect(() => {
     telemetry.capture({
       name: "app-launched",
-      platform: "web",
+      platform: hostPlatform(),
       clientVersion: clientConfig.clientVersion,
     });
   }, [telemetry]);

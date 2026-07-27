@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   countMatchEvents,
   findEventByCommandId,
+  findLatestMoveEvent,
   hasRevealedAndBlockedMove,
   insertMatch,
   insertMatchEvent,
@@ -103,6 +104,20 @@ describe("match event log", () => {
 
     expect(found?.commandId).toBe(commandId);
     expect(await findEventByCommandId(handle.db, match.id, randomUUID())).toBeUndefined();
+  });
+
+  it("finds the move a snapshot calls the last one, ignoring events that were not moves", async () => {
+    await insertMatchEvent(handle.db, eventFixture(1, randomUUID()));
+    await insertMatchEvent(handle.db, eventFixture(2, randomUUID()));
+    await insertMatchEvent(handle.db, { ...eventFixture(3, null), type: "timeout" });
+
+    expect((await findLatestMoveEvent(handle.db, match.id))?.sequence).toBe(2);
+  });
+
+  it("finds no last move in a match where nobody has moved yet", async () => {
+    await insertMatchEvent(handle.db, { ...eventFixture(1, null), type: "match-created" });
+
+    expect(await findLatestMoveEvent(handle.db, match.id)).toBeUndefined();
   });
 
   it("counts zero events for a match without history", async () => {

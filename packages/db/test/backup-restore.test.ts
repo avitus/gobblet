@@ -5,6 +5,7 @@ import path from "node:path";
 import { createGunzip } from "node:zlib";
 import { createReadStream } from "node:fs";
 import { text } from "node:stream/consumers";
+import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BACKUP_METRIC_FILE,
@@ -50,6 +51,16 @@ function restoreUrl(databaseName: string): string {
   const url = new URL(TEST_DATABASE_URL);
   url.pathname = `/${databaseName}`;
   return url.toString();
+}
+
+async function runOnMaintenanceDatabase(statement: string): Promise<void> {
+  const client = new Client({ connectionString: restoreUrl("postgres") });
+  await client.connect();
+  try {
+    await client.query(statement);
+  } finally {
+    await client.end();
+  }
 }
 
 async function seed(): Promise<void> {
@@ -119,6 +130,9 @@ async function seed(): Promise<void> {
 
 beforeAll(async () => {
   workspace = await mkdtemp(path.join(tmpdir(), "gobblet-backup-"));
+  // A drill left behind by a previous run would hide the first restore's own step
+  // of creating the database it restores into.
+  await runOnMaintenanceDatabase(`drop database if exists "${RESTORE_DATABASE}"`);
   handle = await setupTestDatabase();
   await truncateAll(handle);
   await seed();
@@ -265,6 +279,12 @@ describe("the backup and restore round trip", () => {
       process.env["PATH"] = bin;
       await expect(checkToolVersions(TEST_DATABASE_URL)).rejects.toThrow(/same major version/);
 
+      // A build that names no version at all is a mismatch too, never a match.
+      await writeFile(path.join(bin, "pg_dump"), "#!/bin/sh\necho 'pg_dump (PostgreSQL)'\n", {
+        mode: 0o755,
+      });
+      await expect(checkToolVersions(TEST_DATABASE_URL)).rejects.toThrow(/same major version/);
+
       // And with no client tools at all, the message says which tool is missing.
       process.env["PATH"] = path.join(workspace, "empty-bin");
       await expect(checkToolVersions(TEST_DATABASE_URL)).rejects.toThrow(
@@ -272,6 +292,32 @@ describe("the backup and restore round trip", () => {
       );
     } finally {
       process.env["PATH"] = realPath;
+    }
+  }, 60_000);
+
+  it("reports a target it could not create, rather than restoring into nothing", async () => {
+    const backup = await createBackup({
+      connectionString: TEST_DATABASE_URL,
+      directory: workspace,
+      now: () => new Date("2026-07-26T13:14:00.000Z"),
+    });
+    const target = "gobblet_restore_impatient_drill";
+    // A millisecond of patience, asked for in the connection options, is the cheapest
+    // creation failure to provoke that is not a database that already exists.
+    const impatient = new URL(restoreUrl(target));
+    impatient.search = "?options=-c%20statement_timeout%3D1";
+
+    try {
+      await expect(
+        restoreBackup({
+          archivePath: backup.archivePath,
+          manifestPath: backup.manifestPath,
+          targetConnectionString: impatient.toString(),
+          targetDatabase: target,
+        }),
+      ).rejects.toThrow(/statement timeout/);
+    } finally {
+      await runOnMaintenanceDatabase(`drop database if exists "${target}"`);
     }
   }, 60_000);
 
@@ -371,6 +417,66 @@ describe("the backup and restore round trip", () => {
     ).rejects.toThrow(/matches has 1, expected 99/);
   }, 120_000);
 
+  it("expects nothing of a table its manifest never mentions, so an edited manifest hides none", async () => {
+    const backup = await createBackup({
+      connectionString: TEST_DATABASE_URL,
+      directory: workspace,
+      now: () => new Date("2026-07-26T13:27:00.000Z"),
+    });
+    const { matches: _matches, ...withoutMatches } = backup.manifest.rowCounts;
+    const trimmed = path.join(workspace, "trimmed.manifest.json");
+    await writeFile(
+      trimmed,
+      JSON.stringify({ ...backup.manifest, rowCounts: withoutMatches }),
+      "utf8",
+    );
+
+    await expect(
+      restoreBackup({
+        archivePath: backup.archivePath,
+        manifestPath: trimmed,
+        targetConnectionString: restoreUrl(RESTORE_DATABASE),
+        targetDatabase: RESTORE_DATABASE,
+      }),
+    ).rejects.toThrow(/matches has 1, expected 0/);
+  }, 120_000);
+
+  it("records that nothing has been migrated when the archive comes from a database without a history", async () => {
+    const bare = "gobblet_backup_bare_drill";
+    await runOnMaintenanceDatabase(`drop database if exists "${bare}"`);
+    await runOnMaintenanceDatabase(`create database "${bare}"`);
+
+    try {
+      const client = new Client({ connectionString: restoreUrl(bare) });
+      await client.connect();
+      try {
+        await client.query("create schema drizzle");
+        await client.query(
+          "create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint)",
+        );
+        for (const table of CRITICAL_TABLES) {
+          await client.query(`create table "${table}" ()`);
+        }
+      } finally {
+        await client.end();
+      }
+
+      const backup = await createBackup({
+        connectionString: restoreUrl(bare),
+        directory: workspace,
+        now: () => new Date("2026-07-26T13:28:00.000Z"),
+      });
+
+      expect(backup.manifest.migrationsApplied).toBe(0);
+      expect(backup.manifest.latestMigrationAt).toBeNull();
+      expect(backup.manifest.rowCounts).toEqual(
+        Object.fromEntries(CRITICAL_TABLES.map((table) => [table, 0])),
+      );
+    } finally {
+      await runOnMaintenanceDatabase(`drop database if exists "${bare}"`);
+    }
+  }, 120_000);
+
   it("exports the critical tables as compressed CSV that reads without PostgreSQL", async () => {
     const result = await exportCriticalTables({
       connectionString: TEST_DATABASE_URL,
@@ -387,6 +493,21 @@ describe("the backup and restore round trip", () => {
     );
     expect(csv.split("\n")[0]).toContain("mode");
     expect(csv).toContain(match.id);
+  }, 60_000);
+
+  it("stamps an export with today when the caller does not say when", async () => {
+    const startedOn = new Date().toISOString().slice(0, 10);
+
+    const result = await exportCriticalTables({
+      connectionString: TEST_DATABASE_URL,
+      directory: workspace,
+    });
+
+    const database = new URL(TEST_DATABASE_URL).pathname.slice(1);
+    const finishedOn = new Date().toISOString().slice(0, 10);
+    expect([`${database}-${startedOn}`, `${database}-${finishedOn}`]).toContain(
+      path.basename(result.directory),
+    );
   }, 60_000);
 
   it("counts only the tables an incident would lose", async () => {

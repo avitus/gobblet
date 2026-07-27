@@ -11,7 +11,8 @@ export default defineConfig({
       enabled: false,
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/cli/**"],
+      // `executor.ts` declares type aliases only, so it emits no runtime code to cover.
+      exclude: ["src/cli/**", "src/executor.ts"],
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "coverage",
     },

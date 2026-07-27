@@ -4,6 +4,7 @@ import {
   checkDatabaseConnection,
   countCompletedMatchesForActor,
   findMatchById,
+  findUnfinishedMatchForActor,
   insertMatch,
   listCompletedMatchesForActor,
   listMatchesForActor,
@@ -116,6 +117,38 @@ describe("match repository", () => {
     const unfinished = await listUnfinishedMatches(handle.db);
 
     expect(unfinished.map((row) => row.id).sort()).toEqual([queued.id, active.id].sort());
+  });
+
+  it("finds the one match an actor is still playing, from either seat", async () => {
+    const light = randomUUID();
+    const dark = randomUUID();
+    const queued = await insertMatch(
+      handle.db,
+      matchFixture({ lightPlayerId: light, darkPlayerId: dark }),
+    );
+
+    expect(
+      (await findUnfinishedMatchForActor(handle.db, { actorType: "guest", actorId: light }))?.id,
+    ).toBe(queued.id);
+    expect(
+      (await findUnfinishedMatchForActor(handle.db, { actorType: "guest", actorId: dark }))?.id,
+    ).toBe(queued.id);
+  });
+
+  it("finds nothing for an actor whose matches are all over, so matchmaking can queue them", async () => {
+    const actorId = randomUUID();
+    await insertMatch(
+      handle.db,
+      matchFixture({ lightPlayerId: actorId, status: "completed", result: "draw" }),
+    );
+    await insertMatch(handle.db, matchFixture({ darkPlayerId: actorId, status: "aborted" }));
+
+    expect(
+      await findUnfinishedMatchForActor(handle.db, { actorType: "guest", actorId }),
+    ).toBeUndefined();
+    expect(
+      await findUnfinishedMatchForActor(handle.db, { actorType: "user", actorId: randomUUID() }),
+    ).toBeUndefined();
   });
 
   it("lists matches of one actor on either side, newest first", async () => {

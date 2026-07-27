@@ -10,6 +10,7 @@ import {
   insertProfile,
   insertUser,
   markEmailVerified,
+  setUserRole,
   setUserSuspension,
   touchUser,
   uniqueUserConflict,
@@ -123,6 +124,13 @@ describe("users", () => {
         suspendedReason: null,
       }),
     ).rejects.toThrow(/found no user/);
+  });
+
+  it("grants the administrative role, and fails loudly for an account that does not exist", async () => {
+    const user = await createUser();
+
+    expect((await setUserRole(handle.db, user.id, "admin")).role).toBe("admin");
+    await expect(setUserRole(handle.db, randomUUID(), "admin")).rejects.toThrow(/found no user/);
   });
 });
 

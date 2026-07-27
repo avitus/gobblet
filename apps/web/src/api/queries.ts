@@ -8,6 +8,7 @@ import type {
   AdminUserDetail,
   AdminUserListResponse,
   AdminUserSearchQuery,
+  LatestReleasesResponse,
   LeaderboardPeriod,
   LeaderboardResponse,
   MatchHistoryResponse,
@@ -41,6 +42,7 @@ export const queryKeys = {
   adminAchievements: ["admin", "achievements"] as const,
   adminMetrics: ["admin", "metrics"] as const,
   adminAudit: ["admin", "audit"] as const,
+  latestReleases: ["releases", "latest"] as const,
 };
 
 /**
@@ -60,6 +62,16 @@ export function useServerConfig(): UseQueryResult<PublicServerConfig> {
   return useQuery({
     queryKey: queryKeys.serverConfig,
     queryFn: ({ signal }) => api.getServerConfig(signal),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The download page and the updater read the same records (appendix P8.13). */
+export function useLatestReleases(): UseQueryResult<LatestReleasesResponse> {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.latestReleases,
+    queryFn: ({ signal }) => api.getLatestReleases(signal),
     staleTime: 5 * 60_000,
   });
 }

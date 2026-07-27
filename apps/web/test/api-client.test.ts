@@ -50,6 +50,12 @@ function clientWith(fetchImpl: FetchLike, token: string | null = null): ApiClien
 }
 
 describe("ApiClient", () => {
+  it("reads the published releases without an abort signal to hand it", async () => {
+    const client = clientWith(() => Promise.resolve(jsonResponse({ stable: null, beta: null })));
+
+    await expect(client.getLatestReleases()).resolves.toEqual({ stable: null, beta: null });
+  });
+
   it("validates the answer against the shared schema", async () => {
     const client = clientWith(() => Promise.resolve(jsonResponse(CONFIG)));
 

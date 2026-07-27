@@ -76,3 +76,39 @@ export async function deleteAchievementByCode(
 export async function clearMatchStart(executor: DatabaseExecutor, matchId: string): Promise<void> {
   await executor.execute(sql`update matches set started_at = null where id = ${matchId}`);
 }
+
+/**
+ * Runs work while holding a PostgreSQL advisory lock, so two suites that share one
+ * database can take turns over a resource neither of them can namespace. The
+ * release catalogue is the case: it is one list per channel for the whole server,
+ * and a test that asserts it is empty cannot run beside one that publishes.
+ *
+ * The lock gets a connection of its own rather than one from a pool. A pooled
+ * connection is handed to whoever asks next, and an advisory lock can be re-entered
+ * by its own session, so the second caller would sail past the lock the first still
+ * holds. Holding it outside a transaction is what lets the work commit as it goes.
+ */
+export async function withAdvisoryLock<T>(
+  connectionString: string,
+  key: number,
+  work: () => Promise<T>,
+): Promise<T> {
+  const client = new Client({ connectionString, application_name: "gobblet-advisory-lock" });
+  await client.connect();
+  try {
+    await client.query("select pg_advisory_lock($1)", [key]);
+    try {
+      return await work();
+    } finally {
+      await client.query("select pg_advisory_unlock($1)", [key]);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+/** Empties the release catalogue, which no migration seeds and every channel shares. */
+export async function clearReleases(executor: DatabaseExecutor): Promise<void> {
+  await executor.execute(sql`delete from release_artifacts`);
+  await executor.execute(sql`delete from releases`);
+}

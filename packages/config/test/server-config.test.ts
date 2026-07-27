@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigValidationError, loadServerConfig } from "../src/index";
+import { ConfigValidationError, loadServerConfig, type EnvSource } from "../src/index";
 
 const minimal = {} as const;
 
@@ -137,6 +137,18 @@ describe("loadServerConfig", () => {
         "PORT",
       ]);
       expect(configError.message).toContain("PORT");
+    }
+  });
+
+  it("blames the environment itself when it is not a set of variables at all", () => {
+    try {
+      loadServerConfig(null as unknown as EnvSource);
+      expect.unreachable("expected a configuration error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigValidationError);
+      const configError = error as ConfigValidationError;
+      expect(configError.issues.map((issue) => issue.variable)).toEqual(["(root)"]);
+      expect(configError.message).toContain("(root)");
     }
   });
 });

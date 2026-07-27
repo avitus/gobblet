@@ -60,8 +60,9 @@ endpoints and `GET /v1/config`. All other interactions are planned.
    +--------------------+     +--------------------------+
 
    +-----------------------------------------------------+
-   | GitHub Releases / object storage: desktop installers |
-   | and signed update manifests (Phase 8)               |
+   | GitHub Releases: desktop installers and signed      |
+   | update bundles (Phase 8). The manifest that points  |
+   | at them is served by the API, not published here.   |
    +-----------------------------------------------------+
 ```
 
@@ -100,21 +101,21 @@ endpoints and `GET /v1/config`. All other interactions are planned.
                           +----------------------+
 ```
 
-| Component                | Responsibility                                                         | Status                                              |
-| ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------- |
-| `apps/web`               | All player-facing UI, optimistic feedback, socket client               | Implemented (Phase 5)                               |
-| `apps/desktop`           | Tauri v2 shell, deep-link auth callback, signed installers and updates | Planned (Phase 8)                                   |
-| `apps/server`            | Authoritative HTTP API and real-time runtime                           | Implemented (Phase 4), gameplay surface grows later |
-| `apps/admin`             | Not created: the surface is gated routes inside `apps/web`             | Superseded (Phase 7, appendix P7.1)                 |
-| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions  | Implemented (Phase 1)                               |
-| `packages/protocol`      | Zod schemas and shared command, event and snapshot types               | Implemented (Phase 2)                               |
-| `packages/db`            | Drizzle schema, migrations, transactional repositories                 | Implemented (Phase 2)                               |
-| `packages/config`        | Typed environment parsing and validation                               | Implemented (Phase 0)                               |
-| `packages/auth`          | Password hashing and verification, opaque session token helpers        | Implemented (Phase 3)                               |
-| `packages/observability` | Not created: the server owns it, in `apps/server/src/observability`    | Superseded (Phase 7, appendix P7.19)                |
-| `packages/design-system` | CSS custom property tokens and shared primitives                       | Implemented (Phase 5)                               |
-| `packages/game-ui`       | Shared React game UI reused by web and desktop                         | Implemented (Phase 5)                               |
-| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites               | Grows with each phase's suites                      |
+| Component                | Responsibility                                                        | Status                                              |
+| ------------------------ | --------------------------------------------------------------------- | --------------------------------------------------- |
+| `apps/web`               | All player-facing UI, optimistic feedback, socket client              | Implemented (Phase 5)                               |
+| `apps/desktop`           | Tauri v2 shell: credential store, close confirmation, updater         | Implemented (Phase 8)                               |
+| `apps/server`            | Authoritative HTTP API and real-time runtime                          | Implemented (Phase 4), gameplay surface grows later |
+| `apps/admin`             | Not created: the surface is gated routes inside `apps/web`            | Superseded (Phase 7, appendix P7.1)                 |
+| `packages/game-core`     | Pure rules engine: legality, victory detection, immutable transitions | Implemented (Phase 1)                               |
+| `packages/protocol`      | Zod schemas and shared command, event and snapshot types              | Implemented (Phase 2)                               |
+| `packages/db`            | Drizzle schema, migrations, transactional repositories                | Implemented (Phase 2)                               |
+| `packages/config`        | Typed environment parsing and validation                              | Implemented (Phase 0)                               |
+| `packages/auth`          | Password hashing and verification, opaque session token helpers       | Implemented (Phase 3)                               |
+| `packages/observability` | Not created: the server owns it, in `apps/server/src/observability`   | Superseded (Phase 7, appendix P7.19)                |
+| `packages/design-system` | CSS custom property tokens and shared primitives                      | Implemented (Phase 5)                               |
+| `packages/game-ui`       | Shared React game UI reused by web and desktop                        | Implemented (Phase 5)                               |
+| `packages/test-utils`    | Deterministic fixtures and helpers shared by test suites              | Grows with each phase's suites                      |
 
 The server runs HTTP and real-time transport in one Node process (see
 [ADR-0006](adr/0006-fastify-socketio-server.md)). There is exactly one authoritative
@@ -162,8 +163,11 @@ Topology decisions and their consequences are recorded in
   interfaces so a Redis-backed adapter can be introduced without touching call sites.
 - Managed PostgreSQL provides backups and point-in-time recovery instead of self-managed
   database operations.
-- Desktop installers and signed update manifests are served from GitHub Releases or object
-  storage, never from the application server.
+- Desktop installers and signed update bundles are served from GitHub Releases, never from the
+  application server ([ADR-0035](adr/0035-artifacts-live-in-github-releases.md)). The update
+  manifest is the exception: it is computed by the API from a release row, so a rollout can be
+  paused without touching a published asset
+  ([ADR-0034](adr/0034-updates-are-asked-of-our-own-server.md)).
 
 ## 5. Repository structure
 
@@ -212,7 +216,7 @@ against built declarations.
 | `db`        | `protocol`, `config`                                             | react, three, socket.io, fastify routes                                                                         |
 | `server`    | `game-core`, `protocol`, `db`, `config`, `observability`, `auth` | react, three, `game-ui`                                                                                         |
 | `web`       | `game-core`, `protocol`, `game-ui`, `design-system`, `config`    | `db`, `auth` internals, fastify                                                                                 |
-| `desktop`   | the built `web` artifact                                         | direct database or server internals                                                                             |
+| `desktop`   | the built `web` artifact                                         | direct database or server internals, and any client code: the shell is Rust plus a bundled `dist/`              |
 
 Enforcement:
 
@@ -438,8 +442,11 @@ platform deep-link handling. Nothing in the server or the engine would change.
 | 3D client and shared game UI                              | Implemented | Phase 5      |
 | Social surface and progression                            | Implemented | Phase 6      |
 | Admin API, audit log, metrics, alerting                   | Implemented | Phase 7      |
-| Desktop shell, signing, auto-update                       | Planned     | Phase 8      |
-| Load, soak and launch hardening                           | Planned     | Phase 9      |
+| Desktop shell, signing, auto-update                       | Implemented | Phase 8      |
+| Load harness, quality gates, launch dashboards            | Implemented | Phase 9      |
+| Legal and support pages                                   | Implemented | Phase 9      |
+| Rollback as a workflow input, proved by the smoke check   | Implemented | Phase 9      |
+| The three launch approvals a person signs                 | Deferred    | Phase 9      |
 
 This table is the single place to update when a phase completes. Any document that disagrees
 with it is out of date.

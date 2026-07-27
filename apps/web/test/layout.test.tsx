@@ -27,6 +27,9 @@ function stubViewport(matchingQuery: string): void {
 
 afterEach(() => {
   Reflect.deleteProperty(window, "matchMedia");
+  if ("__TAURI_INTERNALS__" in window) {
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  }
 });
 
 describe("layout envelope", () => {
@@ -47,5 +50,16 @@ describe("layout envelope", () => {
     renderWithProviders(<AppRoutes />, { routes: { "GET /v1/config": { body: CONFIG } } });
 
     expect(await screen.findByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download" })).toBeInTheDocument();
+  });
+
+  it("offers no download page on the desktop, which is already downloaded", async () => {
+    stubViewport("(min-width: 1024px)");
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+
+    renderWithProviders(<AppRoutes />, { routes: { "GET /v1/config": { body: CONFIG } } });
+
+    await screen.findByRole("navigation", { name: "Main" });
+    expect(screen.queryByRole("link", { name: "Download" })).not.toBeInTheDocument();
   });
 });

@@ -2,14 +2,16 @@
   "name": "@gobblet/e2e",
   "version": "0.1.0",
   "private": true,
-  "description": "Playwright browser suite: a complete match in Chromium and WebKit (docs/adr/0021)",
+  "description": "Playwright browser suite: a complete match in Chromium, WebKit and, nightly, Firefox (docs/adr/0021, docs/adr/0041)",
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium --project=webkit",
     "browsers": "playwright install chromium webkit",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint helpers setup tests playwright.config.ts"
+    "lint": "eslint helpers setup tests playwright.config.ts",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "browsers:firefox": "playwright install firefox"
   },
   "devDependencies": {
     "@gobblet/db": "workspace:*",

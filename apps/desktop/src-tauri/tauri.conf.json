@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Gobblet Online",
+  "version": "../package.json",
+  "identifier": "ai.gobblet.online",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @gobblet/web run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm --filter @gobblet/web run build",
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Gobblet Online",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 680,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https: wss: http://localhost:* ws://localhost:*; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "nsis"],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Game",
+    "shortDescription": "Real-time online Gobblet",
+    "longDescription": "Gobblet Online: real-time 4x4 Gobblet against another player, with ranked and casual matches.",
+    "copyright": "Gobblet Online",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM3OTc5QTkzRTY5NENFODEKUldTQnpwVG1rNXFYeDcza0tzRkg5UG9ENWM1WTZrbGh0S3Yxb3l0QlVWVWtoVU9tOUFhSUVla1kK",
+      "endpoints": [
+        "https://gobblet.invalid/v1/updates/stable?target={{target}}-{{arch}}&currentVersion={{current_version}}"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -19,6 +19,13 @@ on:
         description: Deploy to staging only.
         type: boolean
         default: false
+      rollback:
+        description: >-
+          Roll back instead of deploying forward: redeploy the ref above, skip
+          migrations, and prove the rollback with the smoke check. See
+          docs/operations.md section 9.
+        type: boolean
+        default: false
 
 concurrency:
   # One deploy at a time. A queued deploy waits rather than racing the drain of
@@ -87,6 +94,11 @@ jobs:
   staging-migrate:
     name: Migrate staging
     needs: build
+    # A rollback runs against the schema that is already there. Migrations are
+    # written to be backward compatible for exactly this reason
+    # (docs/operations.md section 9), so rolling the code back never rolls the
+    # schema back; a schema that has to move backward is a restore, not a rollback.
+    if: ${{ !inputs.rollback }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -135,6 +147,7 @@ jobs:
   staging-deploy:
     name: Deploy staging
     needs: [build, staging-migrate]
+    if: ${{ always() && needs.build.result == 'success' && (needs.staging-migrate.result == 'success' || inputs.rollback) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -180,9 +193,13 @@ jobs:
       # Section 22.2 step 5 and docs/operations.md section 7: liveness, readiness,
       # the configuration document, and a match that plays a move, reconnects and
       # finds the version advanced.
+      # APP_VERSION is what makes a rollback verifiable: the check fails unless the
+      # version now serving is the version this run released, so a deployment that
+      # silently did nothing cannot be reported as a successful rollback.
       - name: Smoke test
         env:
           SMOKE_BASE_URL: ${{ vars.STAGING_URL }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
         run: pnpm --filter @gobblet/server smoke
 
   production-approval:
@@ -203,6 +220,7 @@ jobs:
   production-migrate:
     name: Migrate production
     needs: [build, production-approval]
+    if: ${{ !inputs.rollback }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -251,6 +269,7 @@ jobs:
   production-deploy:
     name: Deploy production and drain
     needs: [build, production-migrate]
+    if: ${{ always() && needs.build.result == 'success' && (needs.production-migrate.result == 'success' || inputs.rollback) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment:
@@ -288,3 +307,41 @@ jobs:
         run: |
           echo "Error rate, readiness and match transaction failures for the observation window."
           echo "See ops/alerts/gobblet.rules.yml, GobbletErrorRegressionAfterDeploy."
+
+  production-smoke:
+    name: Smoke production
+    needs: [build, production-deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The same check as staging, and the one that decides whether a rollback
+      # worked: the version serving must be the version this run released.
+      - name: Smoke test
+        env:
+          SMOKE_BASE_URL: ${{ vars.PRODUCTION_URL }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+        run: pnpm --filter @gobblet/server smoke
+
+      - name: Say what happened
+        run: |
+          if [ "${{ inputs.rollback }}" = "true" ]; then
+            echo "Rolled back to ${{ needs.build.outputs.version }} at ${{ needs.build.outputs.sha }}, and it is serving."
+          else
+            echo "Deployed ${{ needs.build.outputs.version }} at ${{ needs.build.outputs.sha }}, and it is serving."
+          fi

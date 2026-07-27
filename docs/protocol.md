@@ -351,6 +351,8 @@ lives for 30 seconds.
 | GET    | `/v1/config`             | none | Client bootstrap: environment, version, limits                        | 0     | Yes               |
 | GET    | `/v1/leaderboards`       | none | Ranked board for one period, paged by cursor                          | 6     | Yes               |
 | GET    | `/v1/profiles/:username` | none | Public profile: username, avatar, country, member since, both records | 3     | Yes               |
+| GET    | `/v1/updates/:channel`   | none | Tauri update manifest for one platform and version                    | 8     | Yes               |
+| GET    | `/v1/releases/latest`    | none | Newest unpaused release of each channel, for the download page        | 8     | Yes               |
 
 ### 9.2 Session and user
 
@@ -447,6 +449,11 @@ requires it rather than the screen
 | PATCH  | `/v1/admin/achievements/:achievementId` | admin | Update an achievement definition          | 7     | Yes               |
 | GET    | `/v1/admin/metrics`                     | admin | Operational summary for the admin surface | 7     | Yes               |
 | GET    | `/v1/admin/audit`                       | admin | Read the audit log                        | 7     | Yes               |
+| GET    | `/v1/admin/releases`                    | admin | Every release, newest first               | 8     | Yes               |
+| POST   | `/v1/admin/releases`                    | admin | Publish a release with its artifacts      | 8     | Yes               |
+| POST   | `/v1/admin/releases/:releaseId/pause`   | admin | Pause or resume a rollout                 | 8     | Yes               |
+| POST   | `/v1/admin/releases/:releaseId/promote` | admin | Move a release from beta to stable        | 8     | Yes               |
+| POST   | `/v1/admin/releases/build-events`       | admin | Report how a release build step ended     | 8     | Yes               |
 
 Two paths differ from the plan: the suspension is lifted by `reinstate` and the rating correction
 hangs off the user rather than a separate `ratings` collection, so every action on one account
@@ -465,6 +472,52 @@ to create an administrator, so the surface cannot widen itself
 A request without the role is answered `403 forbidden` with the same body whatever the path, so
 the surface reveals nothing about what it contains. The web client hides the dashboard from an
 account that does not have the role, but the refusal is the server's.
+
+### 9.4.1 Desktop updates and releases
+
+Status: implemented (Phase 8). The updater asks this server rather than reading a published file,
+so pausing and promoting are audited mutations of a row rather than edits to an asset
+([ADR-0034](adr/0034-updates-are-asked-of-our-own-server.md)).
+
+`GET /v1/updates/:channel?target=<target>&currentVersion=<x.y.z>` is anonymous, because an updater
+has no session. `target` is one of `darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`. The answer
+is Tauri's own manifest shape, which is the one place in the protocol that is not camel case:
+
+```json
+{
+  "version": "1.3.0",
+  "notes": "The pieces gobble faster.",
+  "pub_date": "2026-02-01T10:00:00.000Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "<detached minisign signature>",
+      "url": "https://github.com/.../Gobblet.app.tar.gz"
+    }
+  }
+}
+```
+
+`204 No Content` is the answer whenever there is nothing to install: no release on that channel,
+the newest one is paused, the newest one has no artifact for that platform, or the client is
+already on that version or a newer one. A version that cannot be read is `validation_failed`
+rather than an offer, because a client that cannot name its version is broken.
+
+The signature is Tauri's detached minisign signature over the update bundle, produced on the build
+machine and verified in the application against the public key compiled into it. The manifest is
+not separately signed: a forged manifest cannot produce an installable bundle
+([appendix P8.4](product-spec.md#appendix-p8--phase-8-decisions-and-deviations-recorded-not-silently-decided)).
+
+`GET /v1/releases/latest` answers `{ "stable": ReleaseSummary | null, "beta": ReleaseSummary | null }`
+for the download page. A summary carries the version, channel, notes, publication time and, per
+platform, the installer URL, its size and its SHA-256. The signature is not in this shape: it is
+for the updater, not for a person.
+
+Publishing requires one artifact per platform being released and a signature on each, so the
+schema is what makes an unsigned build unpublishable. A version may be published once. Promotion
+moves the same row to `stable` and never touches the artifacts, so what beta tested is what stable
+receives. Pausing, resuming, promoting and publishing each write an audit record with a reason,
+and `POST /v1/admin/releases/build-events` records how a build step ended, which is what feeds
+`gobblet_desktop_signing_failures_total`.
 
 ### 9.5 Telemetry relay
 
@@ -606,19 +659,21 @@ Client rules:
 Status: implemented for every column, including the administrative role (Phase 7).
 `Yes*` marks an action allowed only with a verified email address.
 
-| Capability                                | Guest | User | Participant | Admin |
-| ----------------------------------------- | ----- | ---- | ----------- | ----- |
-| `GET /v1/config`, leaderboards            | Yes   | Yes  | Yes         | Yes   |
-| Casual matchmaking                        | Yes   | Yes  | Yes         | Yes   |
-| Ranked matchmaking                        | No    | Yes* | Yes*        | Yes*  |
-| Submit `match:move`, `match:resign`       | No    | No   | Yes         | No    |
-| Read `/v1/matches/:matchId/snapshot`      | No    | No   | Yes         | Yes   |
-| Rematch request and response              | No    | No   | Yes         | No    |
-| Preset messages and reactions             | No    | No   | Yes         | No    |
-| Claim a username                          | Yes   | Yes  | Yes         | Yes   |
-| Read a public profile                     | Yes   | Yes  | Yes         | Yes   |
-| Persistent profile, history, achievements | No    | Yes  | Yes         | Yes   |
-| Admin endpoints                           | No    | No   | No          | Yes   |
+| Capability                                 | Guest | User | Participant | Admin |
+| ------------------------------------------ | ----- | ---- | ----------- | ----- |
+| `GET /v1/config`, leaderboards             | Yes   | Yes  | Yes         | Yes   |
+| Casual matchmaking                         | Yes   | Yes  | Yes         | Yes   |
+| Ranked matchmaking                         | No    | Yes* | Yes*        | Yes*  |
+| Submit `match:move`, `match:resign`        | No    | No   | Yes         | No    |
+| Read `/v1/matches/:matchId/snapshot`       | No    | No   | Yes         | Yes   |
+| Rematch request and response               | No    | No   | Yes         | No    |
+| Preset messages and reactions              | No    | No   | Yes         | No    |
+| Claim a username                           | Yes   | Yes  | Yes         | Yes   |
+| Read a public profile                      | Yes   | Yes  | Yes         | Yes   |
+| Persistent profile, history, achievements  | No    | Yes  | Yes         | Yes   |
+| Admin endpoints                            | No    | No   | No          | Yes   |
+| Ask for an update, read published releases | Yes   | Yes  | Yes         | Yes   |
+| Publish, pause or promote a release        | No    | No   | No          | Yes   |
 
 Admin access is a server-side role check, never a client-side route guard: the role is read from
 the account on every request, so revoking it takes effect on the next one rather than at the next

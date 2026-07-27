@@ -1,0 +1,378 @@
+name: Desktop release
+
+# The packaging half of specification section 22.3, for the desktop products of
+# section 5.4. A tag builds the same web bundle the deployment ships and hands it to
+# the Tauri bundler on each platform (docs/adr/0033), signs it, publishes the assets
+# to the GitHub Release (docs/adr/0035), records them against a release row through
+# the admin API (docs/adr/0034), proves the staged channel answers, and only then
+# promotes to stable.
+#
+# Every signing step stops the release when its secret is absent, naming what has to
+# be obtained (docs/adr/0036). No path here produces a signed-looking artifact
+# without an identity, and `allow-unsigned` is refused for anything that publishes.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The tag to build. Must already be green on CI.
+        required: true
+      allow-unsigned:
+        description: >-
+          Build a developer package without signing. Refused for a publication:
+          the artifacts are marked unsigned and nothing is recorded as a release.
+        type: boolean
+        default: false
+      publish:
+        description: Publish the assets and record the release through the admin API.
+        type: boolean
+        default: true
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CI: "true"
+  # The channel a tagged build enters. Promotion to stable is the last job.
+  RELEASE_CHANNEL: beta
+
+jobs:
+  identify:
+    name: Identify the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      publish: ${{ steps.read.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Read the version and settle what this run may do
+        id: read
+        env:
+          ALLOW_UNSIGNED: ${{ inputs.allow-unsigned }}
+          PUBLISH: ${{ inputs.publish == null && 'true' || inputs.publish }}
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${tag}" != "${version}" ]; then
+            echo "::error::The tag ${GITHUB_REF_NAME} does not match apps/desktop/package.json (${version})."
+            exit 1
+          fi
+          if [ "${ALLOW_UNSIGNED}" = "true" ] && [ "${PUBLISH}" = "true" ]; then
+            echo "::error::An unsigned build cannot be published. Run it with publish disabled."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "publish=${PUBLISH}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} to ${RELEASE_CHANNEL}"
+
+  bundle:
+    name: Bundle ${{ matrix.target }}
+    needs: identify
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: darwin-aarch64
+            rust-target: aarch64-apple-darwin
+          - runner: macos-14
+            target: darwin-x86_64
+            rust-target: x86_64-apple-darwin
+          - runner: windows-2022
+            target: windows-x86_64
+            rust-target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The desktop is the web build (ADR-0033): the same command, the same output.
+      - name: Build the client
+        run: pnpm --filter @gobblet/web run build
+        env:
+          VITE_API_BASE_URL: ${{ vars.PRODUCTION_URL }}
+          VITE_APP_ENV: production
+          VITE_CLIENT_VERSION: ${{ needs.identify.outputs.version }}
+
+      - name: Require an update endpoint
+        shell: bash
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+        run: |
+          if [ -z "${HOST}" ]; then
+            echo "::error::No production host is configured, so the updater would have nowhere to ask. See docs/adr/0015-defer-hosting-choice.md."
+            exit 1
+          fi
+          case "${HOST}" in
+            https://*) ;;
+            *) echo "::error::The update endpoint must be https."; exit 1 ;;
+          esac
+
+      - name: Point the updater at the endpoint of this deployment
+        shell: bash
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          CHANNEL: ${{ env.RELEASE_CHANNEL }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const path = "apps/desktop/src-tauri/tauri.conf.json";
+            const conf = JSON.parse(fs.readFileSync(path, "utf8"));
+            const host = process.env.HOST.replace(/\/+$/, "");
+            conf.plugins.updater.endpoints = [
+              `${host}/v1/updates/${process.env.CHANNEL}?target={{target}}-{{arch}}&currentVersion={{current_version}}`,
+            ];
+            fs.writeFileSync(path, `${JSON.stringify(conf, null, 2)}\n`);
+          '
+          grep -q "gobblet.invalid" apps/desktop/src-tauri/tauri.conf.json && {
+            echo "::error::The placeholder endpoint survived the rewrite."
+            exit 1
+          }
+          exit 0
+
+      - name: Require the update signing key
+        if: inputs.allow-unsigned != true
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. Generate it with 'pnpm --filter @gobblet/desktop exec tauri signer generate' and store the private half as a repository secret; the public half is already in tauri.conf.json."
+            exit 1
+          fi
+
+      - name: Require the macOS signing identity
+        if: startsWith(matrix.target, 'darwin') && inputs.allow-unsigned != true
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          missing=""
+          [ -z "${CERTIFICATE}" ] && missing="${missing} APPLE_CERTIFICATE"
+          [ -z "${CERTIFICATE_PASSWORD}" ] && missing="${missing} APPLE_CERTIFICATE_PASSWORD"
+          [ -z "${SIGNING_IDENTITY}" ] && missing="${missing} APPLE_SIGNING_IDENTITY"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing${missing}. A Developer ID Application certificate needs an Apple Developer Program membership; export it as a base64 .p12. See docs/operations.md section 13."
+            exit 1
+          fi
+
+      - name: Require the notarization credentials
+        if: startsWith(matrix.target, 'darwin') && inputs.allow-unsigned != true
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          [ -z "${APPLE_ID}" ] && missing="${missing} APPLE_ID"
+          [ -z "${APPLE_PASSWORD}" ] && missing="${missing} APPLE_APP_SPECIFIC_PASSWORD"
+          [ -z "${APPLE_TEAM_ID}" ] && missing="${missing} APPLE_TEAM_ID"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing${missing}. Notarization needs an app-specific password for the Apple ID that owns the team. See docs/operations.md section 13."
+            exit 1
+          fi
+
+      - name: Require the Windows signing certificate
+        if: matrix.target == 'windows-x86_64' && inputs.allow-unsigned != true
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "${CERTIFICATE}" ] && missing="${missing} WINDOWS_CERTIFICATE"
+          [ -z "${CERTIFICATE_PASSWORD}" ] && missing="${missing} WINDOWS_CERTIFICATE_PASSWORD"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing${missing}. An organisation-validated or extended-validation code-signing certificate is required; SmartScreen reputation then accrues with downloads. See docs/operations.md section 13."
+            exit 1
+          fi
+
+      # Signing and notarization happen inside the bundler when these are present,
+      # which is why the checks above are what stands between us and an unsigned
+      # release (ADR-0036). `tauri-action` uploads the assets to the tag's release.
+      - name: Bundle, sign and notarize
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          args: --target ${{ matrix.rust-target }}
+          tagName: v${{ needs.identify.outputs.version }}
+          releaseName: Gobblet Online ${{ needs.identify.outputs.version }}
+          releaseDraft: false
+          prerelease: true
+          includeUpdaterJson: false
+
+      - name: Report the failure of a signing step
+        if: failure() && needs.identify.outputs.publish == 'true'
+        shell: bash
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+          VERSION: ${{ needs.identify.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          # The series the paging rule of section 17.4 watches. A report that cannot
+          # be sent must not hide the build failure, so this step never fails.
+          if [ -z "${HOST}" ] || [ -z "${TOKEN}" ]; then
+            echo "::warning::No API to report the signing failure to."
+            exit 0
+          fi
+          curl --silent --show-error --fail-with-body \
+            --request POST "${HOST%/}/v1/admin/releases/build-events" \
+            --header "authorization: Bearer ${TOKEN}" \
+            --header "content-type: application/json" \
+            --data "{\"version\":\"${VERSION}\",\"target\":\"${TARGET}\",\"step\":\"sign\",\"outcome\":\"failed\",\"detail\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" \
+            || echo "::warning::The build event could not be reported."
+
+      - name: Describe what was built
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLE_DIR: apps/desktop/src-tauri/target/${{ matrix.rust-target }}/release/bundle
+          DOWNLOAD_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download/v${{ needs.identify.outputs.version }}
+          ARTIFACT_FILE: ${{ runner.temp }}/artifact.json
+        run: pnpm --filter @gobblet/server desktop-release describe
+
+      - name: Keep the description for the publication step
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.target }}
+          path: ${{ runner.temp }}/artifact.json
+          retention-days: 7
+
+  publish:
+    name: Record the release
+    needs: [identify, bundle]
+    if: needs.identify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: artifact-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Require the administrative credentials
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+        run: |
+          missing=""
+          [ -z "${HOST}" ] && missing="${missing} PRODUCTION_URL"
+          [ -z "${TOKEN}" ] && missing="${missing} RELEASE_ADMIN_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing${missing}. The workflow records a release as an administrator (ADR-0034); grant the role with 'pnpm admin:grant'."
+            exit 1
+          fi
+
+      # The assets are already public; this is the second half of the one-directional
+      # publication of ADR-0035, and a failure here leaves a release nobody is offered.
+      - name: Publish to the staged channel
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+          VERSION: ${{ needs.identify.outputs.version }}
+          CHANNEL: ${{ env.RELEASE_CHANNEL }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/artifacts
+          NOTES: ${{ github.event.head_commit.message || format('Gobblet Online {0}', needs.identify.outputs.version) }}
+          REASON: Published by the desktop release workflow
+        run: pnpm --filter @gobblet/server desktop-release publish
+
+      - name: Ask the endpoint what a beta client would be offered
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          VERSION: ${{ needs.identify.outputs.version }}
+          CHANNEL: ${{ env.RELEASE_CHANNEL }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/artifacts
+        run: pnpm --filter @gobblet/server desktop-release check
+
+  promote:
+    name: Promote to stable
+    needs: [identify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A human decides that the staged channel ran clean, which is the gate section
+    # 22.3 asks for between a staged rollout and everybody.
+    environment: desktop-stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Promote what the staged channel proved
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          TOKEN: ${{ secrets.RELEASE_ADMIN_TOKEN }}
+          VERSION: ${{ needs.identify.outputs.version }}
+          REASON: The staged channel ran clean
+        run: pnpm --filter @gobblet/server desktop-release promote

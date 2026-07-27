@@ -17,6 +17,8 @@ export type MatchChannel = Readonly<{
   inputLocked: boolean;
   submitMove: (move: Move) => void;
   resign: () => void;
+  /** The same resignation, awaited: the desktop close waits for the answer (P8.9). */
+  resignAndWait: () => Promise<void>;
   select: (selection: Selection | null) => void;
   dismissNotice: () => void;
 }>;
@@ -155,10 +157,10 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
     [socket],
   );
 
-  const resign = useCallback(() => {
+  const resignAndWait = useCallback(() => {
     const snapshot = stateRef.current.snapshot;
     if (!snapshot || isInputLocked(stateRef.current)) {
-      return;
+      return Promise.resolve();
     }
     const command: PendingCommand = {
       kind: "resign",
@@ -169,8 +171,12 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
       sentAt: Date.now(),
     };
     dispatch({ type: "command-sent", command });
-    void send(socket, command, dispatch);
+    return send(socket, command, dispatch);
   }, [socket]);
+
+  const resign = useCallback(() => {
+    void resignAndWait();
+  }, [resignAndWait]);
 
   const select = useCallback((selection: Selection | null) => {
     dispatch({ type: "select", selection });
@@ -186,6 +192,7 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
     inputLocked: isInputLocked(state),
     submitMove,
     resign,
+    resignAndWait,
     select,
     dismissNotice,
   };

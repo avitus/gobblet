@@ -3,7 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { useAdminAccess } from "../admin/useAdminAccess";
 import { useApi } from "../api/provider";
+import { DesktopUpdates } from "../desktop/DesktopUpdates";
+import { isDesktop } from "../desktop/host";
 import { useSessionStore } from "../session/store";
+import { AppFooter } from "./AppFooter";
 import styles from "./AppShell.module.css";
 
 const NARROW_QUERY = "(max-width: 767px)";
@@ -18,6 +21,9 @@ const NAVIGATION: readonly NavigationItem[] = [
   { to: "/profile", label: "Profile" },
   { to: "/settings", label: "Settings" },
 ];
+
+/** The desktop is already downloaded, so the page is offered to browsers only. */
+const DOWNLOAD_ITEM: NavigationItem = { to: "/download", label: "Download" };
 
 export function AppShell(): React.JSX.Element {
   const tooNarrow = useMediaQuery(NARROW_QUERY);
@@ -58,6 +64,7 @@ export function AppShell(): React.JSX.Element {
         <nav className={styles.nav} aria-label="Main">
           {[
             ...NAVIGATION,
+            ...(isDesktop() ? [] : [DOWNLOAD_ITEM]),
             ...(admin.allowed === true ? [{ to: "/admin", label: "Admin" }] : []),
           ].map((item) => (
             <NavLink
@@ -94,6 +101,8 @@ export function AppShell(): React.JSX.Element {
           <Outlet />
         </div>
       </main>
+      <AppFooter />
+      <DesktopUpdates />
     </div>
   );
 }

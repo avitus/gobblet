@@ -41,3 +41,145 @@ jobs:
         env:
           GOBBLET_PROPERTY_TRANSITIONS: ${{ inputs.transitions || '100000' }}
         run: pnpm test:properties:nightly
+
+  desktop-shell:
+    name: Desktop shell builds on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    # The last open Phase 0 exit criterion: the shells build on both platforms in CI.
+    # It runs nightly rather than per push because a cold Rust build costs minutes and
+    # nothing in a normal change can break it without also breaking the web build.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            rust-target: aarch64-apple-darwin
+          - runner: windows-2022
+            rust-target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the client the shell packages
+        run: pnpm --filter @gobblet/web run build
+
+      # No bundling and no signing: this proves the shell compiles and links against
+      # the platform web view, which is what the criterion asks.
+      - name: Build the shell
+        run: pnpm --filter @gobblet/desktop exec tauri build --no-bundle --target ${{ matrix.rust-target }}
+
+  firefox-compatibility:
+    name: Browser suite in Firefox
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # The rendering matrix of section 20.7, for the row a runner can execute
+    # (docs/adr/0041). Chromium and WebKit run on every push; Firefox runs here
+    # because a third engine on every push costs more than it catches.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: gobblet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/gobblet_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Firefox
+        run: pnpm --filter @gobblet/e2e exec playwright install --with-deps firefox
+
+      - name: Play a match in Firefox
+        run: pnpm test:e2e:firefox
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-firefox
+          path: e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  load:
+    name: Load run at the scale a runner carries
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Section 20.8 at whatever scale a shared runner allows, which is not the stated
+    # scale and the report says so (docs/adr/0037). What this catches nightly is a
+    # regression in acknowledgement latency, a lost move or a duplicate completion.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: gobblet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/gobblet_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace packages
+        run: pnpm build
+
+      - name: Drive the load harness
+        env:
+          LOAD_MATCHES: "50"
+          LOAD_MOVES_PER_MATCH: "16"
+          LOAD_WAVE_SIZE: "25"
+        run: pnpm load

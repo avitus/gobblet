@@ -8,9 +8,11 @@ import type {
   Player,
 } from "@gobblet/protocol";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { COMPLETED_MATCH_QUERY_KEYS } from "../api/queries";
+import type { DesktopWindow } from "../desktop/bridge";
+import { useCloseGuard } from "../desktop/useCloseGuard";
 import { CommunicationPanel } from "../match/CommunicationPanel";
 import { opponentOf, seatOf } from "../match/seat";
 import { useCommunication } from "../match/use-communication";
@@ -38,7 +40,12 @@ const END_REASONS: Readonly<Record<MatchEndedEvent["reason"], string>> = Object.
  * comes from the snapshot the server sent, and the only local additions are the
  * clock interpolation and the pending-move preview (docs/adr/0020).
  */
-export function MatchScreen(): React.JSX.Element {
+export type MatchScreenProps = Readonly<{
+  /** Supplied by the tests; the desktop loads its own window (appendix P8.9). */
+  desktopWindow?: DesktopWindow;
+}>;
+
+export function MatchScreen({ desktopWindow }: MatchScreenProps = {}): React.JSX.Element {
   const { matchId = null } = useParams<{ matchId: string }>();
   const channel = useMatchChannel(matchId);
   const { state, view } = channel;
@@ -61,17 +68,25 @@ export function MatchScreen(): React.JSX.Element {
     );
   }
 
-  return <MatchBoard matchId={matchId} channel={channel} view={view} />;
+  return (
+    <MatchBoard
+      matchId={matchId}
+      channel={channel}
+      view={view}
+      {...(desktopWindow ? { desktopWindow } : {})}
+    />
+  );
 }
 
 type MatchBoardProps = Readonly<{
   matchId: string;
   channel: MatchChannel;
   view: MatchSnapshot;
+  desktopWindow?: DesktopWindow;
 }>;
 
 /** Everything below here has a snapshot to draw, so nothing about it is optional. */
-function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Element {
+function MatchBoard({ matchId, channel, view, desktopWindow }: MatchBoardProps): React.JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const actor = useSessionStore((state) => state.actor);
@@ -122,6 +137,26 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
   const near = seat ?? "light";
   const far = opponentOf(near);
   const theirOffer = rematch.status?.state === "offered" && !rematch.offeredByMe;
+
+  // Closing the desktop window mid-match asks whether that should be a resignation
+  // (appendix P8.9). The question is this dialog; the answer resolves the promise.
+  const [quitAnswer, setQuitAnswer] = useState<((resign: boolean) => void) | null>(null);
+  const confirmQuit = useCallback(
+    () =>
+      new Promise<boolean>((resolve) => {
+        setQuitAnswer(() => (resign: boolean) => {
+          setQuitAnswer(null);
+          resolve(resign);
+        });
+      }),
+    [],
+  );
+  useCloseGuard({
+    inMatch: seat !== null && ended === null && view.status === "active",
+    confirm: confirmQuit,
+    resign: channel.resignAndWait,
+    ...(desktopWindow ? { window: desktopWindow } : {}),
+  });
 
   return (
     <div className={styles.layout} data-testid="match-screen">
@@ -205,6 +240,35 @@ function MatchBoard({ matchId, channel, view }: MatchBoardProps): React.JSX.Elem
           />
         )}
       </div>
+
+      <Dialog
+        open={quitAnswer !== null}
+        title="Quit and resign this match?"
+        data-testid="quit-dialog"
+        footer={
+          <div className={styles.dialogActions}>
+            <Button
+              onClick={() => {
+                quitAnswer?.(true);
+              }}
+              data-testid="quit-resign"
+            >
+              Resign and quit
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                quitAnswer?.(false);
+              }}
+              data-testid="quit-cancel"
+            >
+              Keep playing
+            </Button>
+          </div>
+        }
+      >
+        <p>Closing the window now ends the match as a resignation.</p>
+      </Dialog>
 
       <Dialog
         open={ended !== null}
