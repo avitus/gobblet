@@ -113,6 +113,12 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, a deploy run that releases nothing now fails. The first production run finished
+  green having skipped every job after the approval: without a status function in its condition,
+  GitHub skips a job when anything upstream skipped, and `skip-staging` skips plenty. Each job
+  now states which upstream results it requires, and a final `release-check` job, which runs
+  whatever else did, fails the run unless the environments it was asked for were deployed and
+  smoked.
 - Launch B1, the server image hands every copy to the user it runs as. `COPY` keeps the build
   context's file modes and makes root the owner, so a tree checked out under a restrictive umask
   produced an image whose workspace manifests the `node` user could not read; Node reports an

@@ -89,6 +89,62 @@ describe("a production release without a staging rehearsal", () => {
   });
 });
 
+describe("a job that depends on another", () => {
+  /** Every job in the file, in order, with its lines. */
+  const names = [...workflow.matchAll(/\n {2}([a-z][a-z-]*):\n/g)].map(
+    (match) => match[1] as string,
+  );
+
+  it("is a set the test can see", () => {
+    expect(names).toContain("build");
+    expect(names).toContain("production-smoke");
+  });
+
+  it("says which upstream results it needs, rather than inheriting the answer", () => {
+    // Without a status function in its condition, GitHub skips a job when anything
+    // upstream skipped, whatever its own condition says, and a skipped job leaves the
+    // run green. That is how the first production run announced a deploy it never made.
+    const silent = names.filter((name) => {
+      const lines = job(name);
+      if (!lines.includes("needs:")) {
+        return false;
+      }
+      const condition = /\n {4}if: (.*)/.exec(lines)?.[1] ?? "";
+
+      return !condition.includes("always()") && !condition.includes("!cancelled()");
+    });
+
+    expect(silent).toEqual([]);
+  });
+});
+
+describe("the last job of a run", () => {
+  const lines = job("release-check");
+
+  it("runs whatever else did, including after a failure", () => {
+    expect(lines).toContain("if: ${{ always() }}");
+  });
+
+  it("waits for every job that releases anything", () => {
+    for (const name of [
+      "staging-deploy",
+      "staging-smoke",
+      "production-deploy",
+      "production-smoke",
+    ]) {
+      expect(lines).toContain(name);
+    }
+  });
+
+  it("fails the run when the release did not happen", () => {
+    // The decision is apps/server/src/ops/release.ts, proved in release-check.test.ts;
+    // the workflow only supplies the results.
+    expect(lines).toContain("pnpm --filter @gobblet/server check-release");
+    expect(lines).toContain("PRODUCTION_DEPLOY_RESULT: ${{ needs.production-deploy.result }}");
+    expect(lines).toContain("SKIP_STAGING: ${{ inputs.skip-staging }}");
+  });
+});
+
 describe("everything the workflow asks the operator for", () => {
   it("is named in the runbook, so nobody has to read the workflow to configure it", () => {
     const operations = readFileSync(resolve(ROOT, "docs/operations.md"), "utf8");

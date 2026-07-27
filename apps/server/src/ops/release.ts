@@ -76,6 +76,51 @@ export async function awaitRelease(options: AwaitReleaseOptions): Promise<AwaitR
   }
 }
 
+/**
+ * A skipped job is not a failed job: a workflow whose release jobs all skip finishes
+ * green having released nothing. This is the last word on whether a run did what it was
+ * asked to do, so the answer does not depend on reading the job list by eye.
+ */
+
+export type ReleaseRun = Readonly<{
+  skipStaging: boolean;
+  skipProduction: boolean;
+  /** Each job's GitHub result: success, failure, cancelled or skipped. */
+  results: Readonly<Record<ReleaseJob, string>>;
+}>;
+
+export type ReleaseJob = "stagingDeploy" | "stagingSmoke" | "productionDeploy" | "productionSmoke";
+
+export type ReleaseVerdict = Readonly<{ ok: boolean; detail: string }>;
+
+const ENVIRONMENTS = [
+  { name: "staging", deploy: "stagingDeploy", smoke: "stagingSmoke" },
+  { name: "production", deploy: "productionDeploy", smoke: "productionSmoke" },
+] as const satisfies readonly { name: string; deploy: ReleaseJob; smoke: ReleaseJob }[];
+
+export function verifyReleaseHappened(run: ReleaseRun): ReleaseVerdict {
+  const expected = ENVIRONMENTS.filter(
+    (environment) => !(environment.name === "staging" ? run.skipStaging : run.skipProduction),
+  );
+
+  if (expected.length === 0) {
+    return { ok: false, detail: "skipping both environments releases nothing" };
+  }
+
+  const wrong = expected.flatMap((environment) =>
+    [
+      { job: environment.deploy, what: `${environment.name} deploy` },
+      { job: environment.smoke, what: `${environment.name} smoke` },
+    ]
+      .filter(({ job }) => run.results[job] !== "success")
+      .map(({ job, what }) => `${what} ${run.results[job]}`),
+  );
+
+  return wrong.length === 0
+    ? { ok: true, detail: `released to ${expected.map((e) => e.name).join(" and ")}` }
+    : { ok: false, detail: `nothing was released: ${wrong.join(", ")}` };
+}
+
 export function formatAwaitRelease(version: string, result: AwaitReleaseResult): string {
   const seconds = (result.waitedMs / 1000).toFixed(1);
   const checks = `${String(result.attempts)} check${result.attempts === 1 ? "" : "s"}`;

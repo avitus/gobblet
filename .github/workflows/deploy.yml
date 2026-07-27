@@ -110,7 +110,7 @@ jobs:
     # written to be backward compatible for exactly this reason
     # (docs/operations.md section 9), so rolling the code back never rolls the
     # schema back; a schema that has to move backward is a restore, not a rollback.
-    if: ${{ !inputs.rollback && !inputs.skip-staging }}
+    if: ${{ always() && needs.build.result == 'success' && !inputs.rollback && !inputs.skip-staging }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -291,7 +291,9 @@ jobs:
   production-migrate:
     name: Migrate production
     needs: [build, production-approval]
-    if: ${{ !inputs.rollback }}
+    # always(), because without a status function one skipped job anywhere upstream
+    # skips this one, and a skipped release job leaves the run green.
+    if: ${{ always() && needs.production-approval.result == 'success' && !inputs.rollback }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -429,6 +431,7 @@ jobs:
   production-smoke:
     name: Smoke production
     needs: [build, production-deploy]
+    if: ${{ always() && needs.production-deploy.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -463,3 +466,38 @@ jobs:
           else
             echo "Deployed ${{ needs.build.outputs.version }} at ${{ needs.build.outputs.sha }}, and it is serving."
           fi
+
+  release-check:
+    name: Confirm the release happened
+    needs: [build, staging-deploy, staging-smoke, production-deploy, production-smoke]
+    # The one job that must run whatever else did. GitHub reports a run whose release
+    # jobs all skipped as a success, so without this the workflow can announce a deploy
+    # it never performed, which is what happened on the first production run.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Confirm the release happened
+        env:
+          SKIP_STAGING: ${{ inputs.skip-staging }}
+          SKIP_PRODUCTION: ${{ inputs.skip-production }}
+          STAGING_DEPLOY_RESULT: ${{ needs.staging-deploy.result }}
+          STAGING_SMOKE_RESULT: ${{ needs.staging-smoke.result }}
+          PRODUCTION_DEPLOY_RESULT: ${{ needs.production-deploy.result }}
+          PRODUCTION_SMOKE_RESULT: ${{ needs.production-smoke.result }}
+        run: pnpm --filter @gobblet/server check-release

@@ -359,6 +359,10 @@ kills a process that is still draining.
 6. The workflow waits for the released version to be the one serving, smokes it, and then you
    watch error rate, readiness and match transaction failures for the post-deploy observation
    window.
+7. `release-check` has the last word. GitHub counts a skipped job as a success, so a run whose
+   release jobs all skipped reports green having deployed nothing; this job runs whatever else
+   did and fails the run unless the environments the run was asked for were both deployed and
+   smoked. If a deploy ever looks suspiciously quick, this is the job to read.
 
 Because match state is persisted and clocks are derived from `turn_started_at`, a drained
 client loses no match progress. See
