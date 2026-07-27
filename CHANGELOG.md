@@ -113,6 +113,9 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, the Windows shell's origin, `http://tauri.localhost`, is now in `CORS_ORIGINS`
+  alongside `tauri://localhost`: the packaged origin differs by platform, and with only the
+  second the Windows build could not reach the API while the other two could.
 - Launch B1, production can be released without a staging rehearsal, because staging does not
   exist yet: `skip-staging` stands the staging jobs down and the approval gate records the
   release as untried instead of passing it off as rehearsed.

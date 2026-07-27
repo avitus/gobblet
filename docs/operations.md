@@ -76,21 +76,73 @@ In the Railway dashboard, once per environment:
 5. Generate a domain for each service. The server's domain is the API origin.
 6. Create a project token, which is what CI authenticates with.
 
-Service variables, set on the service in Railway:
+#### Service variables
 
-| Service | Variable                         | Value                                                             |
-| ------- | -------------------------------- | ----------------------------------------------------------------- |
-| Server  | `DATABASE_URL`                   | `${{Postgres.DATABASE_URL}}`, the project-private reference       |
-| Server  | `APP_ENV`, `NODE_ENV`            | `production` and `production`                                     |
-| Server  | `PUBLIC_WEB_URL`, `CORS_ORIGINS` | the client domain; `CORS_ORIGINS` also carries the desktop origin |
-| Server  | `HOST`                           | `::` so the container accepts traffic from the platform           |
-| Server  | everything optional in section 3 | metrics, Sentry and PostHog only if that account exists           |
-| Client  | `VITE_API_BASE_URL`              | the server's domain; baked into the bundle at build time          |
-| Client  | `VITE_APP_ENV`                   | `production`                                                      |
+Each service's Variables tab has a raw editor that accepts `.env` text. Paste the block for that
+service, replacing `gobblet-server`, `gobblet-web` and `Postgres` with your own service names if
+they differ; `${{service.VARIABLE}}` is Railway's reference syntax and `RAILWAY_PUBLIC_DOMAIN` is
+provided by the platform, so neither domain has to be typed twice. Generate a domain for both
+services first (step 5), or the references resolve to nothing.
+
+Server service:
+
+```dotenv
+NODE_ENV=production
+APP_ENV=production
+LOG_LEVEL=info
+HOST=0.0.0.0
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_POOL_MAX=10
+PUBLIC_WEB_URL=https://${{gobblet-web.RAILWAY_PUBLIC_DOMAIN}}
+CORS_ORIGINS=https://${{gobblet-web.RAILWAY_PUBLIC_DOMAIN}},tauri://localhost,http://tauri.localhost
+MIN_SUPPORTED_CLIENT_VERSION=0.1.0
+SHUTDOWN_DRAIN_SECONDS=30
+GUEST_SESSION_TTL_DAYS=30
+USER_SESSION_TTL_DAYS=30
+CREDENTIAL_ATTEMPT_LIMIT=10
+METRICS_ENABLED=true
+METRICS_TOKEN=replace-me-with-32-hex-characters
+TELEMETRY_PSEUDONYM_SECRET=replace-me-with-32-hex-characters
+TELEMETRY_ATTEMPT_LIMIT=60
+```
+
+Client service:
+
+```dotenv
+VITE_API_BASE_URL=https://${{gobblet-server.RAILWAY_PUBLIC_DOMAIN}}
+VITE_APP_ENV=production
+```
+
+Five things about those blocks, each of which is a way to get it wrong:
+
+- **`PORT` is absent on purpose.** Railway provides one as long as no `PORT` variable is defined,
+  and both images listen on it. Define your own and the domain's target port has to be changed to
+  match.
+- **`HOST=0.0.0.0`**, which is what the platform's proxy connects to. The schema's default is
+  `127.0.0.1`, which is right on a workstation and unreachable in a container.
+- **Two secrets to generate**, with `openssl rand -hex 32` for each: `METRICS_TOKEN`, which
+  `GET /metrics` then requires as a bearer token, and `TELEMETRY_PSEUDONYM_SECRET`, which is the
+  key behind the pseudonym in logs and analytics. Both must be at least sixteen characters, and
+  rotating the pseudonym secret deliberately detaches new records from old ones (section 3).
+- **Never paste an optional variable with an empty value.** `SENTRY_DSN=` is not "unset", it is
+  an invalid URL, and the process refuses to start rather than run degraded. Sentry and PostHog
+  arrive with [B5](launch-blockers.md); until then their lines must not exist.
+- **Do not accept Railway's suggested variables.** It offers to import `.env.example` from the
+  repository root, which is the local development template: `127.0.0.1`, `localhost` and a
+  database on the workstation.
 
 `APP_VERSION` and `GIT_SHA` are not set by hand: the deploy workflow sets them on the server
 service for each release, which is what makes the smoke check able to tell one release from
 another.
+
+The three desktop origins in `CORS_ORIGINS` are the web client and the packaged shell, which is
+`tauri://localhost` on macOS and Linux and `http://tauri.localhost` on Windows. Omitting the
+second one blocks the Windows build from reaching the API while the other two work.
+
+Variable changes are staged: review and deploy them in Railway, or the running container is still
+using the old set.
+
+#### Repository variables and secrets
 
 In GitHub, on the `production` environment (later also `staging`):
 
