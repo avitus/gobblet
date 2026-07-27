@@ -18,7 +18,7 @@
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5,
     "multiRegionConfig": {
-      "us-east4-eqdc4a": {
+      "us-west2": {
         "numReplicas": 1
       }
     }

@@ -113,6 +113,10 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, the region is `us-west2`, beside the database rather than across the country from
+  it: a split would have paid a cross-country round trip inside every persisted move
+  ([ADR-0044](docs/adr/0044-the-deployment-runs-in-us-west.md)). A test now asserts both service
+  configurations name the same single region.
 - Launch B1, the Windows shell's origin, `http://tauri.localhost`, is now in `CORS_ORIGINS`
   alongside `tauri://localhost`: the packaged origin differs by platform, and with only the
   second the Windows build could not reach the API while the other two could.

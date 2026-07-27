@@ -58,51 +58,52 @@ Superseding a decision:
 
 ## Index
 
-| Number | Title                                                                                                                              | Status                 | Date       |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---------- |
-| 0001   | [Record architecture decisions](0001-record-architecture-decisions.md)                                                             | Accepted               | 2026-07-24 |
-| 0002   | [TypeScript monorepo with pnpm workspaces and Turborepo](0002-typescript-monorepo-pnpm-turborepo.md)                               | Accepted               | 2026-07-24 |
-| 0003   | [React and Vite web client](0003-react-vite-web-client.md)                                                                         | Accepted               | 2026-07-24 |
-| 0004   | [Tauri v2 desktop shell](0004-tauri-v2-desktop-shell.md)                                                                           | Accepted               | 2026-07-24 |
-| 0005   | [Three.js via React Three Fiber](0005-threejs-react-three-fiber.md)                                                                | Accepted               | 2026-07-24 |
-| 0006   | [Fastify HTTP API with Socket.IO real-time transport](0006-fastify-socketio-server.md)                                             | Accepted               | 2026-07-24 |
-| 0007   | [PostgreSQL with Drizzle ORM](0007-postgresql-drizzle.md)                                                                          | Accepted               | 2026-07-24 |
-| 0008   | [Auth0 for identity](0008-auth0-identity.md)                                                                                       | Superseded by ADR-0017 | 2026-07-24 |
-| 0009   | [Server-authoritative clocks](0009-server-authoritative-clocks.md)                                                                 | Accepted               | 2026-07-24 |
-| 0010   | [Match event persistence](0010-match-event-persistence.md)                                                                         | Accepted               | 2026-07-24 |
-| 0011   | [Versioned idempotent commands](0011-versioned-idempotent-commands.md)                                                             | Accepted               | 2026-07-24 |
-| 0012   | [Pure shared rules engine](0012-pure-shared-rules-engine.md)                                                                       | Accepted               | 2026-07-24 |
-| 0013   | [CSS Modules with design tokens instead of Tailwind](0013-css-modules-design-tokens.md)                                            | Accepted               | 2026-07-24 |
-| 0014   | [Selection is a preview, not a binding touch-move](0014-selection-is-preview-not-touch-move.md)                                    | Accepted               | 2026-07-24 |
-| 0015   | [Single-region deployment with replaceable scaling interfaces](0015-single-region-deployment.md)                                   | Accepted               | 2026-07-24 |
-| 0016   | [ESM-only internal packages built with tsup](0016-esm-tsup-internal-packages.md)                                                   | Accepted               | 2026-07-24 |
-| 0017   | [First-party email and password authentication](0017-first-party-email-password-authentication.md)                                 | Accepted               | 2026-07-25 |
-| 0018   | [In-process matchmaking queues and rematch offers](0018-in-process-matchmaking-and-rematch-offers.md)                              | Accepted               | 2026-07-25 |
-| 0019   | [Elo written in the match completion transaction](0019-elo-in-the-completion-transaction.md)                                       | Accepted               | 2026-07-25 |
-| 0020   | [Client match state is the server snapshot](0020-client-match-state-is-the-server-snapshot.md)                                     | Accepted               | 2026-07-25 |
-| 0021   | [Playwright browser end-to-end tests](0021-playwright-browser-end-to-end-tests.md)                                                 | Accepted               | 2026-07-25 |
-| 0022   | [Procedural placeholder assets and synthesised sound](0022-procedural-placeholder-assets.md)                                       | Accepted               | 2026-07-25 |
-| 0023   | [Rendering tiers and a flat fallback board](0023-rendering-tiers-and-a-flat-fallback-board.md)                                     | Accepted               | 2026-07-25 |
-| 0024   | [Browser-only packages ship TypeScript source](0024-browser-only-packages-ship-source.md)                                          | Accepted               | 2026-07-25 |
-| 0025   | [The canvas owns the pointer, and the focus stops are projected](0025-the-canvas-owns-the-pointer.md)                              | Accepted               | 2026-07-25 |
-| 0026   | [Preset communication is relayed, never stored](0026-communication-is-relayed-never-stored.md)                                     | Accepted               | 2026-07-26 |
-| 0027   | [Achievements are awarded in the completion transaction](0027-achievements-awarded-in-the-completion-transaction.md)               | Accepted               | 2026-07-26 |
-| 0028   | [Leaderboards are read-time queries over the rating audit](0028-leaderboards-are-read-time-queries.md)                             | Accepted               | 2026-07-26 |
-| 0029   | [Administration is a role on the account](0029-administration-is-a-role-on-the-account.md)                                         | Accepted               | 2026-07-26 |
-| 0030   | [Telemetry sits behind ports and is relayed through the server](0030-telemetry-behind-ports-relayed-through-the-server.md)         | Accepted               | 2026-07-26 |
-| 0031   | [Metrics are a Prometheus exposition from prom-client](0031-metrics-are-a-prometheus-exposition.md)                                | Accepted               | 2026-07-26 |
-| 0032   | [Backups are scripts proved by a restore round trip](0032-backups-are-scripts-proved-by-a-restore.md)                              | Accepted               | 2026-07-26 |
-| 0033   | [The desktop application is the web build in a window](0033-the-desktop-application-is-the-web-build-in-a-window.md)               | Accepted               | 2026-07-26 |
-| 0034   | [Updates are asked of our own server](0034-updates-are-asked-of-our-own-server.md)                                                 | Accepted               | 2026-07-26 |
-| 0035   | [Installers live in GitHub Releases](0035-artifacts-live-in-github-releases.md)                                                    | Accepted               | 2026-07-26 |
-| 0036   | [Signing is a workflow step that fails loudly](0036-signing-is-a-workflow-step-that-fails-loudly.md)                               | Accepted               | 2026-07-26 |
-| 0037   | [The load harness is ours](0037-the-load-harness-is-ours.md)                                                                       | Accepted               | 2026-07-27 |
-| 0038   | [Quality gates are a definition, not a checklist](0038-quality-gates-are-a-definition-not-a-checklist.md)                          | Accepted               | 2026-07-27 |
-| 0039   | [The defect register is a gate](0039-the-defect-register-is-a-gate.md)                                                             | Accepted               | 2026-07-27 |
-| 0040   | [Legal and support pages are routes in the client](0040-legal-and-support-pages-are-routes-in-the-client.md)                       | Accepted               | 2026-07-27 |
-| 0041   | [Compatibility matrices are executed where a runner exists](0041-the-compatibility-matrices-are-executed-where-a-runner-exists.md) | Accepted               | 2026-07-27 |
-| 0042   | [Launch dashboards are rendered from one definition](0042-launch-dashboards-are-rendered-from-one-definition.md)                   | Accepted               | 2026-07-27 |
-| 0043   | [Railway hosts the deployment, as a container we define](0043-railway-hosts-the-deployment.md)                                     | Accepted               | 2026-07-27 |
+| Number | Title                                                                                                                              | Status                               | Date       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------- |
+| 0001   | [Record architecture decisions](0001-record-architecture-decisions.md)                                                             | Accepted                             | 2026-07-24 |
+| 0002   | [TypeScript monorepo with pnpm workspaces and Turborepo](0002-typescript-monorepo-pnpm-turborepo.md)                               | Accepted                             | 2026-07-24 |
+| 0003   | [React and Vite web client](0003-react-vite-web-client.md)                                                                         | Accepted                             | 2026-07-24 |
+| 0004   | [Tauri v2 desktop shell](0004-tauri-v2-desktop-shell.md)                                                                           | Accepted                             | 2026-07-24 |
+| 0005   | [Three.js via React Three Fiber](0005-threejs-react-three-fiber.md)                                                                | Accepted                             | 2026-07-24 |
+| 0006   | [Fastify HTTP API with Socket.IO real-time transport](0006-fastify-socketio-server.md)                                             | Accepted                             | 2026-07-24 |
+| 0007   | [PostgreSQL with Drizzle ORM](0007-postgresql-drizzle.md)                                                                          | Accepted                             | 2026-07-24 |
+| 0008   | [Auth0 for identity](0008-auth0-identity.md)                                                                                       | Superseded by ADR-0017               | 2026-07-24 |
+| 0009   | [Server-authoritative clocks](0009-server-authoritative-clocks.md)                                                                 | Accepted                             | 2026-07-24 |
+| 0010   | [Match event persistence](0010-match-event-persistence.md)                                                                         | Accepted                             | 2026-07-24 |
+| 0011   | [Versioned idempotent commands](0011-versioned-idempotent-commands.md)                                                             | Accepted                             | 2026-07-24 |
+| 0012   | [Pure shared rules engine](0012-pure-shared-rules-engine.md)                                                                       | Accepted                             | 2026-07-24 |
+| 0013   | [CSS Modules with design tokens instead of Tailwind](0013-css-modules-design-tokens.md)                                            | Accepted                             | 2026-07-24 |
+| 0014   | [Selection is a preview, not a binding touch-move](0014-selection-is-preview-not-touch-move.md)                                    | Accepted                             | 2026-07-24 |
+| 0015   | [Single-region deployment with replaceable scaling interfaces](0015-single-region-deployment.md)                                   | Accepted                             | 2026-07-24 |
+| 0016   | [ESM-only internal packages built with tsup](0016-esm-tsup-internal-packages.md)                                                   | Accepted                             | 2026-07-24 |
+| 0017   | [First-party email and password authentication](0017-first-party-email-password-authentication.md)                                 | Accepted                             | 2026-07-25 |
+| 0018   | [In-process matchmaking queues and rematch offers](0018-in-process-matchmaking-and-rematch-offers.md)                              | Accepted                             | 2026-07-25 |
+| 0019   | [Elo written in the match completion transaction](0019-elo-in-the-completion-transaction.md)                                       | Accepted                             | 2026-07-25 |
+| 0020   | [Client match state is the server snapshot](0020-client-match-state-is-the-server-snapshot.md)                                     | Accepted                             | 2026-07-25 |
+| 0021   | [Playwright browser end-to-end tests](0021-playwright-browser-end-to-end-tests.md)                                                 | Accepted                             | 2026-07-25 |
+| 0022   | [Procedural placeholder assets and synthesised sound](0022-procedural-placeholder-assets.md)                                       | Accepted                             | 2026-07-25 |
+| 0023   | [Rendering tiers and a flat fallback board](0023-rendering-tiers-and-a-flat-fallback-board.md)                                     | Accepted                             | 2026-07-25 |
+| 0024   | [Browser-only packages ship TypeScript source](0024-browser-only-packages-ship-source.md)                                          | Accepted                             | 2026-07-25 |
+| 0025   | [The canvas owns the pointer, and the focus stops are projected](0025-the-canvas-owns-the-pointer.md)                              | Accepted                             | 2026-07-25 |
+| 0026   | [Preset communication is relayed, never stored](0026-communication-is-relayed-never-stored.md)                                     | Accepted                             | 2026-07-26 |
+| 0027   | [Achievements are awarded in the completion transaction](0027-achievements-awarded-in-the-completion-transaction.md)               | Accepted                             | 2026-07-26 |
+| 0028   | [Leaderboards are read-time queries over the rating audit](0028-leaderboards-are-read-time-queries.md)                             | Accepted                             | 2026-07-26 |
+| 0029   | [Administration is a role on the account](0029-administration-is-a-role-on-the-account.md)                                         | Accepted                             | 2026-07-26 |
+| 0030   | [Telemetry sits behind ports and is relayed through the server](0030-telemetry-behind-ports-relayed-through-the-server.md)         | Accepted                             | 2026-07-26 |
+| 0031   | [Metrics are a Prometheus exposition from prom-client](0031-metrics-are-a-prometheus-exposition.md)                                | Accepted                             | 2026-07-26 |
+| 0032   | [Backups are scripts proved by a restore round trip](0032-backups-are-scripts-proved-by-a-restore.md)                              | Accepted                             | 2026-07-26 |
+| 0033   | [The desktop application is the web build in a window](0033-the-desktop-application-is-the-web-build-in-a-window.md)               | Accepted                             | 2026-07-26 |
+| 0034   | [Updates are asked of our own server](0034-updates-are-asked-of-our-own-server.md)                                                 | Accepted                             | 2026-07-26 |
+| 0035   | [Installers live in GitHub Releases](0035-artifacts-live-in-github-releases.md)                                                    | Accepted                             | 2026-07-26 |
+| 0036   | [Signing is a workflow step that fails loudly](0036-signing-is-a-workflow-step-that-fails-loudly.md)                               | Accepted                             | 2026-07-26 |
+| 0037   | [The load harness is ours](0037-the-load-harness-is-ours.md)                                                                       | Accepted                             | 2026-07-27 |
+| 0038   | [Quality gates are a definition, not a checklist](0038-quality-gates-are-a-definition-not-a-checklist.md)                          | Accepted                             | 2026-07-27 |
+| 0039   | [The defect register is a gate](0039-the-defect-register-is-a-gate.md)                                                             | Accepted                             | 2026-07-27 |
+| 0040   | [Legal and support pages are routes in the client](0040-legal-and-support-pages-are-routes-in-the-client.md)                       | Accepted                             | 2026-07-27 |
+| 0041   | [Compatibility matrices are executed where a runner exists](0041-the-compatibility-matrices-are-executed-where-a-runner-exists.md) | Accepted                             | 2026-07-27 |
+| 0042   | [Launch dashboards are rendered from one definition](0042-launch-dashboards-are-rendered-from-one-definition.md)                   | Accepted                             | 2026-07-27 |
+| 0043   | [Railway hosts the deployment, as a container we define](0043-railway-hosts-the-deployment.md)                                     | Accepted, region amended by ADR-0044 | 2026-07-27 |
+| 0044   | [The deployment runs in US West, beside its database](0044-the-deployment-runs-in-us-west.md)                                      | Accepted                             | 2026-07-27 |
 
 Decisions recorded here are reflected in [`../architecture.md`](../architecture.md),
 [`../protocol.md`](../protocol.md) and [`../operations.md`](../operations.md). Those documents

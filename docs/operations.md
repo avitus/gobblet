@@ -59,22 +59,37 @@ Configuration and secret handling:
 
 Status: the repository side is complete and tested; the account side is [B1](launch-blockers.md).
 The host is Railway, one region, one replica per service
-([ADR-0043](adr/0043-railway-hosts-the-deployment.md)). Production is created first and staging
-later, which is why **Deploy** takes a `skip-staging` input: a release with no rehearsal is
-allowed, but it is recorded as untried at the approval gate rather than passed off as rehearsed.
+([ADR-0043](adr/0043-railway-hosts-the-deployment.md)), and that region is `us-west2` because it
+is where the database is ([ADR-0044](adr/0044-the-deployment-runs-in-us-west.md)). Production is
+created first and staging later, which is why **Deploy** takes a `skip-staging` input: a release
+with no rehearsal is allowed, but it is recorded as untried at the approval gate rather than
+passed off as rehearsed.
 
 In the Railway dashboard, once per environment:
 
 1. Create a project, and inside it an environment named `production` (later, `staging`).
 2. Add PostgreSQL to the project. Its `DATABASE_URL` is private to the project; the public proxy
-   URL is the one CI needs, because migrations run from GitHub.
-3. Create a service from this repository for the server. In its settings, set the config file
-   path to `/apps/server/railway.json`; everything else about the build and the deploy comes from
-   that file. Note the service name.
-4. Create a second service from the same repository for the client, with the config file path
-   `/apps/web/railway.json`. Note its name.
-5. Generate a domain for each service. The server's domain is the API origin.
-6. Create a project token, which is what CI authenticates with.
+   URL, `DATABASE_PUBLIC_URL`, is the one CI needs, because migrations run from GitHub.
+3. Create a service from this repository for the server and name it `gobblet-server`. In its
+   settings, set the config file to `apps/server/railway.json`; everything else about the build
+   and the deploy comes from that file.
+4. Create a second service from the same repository for the client, named `gobblet-web`, with the
+   config file `apps/web/railway.json`.
+5. Check that all three services, including PostgreSQL, are in the same region. A service in one
+   region and its database in another pays a cross-country round trip on every write
+   ([ADR-0044](adr/0044-the-deployment-runs-in-us-west.md)).
+6. Generate a domain for each service. The server's domain is the API origin.
+7. In each service's Settings, remove the branch deploy trigger. Releases go through the deploy
+   workflow, which migrates first and stops at an approval; a push that deploys itself does
+   neither.
+8. Create a project token in **project** settings, which is what CI authenticates with. An
+   account or workspace token from the account settings page is a different thing and the CLI
+   rejects it as `RAILWAY_TOKEN`.
+
+Step 3 is the one that is silently wrong if it is skipped: Railway looks for `railway.json` at the
+repository root, this repository has one per service, and without the path set the build falls
+back to the default builder and fails with `No start command detected`. There is no start script,
+on purpose: the image says how to start it.
 
 #### Service variables
 

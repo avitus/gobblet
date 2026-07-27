@@ -96,15 +96,18 @@ describe("the client image", () => {
   });
 });
 
-describe("the service configuration", () => {
-  const server = JSON.parse(read("apps/server/railway.json")) as {
-    build: { dockerfilePath: string };
-    deploy: {
-      healthcheckPath: string;
-      drainingSeconds: number;
-      multiRegionConfig: Record<string, { numReplicas: number }>;
-    };
+type ServiceConfig = Readonly<{
+  build: { dockerfilePath: string };
+  deploy: {
+    healthcheckPath: string;
+    drainingSeconds?: number;
+    multiRegionConfig: Record<string, { numReplicas: number }>;
   };
+}>;
+
+describe("the service configuration", () => {
+  const server = JSON.parse(read("apps/server/railway.json")) as ServiceConfig;
+  const client = JSON.parse(read("apps/web/railway.json")) as ServiceConfig;
 
   it("points the platform at the readiness probe, not at liveness", () => {
     // A container that is alive but cannot reach the database must not take traffic.
@@ -121,6 +124,17 @@ describe("the service configuration", () => {
     );
 
     expect(replicas).toEqual([1]);
+  });
+
+  it("puts both services in one region, which is where the database has to be too", () => {
+    // Split across regions, every query the server makes crosses the continent
+    // (docs/adr/0044-the-deployment-runs-in-us-west.md).
+    const regions = [server, client].map((service) =>
+      Object.keys(service.deploy.multiRegionConfig),
+    );
+
+    expect(regions[0]).toHaveLength(1);
+    expect(regions[1]).toEqual(regions[0]);
   });
 
   it("waits longer than the drain window before killing the process", () => {
