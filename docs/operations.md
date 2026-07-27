@@ -95,8 +95,9 @@ rather than an identifier.
 
 Status: executable (Phase 0).
 
-Prerequisites: Node.js 22 or newer (see [`.nvmrc`](../.nvmrc)), pnpm 10, Docker with Compose
-(optional), and a Rust toolchain only when building the desktop shell (Phase 8).
+Prerequisites: Node.js 22 or newer (see [`.nvmrc`](../.nvmrc)), pnpm 10, PostgreSQL 16 either
+natively (`brew install postgresql@16`) or through Docker Compose, and a Rust toolchain only when
+building the desktop shell (Phase 8).
 
 ```bash
 corepack enable pnpm
@@ -105,9 +106,11 @@ cp .env.example .env
 pnpm dev
 ```
 
-`pnpm dev` starts the local PostgreSQL container when Docker Compose is available, then runs the
-server and the web client through Turborepo. Without Docker the server still boots and reports
-the database as unavailable on `GET /health/ready`.
+`pnpm dev` starts the local PostgreSQL container when Docker Compose is available and otherwise
+uses the PostgreSQL already running on the workstation, then runs the server and the web client
+through Turborepo. With neither, the server still boots and reports the database as unavailable on
+`GET /health/ready`. The test suites create and migrate their own databases, so no manual setup
+step is needed either way.
 
 Verification before opening a pull request:
 

@@ -402,14 +402,14 @@ specification section 7.5 requires.
 The initial deployment is intentionally small. These seams exist so growth does not require a
 rewrite:
 
-| Seam              | Initial implementation               | Replaceable with                                   | Status                  |
-| ----------------- | ------------------------------------ | -------------------------------------------------- | ----------------------- |
-| Matchmaking queue | In-process queue behind an interface | Shared queue (Redis or database backed)            | Implemented (Phase 4)   |
-| Rematch offers    | In-process offers with a deadline    | Shared store, if offers must cross processes       | Implemented (Phase 4)   |
-| Presence          | In-process session registry          | Shared presence store                              | In process (Phase 2)    |
-| Socket fan-out    | In-process Socket.IO rooms           | Socket.IO Redis adapter across containers          | Planned (Phase 9)       |
-| Transport         | Socket.IO over one origin            | Additional origins behind sticky routing           | Planned (Phase 9)       |
-| Region            | Single region                        | Additional read-local edges, matches stay regional | Not planned for the MVP |
+| Seam              | Initial implementation               | Replaceable with                                   | Status                                                |
+| ----------------- | ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------- |
+| Matchmaking queue | In-process queue behind an interface | Shared queue (Redis or database backed)            | Implemented (Phase 4)                                 |
+| Rematch offers    | In-process offers with a deadline    | Shared store, if offers must cross processes       | Implemented (Phase 4)                                 |
+| Presence          | In-process session registry          | Shared presence store                              | In process (Phase 2)                                  |
+| Socket fan-out    | In-process Socket.IO rooms           | Socket.IO Redis adapter across containers          | Seam only; needed by a second process serving sockets |
+| Transport         | Socket.IO over one origin            | Additional origins behind sticky routing           | Seam only; needed by a second origin                  |
+| Region            | Single region                        | Additional read-local edges, matches stay regional | Not planned for the MVP                               |
 
 ## 13. Mobile readiness
 

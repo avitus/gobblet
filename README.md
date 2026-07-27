@@ -11,6 +11,8 @@ lifecycle.
 - Operations: [`docs/operations.md`](docs/operations.md)
 - Decision records: [`docs/adr/`](docs/adr/)
 - Rule/scenario to test traceability: [`docs/traceability-matrix.md`](docs/traceability-matrix.md)
+- Known defects: [`docs/defects.md`](docs/defects.md)
+- Compatibility matrix: [`docs/compatibility.md`](docs/compatibility.md)
 
 ## Current delivery status
 
@@ -21,11 +23,11 @@ lifecycle.
 | 2     | Persistence and match runtime            | Delivered   |
 | 3     | Authentication, guests, profiles         | Delivered†  |
 | 4     | Matchmaking, Elo, rematches              | Delivered   |
-| 5     | Playable 3D client                       | Not started |
-| 6     | Social surface and progression           | Not started |
-| 7     | Administration and operations            | Not started |
-| 8     | Desktop distribution                     | Not started |
-| 9     | Hardening and public launch              | Not started |
+| 5     | Playable 3D client                       | Delivered   |
+| 6     | Social surface and progression           | Delivered   |
+| 7     | Administration and operations            | Delivered‡  |
+| 8     | Desktop distribution                     | Delivered§  |
+| 9     | Hardening and public launch              | Delivered¶  |
 
 Phases are defined in `docs/product-spec.md` section 24. Later phases must not be
 started before the exit criteria of the current phase are met.
@@ -38,6 +40,22 @@ specification sections 2.3 and 5.6 are therefore not delivered, and email delive
 does not exist yet, so no account can be verified in production. All of it is recorded
 in
 [`docs/product-spec.md` appendix P3](docs/product-spec.md#appendix-p3--phase-3-change-of-direction-first-party-authentication).
+
+‡ Phase 7 delivers the alert conditions, the backup scripts and the deployment
+workflows, but not a deployment: there is no hosting account, so paging a human, managed
+backups and the staging and production runbooks stop where a host would begin
+([ADR-0015](docs/adr/0015-single-region-deployment.md)).
+
+§ Phase 8 delivers the desktop application and every step of its release, but no signed
+installer exists: the Apple and Windows signing identities have not been bought, so the two
+clean-machine exit criteria are deferred and each signing step fails with the name of what is
+missing rather than producing an unsigned build.
+
+¶ Phase 9 delivers the gates, the load harness, the launch dashboards, the legal pages, a
+third browser engine and a verifiable rollback. Three of its exit criteria are judgements a
+person makes, not assertions a test can hold: the two product-owner approvals and the
+production readiness review. They are recorded as deferred, and the material each reviewer
+needs is prepared in [`docs/operations.md` section 17](docs/operations.md).
 
 \* Two Phase 0 exit criteria are open because they need infrastructure that does not
 exist yet: the empty Tauri shells (deferred to Phase 8, no Rust toolchain or signing
@@ -53,9 +71,10 @@ and in section 18 of the traceability matrix.
 - PostgreSQL 16, either through Docker Compose or natively (`brew install postgresql@16`)
 - Rust toolchain (only needed to build the desktop shell)
 
-The server and database test suites need a reachable PostgreSQL. They create their own
-databases (`gobblet_test`, `gobblet_test_server`) from `TEST_DATABASE_URL`; see
-`.env.example`.
+The test suites need a reachable PostgreSQL. They create their own databases from
+`TEST_DATABASE_URL`, so there is no setup step: `gobblet_test` for the db package,
+`gobblet_test_server` for the server, `gobblet_test_e2e` for the browser suite and
+`gobblet_test_load` for the load harness. See `.env.example`.
 
 ## Quick start
 
@@ -72,35 +91,28 @@ PostgreSQL already listening locally), applies the migrations, then starts the A
 
 ## Repository layout
 
-What exists today:
-
 ```
 apps/
-  web/          React + Vite web client shell (design tokens, /v1/config probe)
-  server/       Fastify HTTP API, match runtime and Socket.IO gateway
+  web/            React and Vite client: 3D board, matchmaking, profiles, admin, legal pages
+  server/         Fastify HTTP API, match runtime, Socket.IO gateway, admin and ops modules
+  desktop/        Tauri v2 shell packaging the same client build
 packages/
-  game-core/    Pure, dependency-free authoritative rules engine
-  protocol/     Zod schemas for the command envelope, snapshots, events and HTTP bodies
-  db/           PostgreSQL schema, migrations and repositories (Drizzle)
-  config/       Typed environment configuration (zod)
-  auth/         Password hashing and opaque session token helpers
-docs/           Specification, rules, architecture, protocol, operations, ADRs
-scripts/        Local development entry point
+  game-core/      Pure, dependency-free authoritative rules engine
+  protocol/       Zod schemas for the command envelope, snapshots, events and HTTP bodies
+  db/             PostgreSQL schema, migrations and repositories (Drizzle)
+  config/         Typed environment configuration (zod)
+  auth/           Password hashing and opaque session token helpers
+  design-system/  Tokens and UI primitives
+  game-ui/        Board rendering tiers, controls and the shared match surface
+e2e/              Playwright suite: Chromium, WebKit and, nightly, Firefox
+ops/              Generated alert rules and Grafana dashboards
+assets/           Brand, models, textures, audio and licence records
+docs/             Specification, rules, architecture, protocol, operations, ADRs
+scripts/          Local development entry point
 ```
 
-Planned by the target architecture (`docs/architecture.md`), created by the phase that
-needs them:
-
-```
-apps/
-  desktop/      Tauri v2 shell packaging the same client build (Phase 8)
-packages/
-  observability/ Logging, metrics and error reporting helpers (Phase 7)
-  design-system/ Shared UI primitives on top of the tokens (Phase 5)
-  test-utils/   Shared deterministic test helpers (Phase 5)
-assets/         Brand, models, textures, audio and license records (Phase 5)
-infra/          Deployment, monitoring and backup definitions (Phase 7)
-```
+Deployment, monitoring and backup definitions live with the workflows in `.github/workflows`
+and the generated files in `ops/`; there is no `infra/` tree because there is no host yet.
 
 ## Common commands
 
@@ -114,6 +126,14 @@ infra/          Deployment, monitoring and backup definitions (Phase 7)
 | `pnpm test:coverage`     | Tests with coverage gates (game-core must stay at 100%) |
 | `pnpm verify`            | Everything a pull request must pass                     |
 | `pnpm format:check`      | Prettier formatting check                               |
+| `pnpm test:e2e`          | Browser suite in Chromium and WebKit                    |
+| `pnpm test:e2e:firefox`  | Browser suite in Firefox                                |
+| `pnpm gates`             | Every quality gate of specification section 21          |
+| `pnpm load`              | The load harness of specification section 20.8          |
+| `pnpm ops:defects`       | Fail on an open critical or high-severity defect        |
+| `pnpm ops:secrets`       | Scan every tracked file for a committed secret          |
+| `pnpm ops:alerts`        | Render the alert rules from their definition            |
+| `pnpm ops:dashboards`    | Render the launch dashboards from their definition      |
 | `pnpm db:up` / `db:down` | Start/stop the local PostgreSQL container               |
 
 ## Non-negotiable architecture constraints
