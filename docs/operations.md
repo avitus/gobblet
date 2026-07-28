@@ -91,6 +91,12 @@ repository root, this repository has one per service, and without the path set t
 back to the default builder and fails with `No start command detected`. There is no start script,
 on purpose: the image says how to start it.
 
+Neither service configuration sets watch patterns. They exist to stop a push from rebuilding a
+service it did not touch, and pushes do not deploy this project; what they do instead is skip a
+release the workflow asked for, and `railway up --ci` then waits forever for the build output a
+skipped deployment never produces. The first release that changed only the server hung on the
+client for exactly this reason.
+
 Deploying by hand, with `railway up --ci --service gobblet-server`, uploads the working tree as
 the build context, including its file modes. The image copies everything as the unprivileged user
 it runs as, so a tree checked out under a restrictive umask still produces a working container

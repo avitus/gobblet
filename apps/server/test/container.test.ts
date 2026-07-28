@@ -109,7 +109,7 @@ describe("the client image", () => {
 });
 
 type ServiceConfig = Readonly<{
-  build: { dockerfilePath: string };
+  build: { dockerfilePath: string; watchPatterns?: string[] };
   deploy: {
     healthcheckPath: string;
     drainingSeconds?: number;
@@ -128,6 +128,17 @@ describe("the service configuration", () => {
 
   it("names the Dockerfile this repository defines", () => {
     expect(server.build.dockerfilePath).toBe("apps/server/Dockerfile");
+  });
+
+  it("has no watch patterns, because every deploy here is one somebody asked for", () => {
+    // Watch patterns decide whether a push is worth building, and pushes do not deploy
+    // this project (docs/operations.md section 2.1). What they do instead is skip a
+    // release the workflow asked for: `railway up --ci` then waits for build output
+    // that a skipped deployment never produces, and the client silently stays behind
+    // the server it is supposed to match.
+    for (const service of [server, client]) {
+      expect(service.build.watchPatterns).toBeUndefined();
+    }
   });
 
   it("runs one replica, because the queue and the clocks are in this process", () => {

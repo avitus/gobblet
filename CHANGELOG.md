@@ -113,6 +113,9 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, the service configurations no longer set watch patterns. A release that changed no
+  client file was skipped by the platform, and `railway up --ci` waited for build output that a
+  skipped deployment never produces, so the job hung with the client a version behind the server.
 - Launch B1, production is released by one job rather than four. GitHub approves each job that
   references a protected environment separately, so a single release asked for approval again and
   again; migrating, releasing, waiting and smoking are now steps of `production-release`, and a
