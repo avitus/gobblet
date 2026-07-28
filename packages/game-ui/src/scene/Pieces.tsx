@@ -115,7 +115,13 @@ export function SquareTile({
   return (
     <group
       position={[node.position[0], node.position[1], node.position[2]]}
-      onClick={onSelect}
+      // A ray reports every surface it passes through, and a highlighted square is two
+      // of them, so the nearest one has to stop the gesture or the square is chosen
+      // once per surface.
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
       onPointerOver={() => onHover(true)}
       onPointerOut={() => onHover(false)}
     >
@@ -158,7 +164,10 @@ export function PieceBody({ node, shadows, onSelect, onHover }: PieceBodyProps):
   return (
     <group
       position={[node.position[0], node.position[1], node.position[2]]}
-      onClick={onSelect}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
       onPointerOver={() => onHover(true)}
       onPointerOut={() => onHover(false)}
     >

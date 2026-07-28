@@ -31,6 +31,16 @@ function Harness({ matchId }: Readonly<{ matchId: string | null }>): React.JSX.E
       <button type="button" data-testid="move" onClick={() => channel.submitMove(OPENING)}>
         move
       </button>
+      <button
+        type="button"
+        data-testid="move-twice"
+        onClick={() => {
+          channel.submitMove(OPENING);
+          channel.submitMove(OPENING);
+        }}
+      >
+        move twice
+      </button>
       <button type="button" data-testid="resign" onClick={() => channel.resign()}>
         resign
       </button>
@@ -118,6 +128,21 @@ describe("useMatchChannel", () => {
 
     expect(screen.getByTestId("locked")).toHaveTextContent("open");
     expect(screen.getByTestId("pending")).toHaveTextContent("none");
+  });
+
+  it("sends one command when a gesture asks twice in the same tick", async () => {
+    // A ray through a highlighted square reported two surfaces, so the board chose the
+    // square twice before React had re-rendered. The board lock is computed from
+    // rendered state, so both calls saw an idle board and the second command carried
+    // the version from before the first, which the server rejects as stale.
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      await userEvent.click(screen.getByTestId("move-twice"));
+    });
+
+    expect(transport.payloadsFor("match:move")).toHaveLength(1);
   });
 
   it("returns the piece and explains a rejection", async () => {

@@ -38,6 +38,13 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
   const [connectionEpoch, setConnectionEpoch] = useState(0);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // The board lock is computed from rendered state, so two gestures in one tick both
+  // see an idle board. This closes that gap and nothing more: the reducer still decides
+  // when a command is finished, and the next render that holds none clears this too.
+  const outstanding = useRef<PendingCommand | null>(null);
+  if (state.pending === null) {
+    outstanding.current = null;
+  }
 
   useEffect(() => {
     const unsubscribe = socket.subscribe((event: MatchSocketEvent) => {
@@ -140,7 +147,7 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
   const submitMove = useCallback(
     (move: Move) => {
       const snapshot = stateRef.current.snapshot;
-      if (!snapshot || isInputLocked(stateRef.current)) {
+      if (!snapshot || outstanding.current !== null || isInputLocked(stateRef.current)) {
         return;
       }
       const command: PendingCommand = {
@@ -151,6 +158,7 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
         move,
         sentAt: Date.now(),
       };
+      outstanding.current = command;
       dispatch({ type: "command-sent", command });
       void send(socket, command, dispatch);
     },
@@ -159,7 +167,7 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
 
   const resignAndWait = useCallback(() => {
     const snapshot = stateRef.current.snapshot;
-    if (!snapshot || isInputLocked(stateRef.current)) {
+    if (!snapshot || outstanding.current !== null || isInputLocked(stateRef.current)) {
       return Promise.resolve();
     }
     const command: PendingCommand = {
@@ -170,6 +178,7 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
       move: null,
       sentAt: Date.now(),
     };
+    outstanding.current = command;
     dispatch({ type: "command-sent", command });
     return send(socket, command, dispatch);
   }, [socket]);

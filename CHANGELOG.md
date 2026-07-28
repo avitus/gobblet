@@ -113,6 +113,13 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Fixed, a pointer move in the 3D tiers is submitted once. A square is drawn as a tile and a
+  highlight rim, two surfaces under one click handler, and a ray reports every surface it passes
+  through, so a destination click chose the square twice. The first command was accepted and the
+  second carried the version from before it, so the server rejected it as stale and the player was
+  told their move had not been played while the board showed that it had. The nearest surface now
+  stops the gesture, and the client will not send a second command while one is outstanding, which
+  the board lock alone could not guarantee because it is computed from rendered state (D-0008).
 - Fixed, the board settles its render tier once instead of on every render. The effect depended on
   the caller's callback identity, and a match screen re-renders with every clock tick, so each tick
   asked the machine for a graphics context and posted a telemetry event: about ten a second per
