@@ -113,6 +113,13 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, a release is confirmed by the commit serving, not only the version. `APP_VERSION` is
+  the package version, which does not change with every commit, so the wait and the smoke check
+  could both be satisfied by the container the release was replacing. Both now compare `gitSha`.
+- Launch B1, the checks refuse an address without a scheme instead of retrying it. A release spent
+  five minutes and sixty attempts on `gobblet-production.up.railway.app`, because `PRODUCTION_URL`
+  had no `https://` and nothing rejected it; the workflow guard now fails in seconds, the CLIs
+  validate before polling, and the wait prints what each attempt found so it is visibly a wait.
 - Launch B1, the service configurations no longer set watch patterns. A release that changed no
   client file was skipped by the platform, and `railway up --ci` waited for build output that a
   skipped deployment never produces, so the job hung with the client a version behind the server.

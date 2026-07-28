@@ -1,3 +1,4 @@
+import { checkBaseUrl } from "../ops/base-url";
 import { awaitRelease, formatAwaitRelease } from "../ops/release";
 
 /**
@@ -6,9 +7,9 @@ import { awaitRelease, formatAwaitRelease } from "../ops/release";
  * finished; this returns when the build is the one answering.
  */
 
-const baseUrl = process.env["RELEASE_BASE_URL"];
-if (baseUrl === undefined || baseUrl === "") {
-  console.error("RELEASE_BASE_URL is required, for example https://api.example.com");
+const address = checkBaseUrl("RELEASE_BASE_URL", process.env["RELEASE_BASE_URL"]);
+if (!address.ok) {
+  console.error(address.problem);
   process.exit(2);
 }
 
@@ -18,8 +19,21 @@ if (version === undefined || version === "") {
   process.exit(2);
 }
 
+const gitSha = process.env["GIT_SHA"];
+const released = gitSha === undefined || gitSha === "" ? version : `${version} at ${gitSha}`;
 const timeoutSeconds = Number(process.env["RELEASE_TIMEOUT_SECONDS"] ?? "300");
-const result = await awaitRelease({ baseUrl, version, timeoutMs: timeoutSeconds * 1000 });
 
-console.warn(formatAwaitRelease(version, result));
+console.warn(`Waiting for ${released} to be the build serving ${address.baseUrl}.`);
+
+const result = await awaitRelease({
+  baseUrl: address.baseUrl,
+  version,
+  ...(gitSha === undefined || gitSha === "" ? {} : { gitSha }),
+  timeoutMs: timeoutSeconds * 1000,
+  onAttempt: (attempt, detail) => {
+    console.warn(`  attempt ${String(attempt)}: ${detail}`);
+  },
+});
+
+console.warn(formatAwaitRelease(released, result));
 process.exit(result.ok ? 0 : 1);

@@ -38,6 +38,109 @@ function clock(): { now: () => number; wait: (ms: number) => Promise<void> } {
   };
 }
 
+describe("awaitRelease and the commit it released", () => {
+  it("keeps waiting while the package version matches but the commit does not", async () => {
+    // The package version is the same string for every commit that does not change it,
+    // so on its own it is satisfied by the container this release is replacing.
+    const time = clock();
+    const target = (): Promise<Response> =>
+      Promise.resolve(Response.json({ appVersion: "1.4.0", gitSha: "old" }));
+
+    const result = await awaitRelease({
+      baseUrl: "https://example.com",
+      version: "1.4.0",
+      gitSha: "new",
+      timeoutMs: 20_000,
+      fetch: target,
+      ...time,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe("serving 1.4.0 at old");
+  });
+
+  it("returns when both the version and the commit are the ones released", async () => {
+    const time = clock();
+    const answers = [
+      Response.json({ appVersion: "1.4.0", gitSha: "old" }),
+      Response.json({ appVersion: "1.4.0", gitSha: "new" }),
+    ];
+
+    const result = await awaitRelease({
+      baseUrl: "https://example.com",
+      version: "1.4.0",
+      gitSha: "new",
+      timeoutMs: 20_000,
+      fetch: () => Promise.resolve(answers.shift() ?? Response.json({})),
+      ...time,
+    });
+
+    expect(result).toMatchObject({ ok: true, attempts: 2, detail: "1.4.0 at new" });
+  });
+
+  it("refuses an address without a scheme instead of retrying it until the timeout", async () => {
+    const time = clock();
+    const target = vi.fn();
+
+    const result = await awaitRelease({
+      baseUrl: "gobblet-production.up.railway.app",
+      version: "1.4.0",
+      timeoutMs: 300_000,
+      fetch: target,
+      ...time,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      attempts: 0,
+      waitedMs: 0,
+      detail:
+        "baseUrl must be an absolute URL including the scheme, for example https://gobblet-production.up.railway.app",
+    });
+    expect(target).not.toHaveBeenCalled();
+  });
+
+  it("reads a body that is not an object as nothing serving yet", async () => {
+    // A proxy in front of the deployment can answer 200 with something that is not the
+    // health document at all.
+    const time = clock();
+    const result = await awaitRelease({
+      baseUrl: "https://example.com",
+      version: "1.4.0",
+      gitSha: "new",
+      timeoutMs: 12_000,
+      fetch: () => Promise.resolve(Response.json("gateway starting")),
+      ...time,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe("serving unknown");
+  });
+
+  it("says what each attempt found, so a wait of minutes is visibly a wait", async () => {
+    const time = clock();
+    const seen: string[] = [];
+    const answers = [
+      Response.json({ appVersion: "1.3.0", gitSha: "old" }),
+      Response.json({ appVersion: "1.4.0", gitSha: "new" }),
+    ];
+
+    await awaitRelease({
+      baseUrl: "https://example.com",
+      version: "1.4.0",
+      gitSha: "new",
+      timeoutMs: 20_000,
+      fetch: () => Promise.resolve(answers.shift() ?? Response.json({})),
+      onAttempt: (attempt, detail) => {
+        seen.push(`${String(attempt)}: ${detail}`);
+      },
+      ...time,
+    });
+
+    expect(seen).toEqual(["1: serving 1.3.0 at old"]);
+  });
+});
+
 describe("awaitRelease", () => {
   it("returns as soon as the released version is the one serving", async () => {
     const time = clock();

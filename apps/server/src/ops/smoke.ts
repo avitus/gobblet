@@ -28,6 +28,11 @@ export type SmokeOptions = Readonly<{
   baseUrl: string;
   /** When given, the version the deployment expects to find serving. */
   expectVersion?: string;
+  /**
+   * The commit the deployment expects to find serving. The package version does not
+   * change with every commit, so it alone cannot tell a new container from the old one.
+   */
+  expectGitSha?: string;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
 }>;
@@ -89,10 +94,15 @@ export async function runSmoke(options: SmokeOptions): Promise<SmokeReport> {
 
   if (options.expectVersion !== undefined) {
     const serving = typeof live?.appVersion === "string" ? live.appVersion : "unknown";
+    const servingSha = typeof live?.gitSha === "string" ? live.gitSha : "unknown";
+    const expected = options.expectGitSha;
     checks.push({
-      name: "released version is serving",
-      ok: serving === options.expectVersion,
-      detail: `expected ${options.expectVersion}, found ${serving}`,
+      name: "released build is serving",
+      ok: serving === options.expectVersion && (expected === undefined || servingSha === expected),
+      detail:
+        expected === undefined
+          ? `expected ${options.expectVersion}, found ${serving}`
+          : `expected ${options.expectVersion} at ${expected}, found ${serving} at ${servingSha}`,
     });
   }
 

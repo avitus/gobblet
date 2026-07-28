@@ -180,13 +180,18 @@ In GitHub, on the `production` environment (later also `staging`):
 | Secret   | `DATABASE_URL`           | the **public** PostgreSQL proxy URL, for the migration job |
 | Variable | `RAILWAY_SERVER_SERVICE` | the server service name from step 3                        |
 | Variable | `RAILWAY_WEB_SERVICE`    | the client service name from step 4                        |
-| Variable | `PRODUCTION_URL`         | the server's domain, which is what the smoke check calls   |
+| Variable | `PRODUCTION_URL`         | the server's origin **including `https://`**               |
+
+`PRODUCTION_URL` is an origin, not a hostname: `https://gobblet-production.up.railway.app`. Every
+check that decides whether a release worked fetches it, and a value without a scheme is not a URL
+`fetch` can parse, so the release would wait out its whole window failing identically.
 
 Add the required reviewers to the GitHub `production` environment at the same time; the approval
 gate is only a gate if someone other than the workflow has to press it.
 
-The deploy workflow refuses to start without any of these and names the missing one, so a
-half-configured environment fails before it touches anything.
+The deploy workflow refuses to start without any of these, names the missing one, and rejects a
+host without a scheme, so a half-configured environment fails in seconds rather than at the end of
+a timeout.
 
 ## 3. Environment variable reference
 
@@ -368,7 +373,10 @@ kills a process that is still draining.
    matches continue until they finish or `SHUTDOWN_DRAIN_SECONDS` elapses.
 5. The old container exits. Remaining clients reconnect, call `match:sync` and re-synchronise
    from PostgreSQL.
-6. The workflow waits for the released version to be the one serving, smokes it, and then you
+6. The workflow waits for the released commit to be the one serving, printing what it finds on
+   each attempt, and smokes it: liveness, readiness, the configuration document, and that the
+   build answering is this run's commit. The commit is what makes that check meaningful, because
+   the package version is the same string across commits that do not change it. Then you
    watch error rate, readiness and match transaction failures for the post-deploy observation
    window.
 7. `release-check` has the last word. GitHub counts a skipped job as a success, so a run whose

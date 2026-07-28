@@ -1,3 +1,5 @@
+import { checkBaseUrl } from "./base-url";
+
 /**
  * `railway up --ci` returns when the build finishes, not when the new container is
  * the one answering, so a smoke test run straight afterwards can pass against the
@@ -12,12 +14,20 @@
 export type AwaitReleaseOptions = Readonly<{
   baseUrl: string;
   version: string;
+  /**
+   * The commit this release built. The package version is the same string for every
+   * commit that does not change it, so without this the wait is satisfied by the
+   * container it was meant to replace.
+   */
+  gitSha?: string;
   timeoutMs: number;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
   wait?: (ms: number) => Promise<void>;
   pollMs?: number;
   requestTimeoutMs?: number;
+  /** Called with what each attempt found, so a long wait is visibly a wait. */
+  onAttempt?: (attempt: number, detail: string) => void;
 }>;
 
 export type AwaitReleaseResult = Readonly<{
@@ -35,7 +45,16 @@ function endpoint(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/health/live`;
 }
 
+function describe(version: string, gitSha: string | undefined): string {
+  return gitSha === undefined ? version : `${version} at ${gitSha}`;
+}
+
 export async function awaitRelease(options: AwaitReleaseOptions): Promise<AwaitReleaseResult> {
+  const address = checkBaseUrl("baseUrl", options.baseUrl);
+  if (!address.ok) {
+    return { ok: false, attempts: 0, waitedMs: 0, detail: address.problem };
+  }
+
   const call = options.fetch ?? globalThis.fetch;
   const now = options.now ?? ((): number => Date.now());
   const wait = options.wait ?? ((ms: number) => new Promise<void>((s) => setTimeout(s, ms)));
@@ -53,20 +72,28 @@ export async function awaitRelease(options: AwaitReleaseOptions): Promise<AwaitR
       });
       if (response.ok) {
         const body: unknown = await response.json();
-        const serving =
-          typeof body === "object" && body !== null && "appVersion" in body
-            ? String((body as Record<string, unknown>).appVersion)
-            : "unknown";
-        if (serving === options.version) {
-          return { ok: true, attempts, waitedMs: now() - startedAt, detail: serving };
+        const reported =
+          typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+        const serving = "appVersion" in reported ? String(reported.appVersion) : "unknown";
+        const servingSha = "gitSha" in reported ? String(reported.gitSha) : undefined;
+        const wanted = options.gitSha;
+        if (serving === options.version && (wanted === undefined || servingSha === wanted)) {
+          return {
+            ok: true,
+            attempts,
+            waitedMs: now() - startedAt,
+            detail: describe(serving, servingSha),
+          };
         }
-        detail = `serving ${serving}`;
+        detail = `serving ${describe(serving, servingSha)}`;
       } else {
         detail = `answered ${String(response.status)}`;
       }
     } catch (error) {
       detail = error instanceof Error ? error.message : String(error);
     }
+
+    options.onAttempt?.(attempts, detail);
 
     const elapsed = now() - startedAt;
     if (elapsed + pollMs > options.timeoutMs) {
@@ -112,10 +139,10 @@ export function verifyReleaseHappened(run: ReleaseRun): ReleaseVerdict {
     : { ok: false, detail: `nothing was released: ${wrong.join(", ")}` };
 }
 
-export function formatAwaitRelease(version: string, result: AwaitReleaseResult): string {
+export function formatAwaitRelease(released: string, result: AwaitReleaseResult): string {
   const seconds = (result.waitedMs / 1000).toFixed(1);
   const checks = `${String(result.attempts)} check${result.attempts === 1 ? "" : "s"}`;
   return result.ok
-    ? `${version} is serving after ${seconds}s and ${checks}`
-    : `${version} is not serving after ${seconds}s and ${checks}: ${result.detail}`;
+    ? `${released} is serving after ${seconds}s and ${checks}`
+    : `${released} is not serving after ${seconds}s and ${checks}: ${result.detail}`;
 }

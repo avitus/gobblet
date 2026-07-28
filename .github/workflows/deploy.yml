@@ -187,6 +187,13 @@ jobs:
             echo "::error::The staging environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
             exit 1
           fi
+          case "${HOST}" in
+            http://* | https://*) ;;
+            *)
+              echo "::error::STAGING_URL must include the scheme, as in https://${HOST}. See docs/operations.md section 2.1."
+              exit 1
+              ;;
+          esac
 
       - uses: actions/checkout@v4
         with:
@@ -242,6 +249,8 @@ jobs:
         env:
           RELEASE_BASE_URL: ${{ vars.STAGING_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
+          GIT_SHA: ${{ needs.build.outputs.sha }}
+          RELEASE_TIMEOUT_SECONDS: "600"
         run: pnpm --filter @gobblet/server await-release
 
   staging-smoke:
@@ -282,6 +291,7 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ vars.STAGING_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
+          GIT_SHA: ${{ needs.build.outputs.sha }}
         run: pnpm --filter @gobblet/server smoke
 
   production-release:
@@ -325,6 +335,15 @@ jobs:
             echo "::error::The production environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
             exit 1
           fi
+          # A host without a scheme is not a URL fetch can use, and every check that
+          # decides whether this release worked is a fetch.
+          case "${HOST}" in
+            http://* | https://*) ;;
+            *)
+              echo "::error::PRODUCTION_URL must include the scheme, as in https://${HOST}. See docs/operations.md section 2.1."
+              exit 1
+              ;;
+          esac
 
       - uses: actions/checkout@v4
         with:
@@ -439,6 +458,8 @@ jobs:
         env:
           RELEASE_BASE_URL: ${{ vars.PRODUCTION_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
+          GIT_SHA: ${{ needs.build.outputs.sha }}
+          RELEASE_TIMEOUT_SECONDS: "600"
         run: pnpm --filter @gobblet/server await-release
 
       # Section 22.2 step 5 and docs/operations.md section 8, and the check that
@@ -448,6 +469,7 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ vars.PRODUCTION_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
+          GIT_SHA: ${{ needs.build.outputs.sha }}
         run: pnpm --filter @gobblet/server smoke
 
       - name: Watch the post-deploy window

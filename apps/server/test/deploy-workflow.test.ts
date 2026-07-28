@@ -47,6 +47,18 @@ describe("each deploy job", () => {
         expect(steps).toContain("Require a host");
         expect(steps).toContain("RAILWAY_TOKEN");
       });
+
+      it("refuses an address without a scheme, which every check here has to fetch", () => {
+        // A release once spent five minutes retrying a host with no https://, because
+        // the guard only checked that the variable was set.
+        expect(steps).toContain("http://* | https://*)");
+        expect(steps).toContain("must include the scheme");
+      });
+
+      it("compares the commit, not only the version, when it decides a release landed", () => {
+        // The package version is the same string across commits that do not change it.
+        expect(steps).toContain("GIT_SHA: ${{ needs.build.outputs.sha }}");
+      });
     });
   }
 

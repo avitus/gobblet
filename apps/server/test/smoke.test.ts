@@ -65,7 +65,7 @@ describe("the deploy smoke test", () => {
       "readiness",
       "configuration",
       "configuration document",
-      "released version is serving",
+      "released build is serving",
     ]);
     expect(formatSmokeReport(report)).toContain("smoke test passed");
   });
@@ -78,6 +78,35 @@ describe("the deploy smoke test", () => {
     expect(report.ok).toBe(false);
     expect(report.checks.find((check) => check.name === "readiness")?.detail).toContain("503");
     expect(formatSmokeReport(report)).toContain("FAIL readiness");
+  });
+
+  it("fails when the version matches but the commit serving is the one replaced", async () => {
+    // The package version does not change with every commit, so on its own it cannot
+    // tell the container just released from the container it replaced.
+    const fetch = await serving({ APP_VERSION: "1.4.0", GIT_SHA: "old" });
+
+    const report = await runSmoke({
+      baseUrl: "https://staging.example.com",
+      expectVersion: "1.4.0",
+      expectGitSha: "new",
+      fetch,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks.at(-1)?.detail).toBe("expected 1.4.0 at new, found 1.4.0 at old");
+  });
+
+  it("passes when both the version and the commit are the ones released", async () => {
+    const fetch = await serving({ APP_VERSION: "1.4.0", GIT_SHA: "new" });
+
+    const report = await runSmoke({
+      baseUrl: "https://staging.example.com",
+      expectVersion: "1.4.0",
+      expectGitSha: "new",
+      fetch,
+    });
+
+    expect(report.ok).toBe(true);
   });
 
   it("fails when the build that is serving is not the build that was released", async () => {
