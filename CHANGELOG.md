@@ -113,6 +113,10 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, the deploy jobs build the packages their command imports. `tsx` runs a CLI from
+  source, but its import of `@gobblet/config` resolves to that package's `dist`, and a fresh
+  runner has none: the migration job failed on `db:backup`, and the smoke jobs would have failed
+  next. A test now rejects a job that runs a workspace command without building first.
 - Launch B1, a deploy run that releases nothing now fails. The first production run finished
   green having skipped every job after the approval: without a status function in its condition,
   GitHub skips a job when anything upstream skipped, and `skip-staging` skips plenty. Each job

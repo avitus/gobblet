@@ -130,6 +130,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/db^..." run build
+
       - name: Require a database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -228,6 +233,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/server^..." run build
+
       - name: Wait for the released version to be the one serving
         env:
           RELEASE_BASE_URL: ${{ vars.STAGING_URL }}
@@ -256,6 +266,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/server^..." run build
 
       # Section 22.2 step 5 and docs/operations.md section 7: liveness, readiness,
       # the configuration document, and a match that plays a move, reconnects and
@@ -312,6 +327,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/db^..." run build
 
       - name: Require a database
         env:
@@ -416,6 +436,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/server^..." run build
+
       - name: Wait for the released version to be the one serving
         env:
           RELEASE_BASE_URL: ${{ vars.PRODUCTION_URL }}
@@ -450,6 +475,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/server^..." run build
 
       # The same check as staging, and the one that decides whether a rollback
       # worked: the version serving must be the version this run released.
@@ -491,6 +521,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # tsx runs the CLI from source, but the workspace packages it imports resolve to
+      # their dist, which a fresh checkout does not have.
+      - name: Build the packages the CLI imports
+        run: pnpm --filter "@gobblet/server^..." run build
 
       - name: Confirm the release happened
         env:

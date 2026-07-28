@@ -118,6 +118,37 @@ describe("a job that depends on another", () => {
   });
 });
 
+describe("a job that runs a workspace command", () => {
+  const names = [...workflow.matchAll(/\n {2}([a-z][a-z-]*):\n/g)].map(
+    (match) => match[1] as string,
+  );
+
+  it("builds the packages that command imports, which a fresh checkout does not have", () => {
+    // tsx compiles the CLI from source, but an import of @gobblet/config resolves to
+    // that package's dist. Installing is not building, and the runner starts empty.
+    const unbuilt = names.filter((name) => {
+      const lines = job(name);
+      const commands = [...lines.matchAll(/run: (pnpm .*)/g)].map((match) => match[1] as string);
+      const runsWorkspaceCommand = commands.some(
+        (command) => command !== "pnpm install --frozen-lockfile" && !command.includes("run build"),
+      );
+      const builds = commands.some((command) => /pnpm( --filter \S+)? (run )?build/.test(command));
+
+      return runsWorkspaceCommand && !builds;
+    });
+
+    expect(unbuilt).toEqual([]);
+  });
+
+  it("builds before it runs, not after", () => {
+    for (const name of ["production-migrate", "production-smoke"]) {
+      const lines = job(name);
+
+      expect(lines.indexOf("run build")).toBeLessThan(lines.lastIndexOf("run: pnpm"));
+    }
+  });
+});
+
 describe("the last job of a run", () => {
   const lines = job("release-check");
 
