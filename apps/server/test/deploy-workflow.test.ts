@@ -25,7 +25,7 @@ function job(name: string): string {
 }
 
 describe("each deploy job", () => {
-  for (const name of ["staging-deploy", "production-deploy"]) {
+  for (const name of ["staging-deploy", "production-release"]) {
     describe(name, () => {
       const steps = job(name);
 
@@ -53,7 +53,11 @@ describe("each deploy job", () => {
   it("waits on and then smokes the same address, per environment", () => {
     const environments = [
       { deploy: "staging-deploy", smoke: "staging-smoke", variable: "vars.STAGING_URL" },
-      { deploy: "production-deploy", smoke: "production-smoke", variable: "vars.PRODUCTION_URL" },
+      {
+        deploy: "production-release",
+        smoke: "production-release",
+        variable: "vars.PRODUCTION_URL",
+      },
     ];
 
     for (const environment of environments) {
@@ -62,6 +66,46 @@ describe("each deploy job", () => {
       );
       expect(job(environment.smoke)).toContain(`SMOKE_BASE_URL: \${{ ${environment.variable} }}`);
     }
+  });
+});
+
+describe("the production release", () => {
+  const lines = job("production-release");
+
+  it("is one job, so a release is one approval rather than one for each stage", () => {
+    // Every job that references a protected environment is approved separately, so
+    // splitting the release across jobs asks the reviewer the same question repeatedly.
+    const names = [...workflow.matchAll(/\n {2}([a-z][a-z-]*):\n/g)].map(
+      (match) => match[1] as string,
+    );
+    const referencing = names.filter((name) =>
+      /environment:\s+(name: )?production/.test(job(name)),
+    );
+
+    expect(referencing).toEqual(["production-release"]);
+  });
+
+  it("migrates, releases and smokes in that order", () => {
+    const order = ["Apply migrations", "Release the server", "Wait for the released", "Smoke test"];
+    const positions = order.map((step) => lines.indexOf(step));
+
+    expect(positions.includes(-1)).toBe(false);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("backs up before it migrates, and keeps the backup", () => {
+    expect(lines.indexOf("Back up before migrating")).toBeLessThan(
+      lines.indexOf("Apply migrations"),
+    );
+    expect(lines).toContain("production-pre-migration-");
+  });
+
+  it("installs a database client that can dump the server it backs up", () => {
+    // pg_dump refuses to dump a newer server, and the runner's client is older than the
+    // managed database; packages/db/src/backup.ts fails loudly rather than writing a
+    // partial archive.
+    expect(lines).toContain("SHOW server_version_num");
+    expect(lines).toContain("postgresql-client-${major}");
   });
 });
 
@@ -75,15 +119,15 @@ describe("a production release without a staging rehearsal", () => {
   });
 
   it("still stops at the approval gate", () => {
-    expect(job("production-approval")).toContain("!inputs.skip-production");
+    expect(job("production-release")).toContain("!inputs.skip-production");
   });
 
   it("is recorded as untried rather than passed off as rehearsed", () => {
-    expect(job("production-approval")).toContain("No staging rehearsal");
+    expect(job("production-release")).toContain("No staging rehearsal");
   });
 
   it("does not turn a skipped rehearsal into a skipped production deploy", () => {
-    expect(job("production-approval")).toContain(
+    expect(job("production-release")).toContain(
       "(needs.staging-smoke.result == 'success' || inputs.skip-staging)",
     );
   });
@@ -97,7 +141,7 @@ describe("a job that depends on another", () => {
 
   it("is a set the test can see", () => {
     expect(names).toContain("build");
-    expect(names).toContain("production-smoke");
+    expect(names).toContain("production-release");
   });
 
   it("says which upstream results it needs, rather than inheriting the answer", () => {
@@ -141,7 +185,7 @@ describe("a job that runs a workspace command", () => {
   });
 
   it("builds before it runs, not after", () => {
-    for (const name of ["production-migrate", "production-smoke"]) {
+    for (const name of ["staging-migrate", "production-release"]) {
       const lines = job(name);
 
       expect(lines.indexOf("run build")).toBeLessThan(lines.lastIndexOf("run: pnpm"));
@@ -157,12 +201,7 @@ describe("the last job of a run", () => {
   });
 
   it("waits for every job that releases anything", () => {
-    for (const name of [
-      "staging-deploy",
-      "staging-smoke",
-      "production-deploy",
-      "production-smoke",
-    ]) {
+    for (const name of ["staging-smoke", "production-release"]) {
       expect(lines).toContain(name);
     }
   });
@@ -171,7 +210,7 @@ describe("the last job of a run", () => {
     // The decision is apps/server/src/ops/release.ts, proved in release-check.test.ts;
     // the workflow only supplies the results.
     expect(lines).toContain("pnpm --filter @gobblet/server check-release");
-    expect(lines).toContain("PRODUCTION_DEPLOY_RESULT: ${{ needs.production-deploy.result }}");
+    expect(lines).toContain("PRODUCTION_RESULT: ${{ needs.production-release.result }}");
     expect(lines).toContain("SKIP_STAGING: ${{ inputs.skip-staging }}");
   });
 });

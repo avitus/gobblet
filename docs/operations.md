@@ -339,9 +339,11 @@ in `apps/server/test/phase7-exit-criteria.test.ts`, which is what section 7.6 ac
 Status: complete except for the account it releases to (Phase 9, [B1](launch-blockers.md)).
 
 Preconditions: staging smoke test passed, migrations applied to staging, no open Sev1 or Sev2
-incident, and manual approval recorded in the release workflow. The `production-approval` job is
-that gate: reviewers are configured on the GitHub `production` environment, and no job that
-touches production runs until one of them approves.
+incident, and manual approval recorded in the release workflow. The `production-release` job is
+that gate: reviewers are configured on the GitHub `production` environment, and nothing in the run
+touches production until one of them approves. Migrating, releasing and smoking are steps of that
+one job on purpose, because every job referencing a protected environment is approved separately,
+and a reviewer asked the same question four times stops reading it.
 
 Drain-and-reconnect procedure. Steps 2 to 5 are configuration rather than commands: they are
 `healthcheckPath`, `overlapSeconds` and `drainingSeconds` in
@@ -350,6 +352,10 @@ service, and `drainingSeconds` is deliberately longer than the drain window so t
 kills a process that is still draining.
 
 1. Apply pending database migrations, after taking the backup the workflow keeps as an artefact.
+   The job installs the PostgreSQL client matching the managed database before dumping, because
+   `pg_dump` refuses to dump a server newer than itself and the runner's client is older; the
+   major version is read from the database rather than pinned, so an upgrade cannot quietly leave
+   the backup behind.
 2. The platform starts the new container and waits for `GET /health/ready` to succeed.
 3. Traffic moves to the new container. The old one keeps the sockets it already has.
 4. The old container receives `SIGTERM` and drains: the queue closes at once, and existing

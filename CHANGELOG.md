@@ -113,6 +113,14 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Launch B1, production is released by one job rather than four. GitHub approves each job that
+  references a protected environment separately, so a single release asked for approval again and
+  again; migrating, releasing, waiting and smoking are now steps of `production-release`, and a
+  test fails if any second job references the production environment.
+- Launch B1, the deploy backup installs the PostgreSQL client the database needs. The runner ships
+  `pg_dump` 16, the managed database is 18, and `pg_dump` refuses to dump a newer server, so the
+  migration job failed with the archive unwritten. The major version is read from the database
+  rather than pinned.
 - Launch B1, the deploy jobs build the packages their command imports. `tsx` runs a CLI from
   source, but its import of `@gobblet/config` resolves to that package's `dist`, and a fresh
   runner has none: the migration job failed on `db:backup`, and the smoke jobs would have failed

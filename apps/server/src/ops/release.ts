@@ -85,39 +85,30 @@ export async function awaitRelease(options: AwaitReleaseOptions): Promise<AwaitR
 export type ReleaseRun = Readonly<{
   skipStaging: boolean;
   skipProduction: boolean;
-  /** Each job's GitHub result: success, failure, cancelled or skipped. */
-  results: Readonly<Record<ReleaseJob, string>>;
+  /** Each environment's release result: success, failure, cancelled or skipped. */
+  results: Readonly<Record<ReleaseEnvironment, string>>;
 }>;
 
-export type ReleaseJob = "stagingDeploy" | "stagingSmoke" | "productionDeploy" | "productionSmoke";
+export type ReleaseEnvironment = "staging" | "production";
 
 export type ReleaseVerdict = Readonly<{ ok: boolean; detail: string }>;
 
-const ENVIRONMENTS = [
-  { name: "staging", deploy: "stagingDeploy", smoke: "stagingSmoke" },
-  { name: "production", deploy: "productionDeploy", smoke: "productionSmoke" },
-] as const satisfies readonly { name: string; deploy: ReleaseJob; smoke: ReleaseJob }[];
-
 export function verifyReleaseHappened(run: ReleaseRun): ReleaseVerdict {
-  const expected = ENVIRONMENTS.filter(
-    (environment) => !(environment.name === "staging" ? run.skipStaging : run.skipProduction),
-  );
+  const expected: ReleaseEnvironment[] = [
+    ...(run.skipStaging ? [] : (["staging"] as const)),
+    ...(run.skipProduction ? [] : (["production"] as const)),
+  ];
 
   if (expected.length === 0) {
     return { ok: false, detail: "skipping both environments releases nothing" };
   }
 
-  const wrong = expected.flatMap((environment) =>
-    [
-      { job: environment.deploy, what: `${environment.name} deploy` },
-      { job: environment.smoke, what: `${environment.name} smoke` },
-    ]
-      .filter(({ job }) => run.results[job] !== "success")
-      .map(({ job, what }) => `${what} ${run.results[job]}`),
-  );
+  const wrong = expected
+    .filter((environment) => run.results[environment] !== "success")
+    .map((environment) => `${environment} ${run.results[environment]}`);
 
   return wrong.length === 0
-    ? { ok: true, detail: `released to ${expected.map((e) => e.name).join(" and ")}` }
+    ? { ok: true, detail: `released to ${expected.join(" and ")}` }
     : { ok: false, detail: `nothing was released: ${wrong.join(", ")}` };
 }
 

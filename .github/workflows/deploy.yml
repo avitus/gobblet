@@ -284,15 +284,21 @@ jobs:
           APP_VERSION: ${{ needs.build.outputs.version }}
         run: pnpm --filter @gobblet/server smoke
 
-  production-approval:
-    name: Approve production
+  production-release:
+    name: Release production
     needs: [build, staging-smoke]
+    # always(), because without a status function one skipped job anywhere upstream
+    # skips this one, and a skipped release job leaves the run green.
     if: ${{ always() && needs.build.result == 'success' && !inputs.skip-production && (needs.staging-smoke.result == 'success' || inputs.skip-staging) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    # The gate itself. Reviewers are configured on the environment in repository
-    # settings; the workflow cannot grant itself approval.
-    environment: production
+    timeout-minutes: 90
+    # The gate. Reviewers are configured on the environment in repository settings, and
+    # every job that references a protected environment is approved separately, so
+    # migrating, releasing and smoking production are steps of one job: one release,
+    # one decision, taken before anything touches production.
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
     steps:
       - name: Record the approval
         run: |
@@ -303,16 +309,23 @@ jobs:
             echo "Preconditions: staging smoke passed, migrations applied to staging, no open Sev1 or Sev2."
           fi
 
-  production-migrate:
-    name: Migrate production
-    needs: [build, production-approval]
-    # always(), because without a status function one skipped job anywhere upstream
-    # skips this one, and a skipped release job leaves the run green.
-    if: ${{ always() && needs.production-approval.result == 'success' && !inputs.rollback }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
-    steps:
+      - name: Require a host
+        env:
+          HOST: ${{ vars.PRODUCTION_URL }}
+          SERVER_SERVICE: ${{ vars.RAILWAY_SERVER_SERVICE }}
+          WEB_SERVICE: ${{ vars.RAILWAY_WEB_SERVICE }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          missing=""
+          [ -z "${HOST}" ] && missing="${missing} PRODUCTION_URL"
+          [ -z "${SERVER_SERVICE}" ] && missing="${missing} RAILWAY_SERVER_SERVICE"
+          [ -z "${WEB_SERVICE}" ] && missing="${missing} RAILWAY_WEB_SERVICE"
+          [ -z "${RAILWAY_TOKEN}" ] && missing="${missing} RAILWAY_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::The production environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
@@ -331,9 +344,14 @@ jobs:
       # tsx runs the CLI from source, but the workspace packages it imports resolve to
       # their dist, which a fresh checkout does not have.
       - name: Build the packages the CLI imports
-        run: pnpm --filter "@gobblet/db^..." run build
+        run: pnpm --filter "@gobblet/server^..." run build
 
+      # A rollback runs against the schema already there. Migrations are written to be
+      # backward compatible for exactly this reason (docs/operations.md section 9), so
+      # rolling the code back never rolls the schema back; a schema that has to move
+      # backward is a restore, not a rollback.
       - name: Require a database
+        if: ${{ !inputs.rollback }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -342,58 +360,45 @@ jobs:
             exit 1
           fi
 
+      # pg_dump refuses to dump a server newer than itself, and the runner's client is
+      # older than the managed database. The database is asked which major version it
+      # is rather than one being pinned here, so upgrading it cannot quietly leave the
+      # backup behind.
+      - name: Install the PostgreSQL client the database needs
+        if: ${{ !inputs.rollback }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          major=$(( $(psql "${DATABASE_URL}" -tAc "SHOW server_version_num") / 10000 ))
+          echo "The database is PostgreSQL ${major}."
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install --yes "postgresql-client-${major}"
+          echo "/usr/lib/postgresql/${major}/bin" >> "${GITHUB_PATH}"
+
       - name: Back up before migrating
+        if: ${{ !inputs.rollback }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: pnpm db:backup --directory "${RUNNER_TEMP}/backup"
 
-      - name: Apply migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: pnpm db:migrate
-
       - name: Keep the pre-migration backup
+        if: ${{ !inputs.rollback }}
         uses: actions/upload-artifact@v4
         with:
           name: production-pre-migration-${{ needs.build.outputs.sha }}
           path: ${{ runner.temp }}/backup/
           retention-days: 14
 
-  production-deploy:
-    name: Deploy production and drain
-    needs: [build, production-migrate]
-    if: ${{ always() && needs.build.result == 'success' && (needs.production-migrate.result == 'success' || inputs.rollback) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_URL }}
-    steps:
-      - name: Require a host
+      - name: Apply migrations
+        if: ${{ !inputs.rollback }}
         env:
-          HOST: ${{ vars.PRODUCTION_URL }}
-          SERVER_SERVICE: ${{ vars.RAILWAY_SERVER_SERVICE }}
-          WEB_SERVICE: ${{ vars.RAILWAY_WEB_SERVICE }}
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          missing=""
-          [ -z "${HOST}" ] && missing="${missing} PRODUCTION_URL"
-          [ -z "${SERVER_SERVICE}" ] && missing="${missing} RAILWAY_SERVER_SERVICE"
-          [ -z "${WEB_SERVICE}" ] && missing="${missing} RAILWAY_WEB_SERVICE"
-          [ -z "${RAILWAY_TOKEN}" ] && missing="${missing} RAILWAY_TOKEN"
-          if [ -n "${missing}" ]; then
-            echo "::error::The production environment is missing:${missing}. See docs/operations.md section 2.1 and docs/launch-blockers.md B1."
-            exit 1
-          fi
-
-      # docs/operations.md section 8. The new container becomes ready before the old
-      # one stops taking matchmaking, and the old one keeps its matches until they
-      # finish or SHUTDOWN_DRAIN_SECONDS elapses. A client that is cut off calls
-      # match:sync and loses nothing, which apps/server/test/phase7-exit-criteria.test.ts
-      # proves against the runtime rather than against a deployment.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
 
       - name: Install the Railway CLI
         run: |
@@ -412,9 +417,14 @@ jobs:
             "GIT_SHA=${{ needs.build.outputs.sha }}" \
             --service "${{ vars.RAILWAY_SERVER_SERVICE }}" --skip-deploys
 
+      # docs/operations.md section 8. The new container becomes ready before the old
+      # one stops taking matchmaking, and the old one keeps its matches until they
+      # finish or SHUTDOWN_DRAIN_SECONDS elapses. A client that is cut off calls
+      # match:sync and loses nothing, which apps/server/test/phase7-exit-criteria.test.ts
+      # proves against the runtime rather than against a deployment.
+      #
       # --ci returns when the build finishes, not when the container serves, which is
-      # why the wait below exists. The platform starts the new container, waits for
-      # /health/ready, moves traffic, then drains the old one per apps/server/railway.json.
+      # why the wait below exists.
       - name: Release the server
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -425,69 +435,25 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --ci --service "${{ vars.RAILWAY_WEB_SERVICE }}"
 
-      - name: Enable corepack
-        run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # tsx runs the CLI from source, but the workspace packages it imports resolve to
-      # their dist, which a fresh checkout does not have.
-      - name: Build the packages the CLI imports
-        run: pnpm --filter "@gobblet/server^..." run build
-
       - name: Wait for the released version to be the one serving
         env:
           RELEASE_BASE_URL: ${{ vars.PRODUCTION_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
         run: pnpm --filter @gobblet/server await-release
 
-      - name: Watch the post-deploy window
-        if: success()
-        run: |
-          echo "Error rate, readiness and match transaction failures for the observation window."
-          echo "See ops/alerts/gobblet.rules.yml, GobbletErrorRegressionAfterDeploy."
-
-  production-smoke:
-    name: Smoke production
-    needs: [build, production-deploy]
-    if: ${{ always() && needs.production-deploy.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # tsx runs the CLI from source, but the workspace packages it imports resolve to
-      # their dist, which a fresh checkout does not have.
-      - name: Build the packages the CLI imports
-        run: pnpm --filter "@gobblet/server^..." run build
-
-      # The same check as staging, and the one that decides whether a rollback
-      # worked: the version serving must be the version this run released.
+      # Section 22.2 step 5 and docs/operations.md section 8, and the check that
+      # decides whether a rollback worked: the version serving must be the version
+      # this run released.
       - name: Smoke test
         env:
           SMOKE_BASE_URL: ${{ vars.PRODUCTION_URL }}
           APP_VERSION: ${{ needs.build.outputs.version }}
         run: pnpm --filter @gobblet/server smoke
+
+      - name: Watch the post-deploy window
+        run: |
+          echo "Error rate, readiness and match transaction failures for the observation window."
+          echo "See ops/alerts/gobblet.rules.yml, GobbletErrorRegressionAfterDeploy."
 
       - name: Say what happened
         run: |
@@ -499,7 +465,7 @@ jobs:
 
   release-check:
     name: Confirm the release happened
-    needs: [build, staging-deploy, staging-smoke, production-deploy, production-smoke]
+    needs: [build, staging-deploy, staging-smoke, production-release]
     # The one job that must run whatever else did. GitHub reports a run whose release
     # jobs all skipped as a success, so without this the workflow can announce a deploy
     # it never performed, which is what happened on the first production run.
@@ -531,8 +497,6 @@ jobs:
         env:
           SKIP_STAGING: ${{ inputs.skip-staging }}
           SKIP_PRODUCTION: ${{ inputs.skip-production }}
-          STAGING_DEPLOY_RESULT: ${{ needs.staging-deploy.result }}
-          STAGING_SMOKE_RESULT: ${{ needs.staging-smoke.result }}
-          PRODUCTION_DEPLOY_RESULT: ${{ needs.production-deploy.result }}
-          PRODUCTION_SMOKE_RESULT: ${{ needs.production-smoke.result }}
+          STAGING_RESULT: ${{ needs.staging-smoke.result }}
+          PRODUCTION_RESULT: ${{ needs.production-release.result }}
         run: pnpm --filter @gobblet/server check-release

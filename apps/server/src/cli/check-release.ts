@@ -15,10 +15,8 @@ const verdict = verifyReleaseHappened({
   skipStaging: process.env["SKIP_STAGING"] === "true",
   skipProduction: process.env["SKIP_PRODUCTION"] === "true",
   results: {
-    stagingDeploy: result("STAGING_DEPLOY_RESULT"),
-    stagingSmoke: result("STAGING_SMOKE_RESULT"),
-    productionDeploy: result("PRODUCTION_DEPLOY_RESULT"),
-    productionSmoke: result("PRODUCTION_SMOKE_RESULT"),
+    staging: result("STAGING_RESULT"),
+    production: result("PRODUCTION_RESULT"),
   },
 });
 

@@ -14,18 +14,12 @@ function run(overrides: Overrides = {}): ReleaseRun {
   return {
     skipStaging: overrides.skipStaging ?? false,
     skipProduction: overrides.skipProduction ?? false,
-    results: {
-      stagingDeploy: "success",
-      stagingSmoke: "success",
-      productionDeploy: "success",
-      productionSmoke: "success",
-      ...overrides.results,
-    },
+    results: { staging: "success", production: "success", ...overrides.results },
   };
 }
 
 describe("confirming a release happened", () => {
-  it("accepts a run that deployed and smoked both environments", () => {
+  it("accepts a run that released both environments", () => {
     expect(verifyReleaseHappened(run())).toEqual({
       ok: true,
       detail: "released to staging and production",
@@ -34,29 +28,18 @@ describe("confirming a release happened", () => {
 
   it("rejects the run that reported success having skipped everything", () => {
     const verdict = verifyReleaseHappened(
-      run({
-        skipStaging: true,
-        results: {
-          stagingDeploy: "skipped",
-          stagingSmoke: "skipped",
-          productionDeploy: "skipped",
-          productionSmoke: "skipped",
-        },
-      }),
+      run({ skipStaging: true, results: { staging: "skipped", production: "skipped" } }),
     );
 
     expect(verdict).toEqual({
       ok: false,
-      detail: "nothing was released: production deploy skipped, production smoke skipped",
+      detail: "nothing was released: production skipped",
     });
   });
 
   it("ignores the environment the run was told to skip", () => {
     const verdict = verifyReleaseHappened(
-      run({
-        skipStaging: true,
-        results: { stagingDeploy: "skipped", stagingSmoke: "skipped" },
-      }),
+      run({ skipStaging: true, results: { staging: "skipped" } }),
     );
 
     expect(verdict).toEqual({ ok: true, detail: "released to production" });
@@ -64,10 +47,7 @@ describe("confirming a release happened", () => {
 
   it("accepts a staging-only run", () => {
     const verdict = verifyReleaseHappened(
-      run({
-        skipProduction: true,
-        results: { productionDeploy: "skipped", productionSmoke: "skipped" },
-      }),
+      run({ skipProduction: true, results: { production: "skipped" } }),
     );
 
     expect(verdict).toEqual({ ok: true, detail: "released to staging" });
@@ -82,30 +62,23 @@ describe("confirming a release happened", () => {
     });
   });
 
-  it("names a deploy that succeeded but whose smoke test did not", () => {
+  it("names every environment that did not get the release", () => {
     const verdict = verifyReleaseHappened(
-      run({ skipStaging: true, results: { productionSmoke: "failure" } }),
+      run({ results: { staging: "failure", production: "cancelled" } }),
     );
 
     expect(verdict).toEqual({
       ok: false,
-      detail: "nothing was released: production smoke failure",
+      detail: "nothing was released: staging failure, production cancelled",
     });
-  });
-
-  it("treats a cancelled deploy as no release", () => {
-    const verdict = verifyReleaseHappened(run({ results: { stagingDeploy: "cancelled" } }));
-
-    expect(verdict.ok).toBe(false);
-    expect(verdict.detail).toContain("staging deploy cancelled");
   });
 
   it("reports a result the workflow never supplied rather than assuming it passed", () => {
     const verdict = verifyReleaseHappened(
-      run({ skipStaging: true, results: { productionDeploy: "missing" } }),
+      run({ skipStaging: true, results: { production: "missing" } }),
     );
 
     expect(verdict.ok).toBe(false);
-    expect(verdict.detail).toContain("production deploy missing");
+    expect(verdict.detail).toContain("production missing");
   });
 });

@@ -92,11 +92,15 @@ describe("the rollback procedure", () => {
     const workflow = await read(".github/workflows/deploy.yml");
 
     expect(workflow).toContain("rollback:");
-    expect(workflow).toContain("production-smoke:");
+    expect(workflow).toContain("- name: Smoke test");
 
-    const condition = /production-migrate:[\s\S]*?\n {4}if: (.*)/.exec(workflow)?.[1] ?? "";
+    // The release is one job, so a rollback skips steps rather than jobs: it redeploys
+    // the ref and proves it, without touching the schema.
+    for (const step of ["Back up before migrating", "Apply migrations"]) {
+      const condition = new RegExp(`- name: ${step}\\n {8}if: (.*)`).exec(workflow)?.[1] ?? "";
 
-    expect(condition).toContain("!inputs.rollback");
+      expect(condition, step).toContain("!inputs.rollback");
+    }
   });
 
   it("rests on a check that fails when the version serving is not the version released", async () => {
