@@ -174,13 +174,14 @@ using the old set.
 
 In GitHub, on the `production` environment (later also `staging`):
 
-| Kind     | Name                     | Value                                                      |
-| -------- | ------------------------ | ---------------------------------------------------------- |
-| Secret   | `RAILWAY_TOKEN`          | the project token from step 6                              |
-| Secret   | `DATABASE_URL`           | the **public** PostgreSQL proxy URL, for the migration job |
-| Variable | `RAILWAY_SERVER_SERVICE` | the server service name from step 3                        |
-| Variable | `RAILWAY_WEB_SERVICE`    | the client service name from step 4                        |
-| Variable | `PRODUCTION_URL`         | the server's origin **including `https://`**               |
+| Kind     | Name                     | Value                                                               |
+| -------- | ------------------------ | ------------------------------------------------------------------- |
+| Secret   | `RAILWAY_TOKEN`          | the project token from step 6                                       |
+| Secret   | `DATABASE_URL`           | the **public** PostgreSQL proxy URL, for the migration job          |
+| Variable | `RAILWAY_SERVER_SERVICE` | the server service name from step 3                                 |
+| Variable | `RAILWAY_WEB_SERVICE`    | the client service name from step 4                                 |
+| Variable | `PRODUCTION_URL`         | the server's origin **including `https://`**                        |
+| Variable | `PRODUCTION_CLIENT_URL`  | the client's origin, which the release checks after it publishes it |
 
 `PRODUCTION_URL` is an origin, not a hostname: `https://gobblet-production.up.railway.app`. Every
 check that decides whether a release worked fetches it, and a value without a scheme is not a URL
@@ -659,19 +660,21 @@ release runs code that has been proved rather than shell that has only ever been
 
 ### Secrets and variables the workflow needs
 
-| Name                                 | Kind     | Needed by            | How to obtain it                                                                                                              |
-| ------------------------------------ | -------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `PRODUCTION_URL`                     | Variable | Every job            | The deployment's https origin. Until a host exists the workflow stops here ([ADR-0015](adr/0015-single-region-deployment.md)) |
-| `RELEASE_ADMIN_TOKEN`                | Secret   | `publish`, `promote` | A session token for an account holding the `admin` role, granted with `pnpm admin:grant`                                      |
-| `TAURI_SIGNING_PRIVATE_KEY`          | Secret   | Every bundle         | `pnpm --filter @gobblet/desktop exec tauri signer generate`. The public half is in `tauri.conf.json`                          |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Secret   | Every bundle         | The passphrase chosen when the key was generated                                                                              |
-| `APPLE_CERTIFICATE`                  | Secret   | macOS bundles        | A Developer ID Application certificate exported as a base64 `.p12`. Needs an Apple Developer Program membership               |
-| `APPLE_CERTIFICATE_PASSWORD`         | Secret   | macOS bundles        | The password used for the `.p12` export                                                                                       |
-| `APPLE_SIGNING_IDENTITY`             | Secret   | macOS bundles        | The certificate's common name, `Developer ID Application: ...`                                                                |
-| `APPLE_ID`, `APPLE_TEAM_ID`          | Secrets  | macOS notarization   | The Apple ID that owns the team, and the ten-character team identifier                                                        |
-| `APPLE_APP_SPECIFIC_PASSWORD`        | Secret   | macOS notarization   | Generated at appleid.apple.com for that Apple ID                                                                              |
-| `WINDOWS_CERTIFICATE`                | Secret   | Windows bundle       | An organisation-validated or extended-validation code-signing certificate, base64 encoded                                     |
-| `WINDOWS_CERTIFICATE_PASSWORD`       | Secret   | Windows bundle       | The password for that certificate                                                                                             |
+| Name                                 | Kind     | Needed by            | How to obtain it                                                                                                                                                                                             |
+| ------------------------------------ | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PRODUCTION_URL`                     | Variable | Every job            | The deployment's https origin. Until a host exists the workflow stops here ([ADR-0015](adr/0015-single-region-deployment.md))                                                                                |
+| `PRODUCTION_CLIENT_URL`              | Variable | `production-release` | The client's https origin. The release fetches the page a player loads and fails if it is served without a cache directive, because then a browser may keep the client it already has ([D-0009](defects.md)) |
+| `STAGING_CLIENT_URL`                 | Variable | `staging-smoke`      | The same, for staging                                                                                                                                                                                        |
+| `RELEASE_ADMIN_TOKEN`                | Secret   | `publish`, `promote` | A session token for an account holding the `admin` role, granted with `pnpm admin:grant`                                                                                                                     |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Secret   | Every bundle         | `pnpm --filter @gobblet/desktop exec tauri signer generate`. The public half is in `tauri.conf.json`                                                                                                         |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Secret   | Every bundle         | The passphrase chosen when the key was generated                                                                                                                                                             |
+| `APPLE_CERTIFICATE`                  | Secret   | macOS bundles        | A Developer ID Application certificate exported as a base64 `.p12`. Needs an Apple Developer Program membership                                                                                              |
+| `APPLE_CERTIFICATE_PASSWORD`         | Secret   | macOS bundles        | The password used for the `.p12` export                                                                                                                                                                      |
+| `APPLE_SIGNING_IDENTITY`             | Secret   | macOS bundles        | The certificate's common name, `Developer ID Application: ...`                                                                                                                                               |
+| `APPLE_ID`, `APPLE_TEAM_ID`          | Secrets  | macOS notarization   | The Apple ID that owns the team, and the ten-character team identifier                                                                                                                                       |
+| `APPLE_APP_SPECIFIC_PASSWORD`        | Secret   | macOS notarization   | Generated at appleid.apple.com for that Apple ID                                                                                                                                                             |
+| `WINDOWS_CERTIFICATE`                | Secret   | Windows bundle       | An organisation-validated or extended-validation code-signing certificate, base64 encoded                                                                                                                    |
+| `WINDOWS_CERTIFICATE_PASSWORD`       | Secret   | Windows bundle       | The password for that certificate                                                                                                                                                                            |
 
 Each of these has a step that checks for it and stops the release naming what is missing
 ([ADR-0036](adr/0036-signing-is-a-workflow-step-that-fails-loudly.md)). A failing signing step

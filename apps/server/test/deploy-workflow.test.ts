@@ -228,6 +228,22 @@ describe("the last job of a run", () => {
 });
 
 describe("everything the workflow asks the operator for", () => {
+  it("checks the client it released, not only the server", () => {
+    // A release that only asks the server whether it is healthy will report success
+    // while every player is still running the build it replaced (docs/defects.md
+    // D-0009).
+    const releases = 'railway up --ci --service "${{ vars.RAILWAY_WEB_SERVICE }}"';
+    const checks = "pnpm --filter @gobblet/server client-smoke";
+
+    for (const [releasing, checking] of [
+      ["staging-deploy", "staging-smoke"],
+      ["production-release", "production-release"],
+    ]) {
+      expect(job(releasing as string), `${releasing} releases the client`).toContain(releases);
+      expect(job(checking as string), `${checking} checks the client`).toContain(checks);
+    }
+  });
+
   it("is named in the runbook, so nobody has to read the workflow to configure it", () => {
     const operations = readFileSync(resolve(ROOT, "docs/operations.md"), "utf8");
     const asked = new Set(

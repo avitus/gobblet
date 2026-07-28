@@ -113,6 +113,10 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Fixed, the page a player loads is revalidated on every visit, so a released client reaches them.
+  It was served with no cache directive and each browser decided for itself: Safari went on running
+  a build for an hour after it was replaced. The release now fetches that page and fails if it may
+  be cached, or if the code it names is not served (D-0009).
 - Fixed, a pointer move in the 3D tiers is submitted once. A square is drawn as a tile and a
   highlight rim, two surfaces under one click handler, and a ray reports every surface it passes
   through, so a destination click chose the square twice. The first command was accepted and the

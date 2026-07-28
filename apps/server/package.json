@@ -18,6 +18,7 @@
     "load": "tsx src/cli/load.ts",
     "desktop-release": "tsx src/cli/desktop-release.ts",
     "smoke": "tsx src/cli/smoke.ts",
+    "client-smoke": "tsx src/cli/client-smoke.ts",
     "await-release": "tsx src/cli/await-release.ts",
     "check-release": "tsx src/cli/check-release.ts",
     "build": "tsup",

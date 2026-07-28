@@ -106,6 +106,17 @@ describe("the client image", () => {
   it("lets the platform choose the port", () => {
     expect(read("apps/web/Caddyfile")).toContain("{$PORT");
   });
+
+  it("makes the page players request revalidate, not only the file it is served from", () => {
+    // A matcher on /index.html never fires: players request / and /match/<id>, and the
+    // rewrite happens after the header matchers run. Safari kept a fixed client on the
+    // broken build for an hour because the shell it had was never revalidated.
+    const caddyfile = read("apps/web/Caddyfile");
+
+    expect(caddyfile).not.toMatch(/header\s+\/index\.html/);
+    expect(caddyfile).toMatch(/not path \/assets\/\*/);
+    expect(caddyfile).toMatch(/header @shell Cache-Control "no-cache"/);
+  });
 });
 
 type ServiceConfig = Readonly<{

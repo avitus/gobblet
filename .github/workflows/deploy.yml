@@ -294,6 +294,15 @@ jobs:
           GIT_SHA: ${{ needs.build.outputs.sha }}
         run: pnpm --filter @gobblet/server smoke
 
+      # The server smoke test says nothing about the client, which is a different
+      # service. The shell it serves names the code a browser runs, so it has to be
+      # revalidated on every visit or a returning player keeps the build they have
+      # (docs/defects.md D-0009).
+      - name: Check the client
+        env:
+          CLIENT_BASE_URL: ${{ vars.STAGING_CLIENT_URL }}
+        run: pnpm --filter @gobblet/server client-smoke
+
   production-release:
     name: Release production
     needs: [build, staging-smoke]
@@ -471,6 +480,15 @@ jobs:
           APP_VERSION: ${{ needs.build.outputs.version }}
           GIT_SHA: ${{ needs.build.outputs.sha }}
         run: pnpm --filter @gobblet/server smoke
+
+      # The server smoke test says nothing about the client, which is a different
+      # service. The shell it serves names the code a browser runs, so it has to be
+      # revalidated on every visit or a returning player keeps the build they have
+      # (docs/defects.md D-0009).
+      - name: Check the client
+        env:
+          CLIENT_BASE_URL: ${{ vars.PRODUCTION_CLIENT_URL }}
+        run: pnpm --filter @gobblet/server client-smoke
 
       - name: Watch the post-deploy window
         run: |
