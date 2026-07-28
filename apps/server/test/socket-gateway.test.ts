@@ -543,6 +543,43 @@ describe("match:sync", () => {
     expect(ack).toEqual({ ok: false, reason: "not-authorized" });
   });
 
+  it("stops delivering a match a socket has moved away from", async () => {
+    // A tab shows one match at a time. A socket that kept every match it had ever
+    // attached to would receive another match's snapshot, and a snapshot for a
+    // different match replaces the board the player is looking at.
+    const table = await seatedMatch();
+    const stranger = await guests.createGuest("second-opponent");
+    const second = await runtime.createMatch({
+      mode: "casual",
+      timeControlSeconds: 300,
+      light: {
+        actorType: "guest",
+        actorId: table.light.guestId,
+        displayName: table.light.displayName,
+      },
+      dark: { actorType: "guest", actorId: stranger.guestId, displayName: stranger.displayName },
+    });
+    await table.lightClient.emit<MatchSyncAck>("match:sync", { matchId: second.matchId });
+    table.lightClient.drain("match:snapshot");
+
+    // Resigning publishes the first match's snapshot to everyone in its room.
+    const resigned = await table.darkClient.emit<CommandAck>("match:resign", {
+      ...envelope(table.matchId, 0),
+      payload: {},
+    });
+    expect(resigned.ok).toBe(true);
+    const delivered = matchSnapshotSchema.parse(await table.darkClient.next("match:snapshot"));
+    expect(delivered.matchId).toBe(table.matchId);
+
+    // The light socket has answered since, so anything sent to it has arrived.
+    await table.lightClient.emit<MatchSyncAck>("match:sync", { matchId: second.matchId });
+    const snapshots = table.lightClient
+      .seen("match:snapshot")
+      .map((payload) => matchSnapshotSchema.parse(payload).matchId);
+
+    expect(snapshots).not.toContain(table.matchId);
+  });
+
   it("reports a malformed request on the error channel", async () => {
     const table = await seatedMatch();
 

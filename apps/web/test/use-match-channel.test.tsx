@@ -176,6 +176,42 @@ describe("useMatchChannel", () => {
     expect(commandIds).toEqual([first.commandId, first.commandId]);
   });
 
+  it("does not retry a command the board has moved past", async () => {
+    // Production told every player "The board had already moved on" after a
+    // reconnection: the retry was decided from state captured before the fresh
+    // snapshot arrived, so a command the board had passed was sent anyway and the
+    // rejection it earned was shown to the player as if their move had been refused.
+    const { transport } = mount();
+    await settle(transport);
+
+    await act(async () => {
+      await userEvent.click(screen.getByTestId("move"));
+    });
+    const [first] = transport.payloadsFor("match:move") as [{ commandId: string }];
+
+    await act(async () => {
+      transport.answer("match:move", { ok: "nonsense" });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("pending")).toHaveTextContent(first.commandId);
+
+    await act(async () => {
+      transport.fire("connect");
+      await Promise.resolve();
+    });
+    // The snapshot the server answers with is two versions on, so this command is
+    // either already played or no longer playable. Either way, resending it asks a
+    // question that has been answered.
+    await settle(transport, 2);
+
+    const commandIds = (transport.payloadsFor("match:move") as { commandId: string }[]).map(
+      (entry) => entry.commandId,
+    );
+    expect(commandIds).toEqual([first.commandId]);
+    expect(screen.getByTestId("pending")).toHaveTextContent("none");
+    expect(screen.getByTestId("notice")).not.toHaveTextContent("board had already moved on");
+  });
+
   it("retries an unacknowledged resignation once the connection returns", async () => {
     const { transport } = mount();
     await settle(transport);

@@ -113,6 +113,17 @@ versioning for desktop releases; the web client tracks the same version number.
 - Launch B1, a deploy now ends when the release serves rather than when the build finishes:
   `pnpm --filter @gobblet/server await-release` polls `GET /health/live` until the version it
   released is the one answering, and the workflow smokes only after that.
+- Fixed, the board settles its render tier once instead of on every render. The effect depended on
+  the caller's callback identity, and a match screen re-renders with every clock tick, so each tick
+  asked the machine for a graphics context and posted a telemetry event: about ten a second per
+  player. Browsers started discarding contexts that were in use, the telemetry route answered 429,
+  and the tab was busy enough to miss socket pings (D-0005).
+- Fixed, a reconnection no longer resends a command the board has moved past. The retry was decided
+  from state captured before the fresh snapshot was applied, so the client asked a question that had
+  already been answered and showed the player the rejection as a refusal of their move, which is
+  where "The board had already moved on" came from while the move itself had been played (D-0006).
+- Fixed, a socket leaves the rooms of matches it has left. It used to keep them all, so a snapshot
+  published to an abandoned match could replace the board of a live one (D-0007).
 - Launch B1, a release is confirmed by the commit serving, not only the version. `APP_VERSION` is
   the package version, which does not change with every commit, so the wait and the smoke check
   could both be satisfied by the container the release was replacing. Both now compare `gitSha`.

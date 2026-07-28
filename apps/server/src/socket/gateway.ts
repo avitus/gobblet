@@ -114,6 +114,10 @@ export function matchRoom(matchId: string): string {
   return `match:${matchId}`;
 }
 
+function isMatchRoom(room: string): boolean {
+  return room.startsWith("match:");
+}
+
 /** The seat an actor holds in a snapshot, which is where its actor type comes from. */
 function seatActor(snapshot: MatchSnapshot, actorId: string): Actor {
   const seat =
@@ -766,7 +770,7 @@ export class MatchGateway {
       return;
     }
 
-    await socket.join(matchRoom(snapshot.matchId));
+    await this.attach(socket, snapshot.matchId);
     this.clocks.track(snapshot, this.clock());
     await this.recordAttachment(session, snapshot.matchId, socket.id);
     socket.emit(OUT.matchSnapshot, snapshot);
@@ -903,6 +907,25 @@ export class MatchGateway {
   }
 
   /**
+   * Puts a socket in one match room and no other. A socket is one view, showing one
+   * match: keeping the rooms of matches it has left would deliver another match's
+   * snapshot, which replaces the board the player is looking at.
+   */
+  private async attach(socket: Socket, matchId: string): Promise<void> {
+    const keep = matchRoom(matchId);
+    const settled: Promise<void>[] = [];
+    for (const room of [...socket.rooms]) {
+      if (room !== keep && isMatchRoom(room)) {
+        settled.push(Promise.resolve(socket.leave(room)));
+      }
+    }
+    // Joined before the first await, so a caller that does not wait still has a socket
+    // in the room for whatever it publishes next.
+    settled.push(Promise.resolve(socket.join(keep)));
+    await Promise.all(settled);
+  }
+
+  /**
    * Both players join the room and are told their own colour before any clock
    * broadcast, so neither can receive a tick for a match it has not been told about.
    */
@@ -941,7 +964,7 @@ export class MatchGateway {
   private publishSeatedMatch(match: SeatedMatch): void {
     for (const { actorId, event } of match.events) {
       for (const socket of this.socketsByActor.get(actorId) ?? []) {
-        void socket.join(matchRoom(event.matchId));
+        void this.attach(socket, event.matchId);
         socket.emit(OUT.matchFound, event);
       }
       const actor = seatActor(match.snapshot, actorId);

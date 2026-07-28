@@ -118,9 +118,9 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
       if (matchId === null) {
         return;
       }
-      await resync(socket, matchId, dispatch);
+      const snapshot = await resync(socket, matchId, dispatch);
       if (!cancelled) {
-        await retryPending(socket, stateRef.current.pending, dispatch);
+        await retryPending(socket, stateRef.current.pending, snapshot, dispatch);
       }
     }
 
@@ -200,12 +200,17 @@ export function useMatchChannel(matchId: string | null): MatchChannel {
 
 type Dispatch = (action: Parameters<typeof matchChannelReducer>[1]) => void;
 
-async function resync(socket: MatchSocket, matchId: string, dispatch: Dispatch): Promise<void> {
+/** Returns the snapshot it applied, which is what says whether a retry is still due. */
+async function resync(
+  socket: MatchSocket,
+  matchId: string,
+  dispatch: Dispatch,
+): Promise<MatchSnapshot | null> {
   try {
     const ack = await socket.sync(matchId);
     if (ack.ok) {
       dispatch({ type: "snapshot", snapshot: ack.snapshot });
-      return;
+      return ack.snapshot;
     }
     dispatch({ type: "phase", phase: "lost" });
     dispatch({ type: "notice", notice: "This match is no longer available" });
@@ -213,19 +218,31 @@ async function resync(socket: MatchSocket, matchId: string, dispatch: Dispatch):
     dispatch({ type: "resynced" });
     dispatch({ type: "notice", notice: "The match could not be refreshed" });
   }
+  return null;
 }
 
 /**
- * A command is retried at most once per reconnection and only while the held
- * snapshot still shows it was not applied, so the same intent keeps one
- * `commandId` and the server's idempotency does the rest (docs/adr/0011).
+ * A command is retried at most once per reconnection and only while the snapshot the
+ * server has just sent still shows the board it was aimed at, so the same intent keeps
+ * one `commandId` and the server's idempotency does the rest (docs/adr/0011).
+ *
+ * The snapshot is passed in rather than read from the held state, which still
+ * describes the board as it was before the resync: deciding from that resent commands
+ * the board had already passed, and showed the player their own move being refused.
  */
 function retryPending(
   socket: MatchSocket,
   pending: PendingCommand | null,
+  snapshot: MatchSnapshot | null,
   dispatch: Dispatch,
 ): Promise<void> {
-  return pending === null ? Promise.resolve() : send(socket, pending, dispatch);
+  if (pending === null || snapshot === null) {
+    return Promise.resolve();
+  }
+  if (pending.matchId !== snapshot.matchId || pending.expectedVersion !== snapshot.version) {
+    return Promise.resolve();
+  }
+  return send(socket, pending, dispatch);
 }
 
 async function send(

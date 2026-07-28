@@ -110,6 +110,42 @@ describe("BoardView", () => {
     expect(onTierSelected).toHaveBeenLastCalledWith("flat", "chosen");
   });
 
+  it("settles the tier once, however often the caller re-renders", () => {
+    // The caller passes an inline callback, so its identity changes on every render,
+    // and a match screen re-renders on every clock tick. Detection asks the machine
+    // for a graphics context, so repeating it leaks one context per render until the
+    // browser starts discarding live ones.
+    const onTierSelected = vi.fn();
+    const view = (
+      <BoardView
+        state={OPENING_STATE}
+        seat="light"
+        locked={false}
+        onSubmit={() => undefined}
+        onTierSelected={(tier, source) => {
+          onTierSelected(tier, source);
+        }}
+      />
+    );
+    const { rerender } = render(view);
+
+    for (let tick = 0; tick < 8; tick += 1) {
+      rerender(
+        <BoardView
+          state={OPENING_STATE}
+          seat="light"
+          locked={false}
+          onSubmit={() => undefined}
+          onTierSelected={(tier, source) => {
+            onTierSelected(tier, source);
+          }}
+        />,
+      );
+    }
+
+    expect(onTierSelected).toHaveBeenCalledTimes(1);
+  });
+
   it("reports a tier it was given as one that was chosen", () => {
     const onTierSelected = vi.fn();
     render(

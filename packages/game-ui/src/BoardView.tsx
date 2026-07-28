@@ -45,25 +45,30 @@ export function BoardView({
   const [tier, setTier] = useState<RenderTier | null>(initialTier ?? null);
   const interaction = useBoardInteraction({ state, seat, locked, onSubmit });
   const selectionRef = useRef<Origin | null>(null);
+  // Callers pass inline callbacks, so their identity changes on every render. Neither
+  // effect below may depend on that identity: detection asks the machine for a
+  // graphics context, and a board re-renders with every clock tick.
+  const report = useRef({ onSelectionChange, onTierSelected });
+  report.current = { onSelectionChange, onTierSelected };
 
   useEffect(() => {
     if (selectionRef.current === interaction.selected) {
       return;
     }
     selectionRef.current = interaction.selected;
-    onSelectionChange?.(interaction.selected);
-  }, [interaction.selected, onSelectionChange]);
+    report.current.onSelectionChange?.(interaction.selected);
+  }, [interaction.selected]);
 
   useEffect(() => {
     if (initialTier !== undefined) {
       setTier(initialTier);
-      onTierSelected?.(initialTier, "chosen");
+      report.current.onTierSelected?.(initialTier, "chosen");
       return;
     }
     const resolved = resolveTier(detectCapabilities(), preference);
     setTier(resolved);
-    onTierSelected?.(resolved, preference === "auto" ? "detected" : "chosen");
-  }, [initialTier, preference, onTierSelected]);
+    report.current.onTierSelected?.(resolved, preference === "auto" ? "detected" : "chosen");
+  }, [initialTier, preference]);
 
   if (tier === null || tier === "flat") {
     return <FlatBoard interaction={interaction} seat={seat} />;
